@@ -1,4 +1,4 @@
-# Rusty Template agent guidance
+# Rusty Space agent guidance
 
 ## Purpose
 
@@ -40,7 +40,7 @@ The sibling Engine path is required for development:
   `@rusty-engine/application-host` artifact at
   `../rusty-engine/render/artifacts/application-host`.
 
-Do not clone, fetch, pin, or manage Engine from this template's source or CI.
+Do not clone, fetch, pin, or manage Engine from this product's source or CI.
 An operator creates adjacent sibling checkouts. Never deep-import Engine
 `src/` trees or renderer packages.
 

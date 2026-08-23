@@ -1,5 +1,5 @@
 [package]
-name = "rusty-template-gameplay"
+name = "rusty-space-gameplay"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

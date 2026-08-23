@@ -7,13 +7,13 @@
 * { box-sizing: border-box; }
 html, body, #application { height: 100%; margin: 0; overflow: hidden; width: 100%; }
 
-.template-surface {
+.space-surface {
   inset: 0;
   pointer-events: none;
   position: absolute;
 }
 
-.template-label {
+.space-label {
   background: rgba(4, 16, 22, 0.84);
   border-left: 3px solid #36d7ec;
   font-size: clamp(0.68rem, 1.6vw, 0.92rem);

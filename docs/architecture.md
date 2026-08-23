@@ -1,6 +1,6 @@
-# Template architecture
+# Rusty Space architecture
 
-The template demonstrates a small downstream ownership slice rather than a
+Rusty Space demonstrates a small downstream ownership slice rather than a
 universal game grammar:
 
 ```text
@@ -20,7 +20,7 @@ one readable authored form to that Rust-owned format; it cannot run in play or
 evaluate a cube.
 
 The exporter is deliberately a static development edge. It exists so a fresh
-template can render a browser frame without claiming that HTTP or a game server
+product can render a browser frame without claiming that HTTP or a game server
 is fundamental. A real product replaces it with one named Rust service plus a
 chosen typed host adapter. Its application frame keeps all canvas and UI
 geometry within the browser/WebView viewport so that the DOM shell does not

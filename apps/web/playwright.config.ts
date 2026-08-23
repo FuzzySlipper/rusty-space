@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test';
 
-const port = Number(process.env['RUSTY_TEMPLATE_PORT'] ?? '4191');
+const port = Number(process.env['RUSTY_SPACE_PORT'] ?? '4191');
 
 export default defineConfig({
   testDir: './tests',

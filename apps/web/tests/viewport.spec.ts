@@ -10,14 +10,14 @@ for (const viewport of [
     await page.goto('/');
 
     const canvas = page.locator('canvas');
-    const label = page.getByTestId('template-label');
+    const label = page.getByTestId('space-label');
     await expect(canvas).toHaveCount(1);
     await expect(label).toBeVisible();
 
     const layout = await page.evaluate(() => {
       const canvas = document.querySelector('canvas');
-      const label = document.querySelector<HTMLElement>('[data-testid="template-label"]');
-      if (canvas === null || label === null) throw new Error('template viewport is missing');
+      const label = document.querySelector<HTMLElement>('[data-testid="space-label"]');
+      if (canvas === null || label === null) throw new Error('Rusty Space viewport is missing');
       const c = canvas.getBoundingClientRect();
       const l = label.getBoundingClientRect();
       return {

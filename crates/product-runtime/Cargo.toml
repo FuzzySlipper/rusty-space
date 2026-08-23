@@ -1,12 +1,12 @@
 [package]
-name = "rusty-template-runtime"
+name = "rusty-space-runtime"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
 rusty-engine.workspace = true
-rusty-template-gameplay = { path = "../product-gameplay" }
+rusty-space-gameplay = { path = "../product-gameplay" }
 thiserror.workspace = true
 
 [lints]

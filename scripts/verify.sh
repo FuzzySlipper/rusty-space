@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-template_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-engine_host="$template_root/../rusty-engine/render/artifacts/application-host/index.js"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+engine_host="$repo_root/../rusty-engine/render/artifacts/application-host/index.js"
 
 if [[ ! -f "$engine_host" ]]; then
   printf '%s\n' "Missing public Engine application-host artifact: $engine_host" >&2
@@ -10,7 +10,7 @@ if [[ ! -f "$engine_host" ]]; then
   exit 1
 fi
 
-cd "$template_root"
+cd "$repo_root"
 pnpm authoring:check
 cargo fmt --check
 cargo test --workspace --locked

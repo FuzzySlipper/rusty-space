@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-template_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-engine_root="$template_root/../rusty-engine"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+engine_root="$repo_root/../rusty-engine"
 engine_host="$engine_root/render/artifacts/application-host/index.js"
 
 if [[ ! -d "$engine_root/.git" ]]; then
@@ -18,7 +18,7 @@ if [[ ! -f "$engine_host" ]]; then
   exit 1
 fi
 
-cd "$template_root"
+cd "$repo_root"
 pnpm install
 pnpm authoring:materialize
 pnpm export:frame

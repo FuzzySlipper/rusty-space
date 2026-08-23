@@ -5,12 +5,12 @@
 
 use std::{env, fs, path::PathBuf};
 
-use rusty_template_runtime::TemplateProductService;
+use rusty_space_runtime::SpaceProductService;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 enum ExportError {
-    #[error("usage: rusty-template-export <admitted-gameplay.json> <initial-frame.json>")]
+    #[error("usage: rusty-space-export <admitted-gameplay.json> <initial-frame.json>")]
     Usage,
     #[error("cannot read {path}: {source}")]
     Read {
@@ -18,7 +18,7 @@ enum ExportError {
         source: std::io::Error,
     },
     #[error("product export failed: {0}")]
-    Product(#[from] rusty_template_runtime::ProductServiceError),
+    Product(#[from] rusty_space_runtime::ProductServiceError),
     #[error("cannot serialize frame: {0}")]
     Serialize(#[from] serde_json::Error),
     #[error("cannot write {path}: {source}")]
@@ -40,7 +40,7 @@ fn main() -> Result<(), ExportError> {
         path: input.clone(),
         source,
     })?;
-    let frame = TemplateProductService::admit_gameplay(&bytes)?.initial_frame()?;
+    let frame = SpaceProductService::admit_gameplay(&bytes)?.initial_frame()?;
     let mut canonical = serde_json::to_vec_pretty(&frame)?;
     canonical.push(b'\n');
     if let Some(parent) = output.parent() {

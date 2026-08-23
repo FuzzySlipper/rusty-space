@@ -1,4 +1,4 @@
-//! One named product service that owns this template's admitted scene and
+//! One named product service that owns this product's admitted scene and
 //! renderer-neutral projection. A real product replaces the export edge with
 //! its selected host adapter while retaining this ownership boundary.
 
@@ -8,7 +8,7 @@ use rusty_engine::render_model::{
     Geometry, Material, RenderDiff, RenderFrameDiff, RenderLayer, RenderMetadata, RenderNode,
     Transform,
 };
-use rusty_template_gameplay::{AdmissionError, AdmittedScene, decode_and_admit};
+use rusty_space_gameplay::{AdmissionError, AdmittedScene, decode_and_admit};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -20,11 +20,11 @@ pub enum ProductServiceError {
 }
 
 #[derive(Debug, Clone)]
-pub struct TemplateProductService {
+pub struct SpaceProductService {
     scene: AdmittedScene,
 }
 
-impl TemplateProductService {
+impl SpaceProductService {
     pub fn admit_gameplay(bytes: &[u8]) -> Result<Self, ProductServiceError> {
         Ok(Self {
             scene: decode_and_admit(bytes)?,
@@ -49,7 +49,7 @@ impl TemplateProductService {
         node.metadata = RenderMetadata {
             source_entity: None,
             source_scene_node: None,
-            tags: vec!["rusty-template".to_owned()],
+            tags: vec!["rusty-space".to_owned()],
             label: Some(cube.label.clone()),
         };
         RenderFrameDiff::try_from_ops(vec![RenderDiff::Create {
@@ -67,7 +67,7 @@ mod tests {
 
     #[test]
     fn project_service_produces_a_valid_visible_cube_frame() {
-        let service = TemplateProductService::admit_gameplay(
+        let service = SpaceProductService::admit_gameplay(
             br#"{"schemaVersion":1,"cube":{"label":"Rust-owned cube","color":[0.2,0.75,1.0,1.0],"scale":1.5}}"#,
         )
         .expect("fixture admits");

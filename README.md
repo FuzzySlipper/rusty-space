@@ -9,40 +9,33 @@ It is a starting shape for a gameplay-driven product, not an Engine runtime or
 a browser-first game framework. See [the architecture](docs/architecture.md)
 and [change-placement guidance](docs/code-style.md).
 
-## Adjacent checkout bootstrap
+The active prototype is a 2D inertial-thrust space-sailing ship; design notes
+live in [docs/ideas/](docs/ideas/) and the staged plan in
+[docs/plans/ship-controls-prototype.md](docs/plans/ship-controls-prototype.md).
 
-Clone both public repositories under the same parent directory (the names
-matter because the dependency paths are deliberate):
+## Adjacent Engine checkout
+
+This product depends on one adjacent sibling checkout at `../rusty-engine`
+relative to the repository root: the Rust facade
+(`../rusty-engine/rust/crates/rusty-engine`) and the public
+`@rusty-engine/application-host` artifact. The operator prepares that sibling;
+this repository never fetches, clones, pins, or manages it.
+
+Bootstrap dependencies and export the Rust frame:
 
 ```bash
-git clone https://github.com/FuzzySlipper/rusty-engine.git rusty-engine
-git clone https://github.com/FuzzySlipper/rusty-template.git rusty-template
-cd rusty-template
 ./scripts/bootstrap.sh
 pnpm --dir apps/web dev
 ```
 
-Then open the printed local address. The browser app fetches only the
-already-exported Rust frame; it does not evaluate gameplay content.
-
-`./scripts/bootstrap.sh` checks for the adjacent Engine checkout and its public
-application-host artifact, installs this template's dependencies, materializes
-TypeScript authoring, and exports the Rust frame. It never writes to the sibling
-Engine checkout. If the public artifact is missing, build it explicitly there:
+If the public application-host artifact is missing, build it in the sibling
+checkout only, then return here:
 
 ```bash
 cd ../rusty-engine/render
 pnpm install
 pnpm build:application-host-artifact
 ```
-
-Return to this repository afterward. This template intentionally does not
-fetch, clone, pin, or manage its sibling Engine checkout in source or CI.
-
-After creating a product from this template, rename the `rusty-template-*`
-Rust packages, npm packages, metadata tags, and visible sample text. Keep or
-update the sibling dependency paths deliberately; the Engine checkout itself
-is still expected at `../rusty-engine` relative to the repository root.
 
 ## Verify
 

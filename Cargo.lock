@@ -2103,16 +2103,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "rusty-template-export"
+name = "rusty-space-export"
 version = "0.1.0"
 dependencies = [
- "rusty-template-runtime",
+ "rusty-space-runtime",
  "serde_json",
  "thiserror 2.0.20",
 ]
 
 [[package]]
-name = "rusty-template-gameplay"
+name = "rusty-space-gameplay"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -2121,11 +2121,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "rusty-template-runtime"
+name = "rusty-space-runtime"
 version = "0.1.0"
 dependencies = [
  "rusty-engine",
- "rusty-template-gameplay",
+ "rusty-space-gameplay",
  "thiserror 2.0.20",
 ]
 

@@ -1,11 +1,11 @@
 [package]
-name = "rusty-template-export"
+name = "rusty-space-export"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-rusty-template-runtime = { path = "../product-runtime" }
+rusty-space-runtime = { path = "../product-runtime" }
 serde_json.workspace = true
 thiserror.workspace = true
 
