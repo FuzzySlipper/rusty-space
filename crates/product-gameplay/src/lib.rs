@@ -9,6 +9,12 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+mod ship_handling;
+pub use ship_handling::{
+    AuthoredShipHandling, SHIP_HANDLING_DOMAIN, SHIP_HANDLING_PACKAGE,
+    SHIP_HANDLING_SCHEMA_VERSION, ShipHandlingDefinition, ShipHandlingError, compile_ship_handling,
+};
+
 pub const SCENE_SCHEMA_VERSION: u32 = 1;
 const MAX_LABEL_BYTES: usize = 64;
 const MAX_CUBE_SCALE: f32 = 8.0;

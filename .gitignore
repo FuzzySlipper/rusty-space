@@ -2,6 +2,7 @@ target/
 node_modules/
 apps/web/node_modules/
 apps/web/dist/
+gameplay/authoring/dist/
 playwright-report/
 test-results/
 

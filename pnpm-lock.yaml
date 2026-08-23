@@ -34,6 +34,13 @@ importers:
         version: 8.2.2(@types/node@25.9.5)(esbuild@0.28.2)(tsx@4.23.12)
 
   gameplay/authoring:
+    dependencies:
+      '@rusty-engine/gameplay-rules-authoring':
+        specifier: file:../../../rusty-engine/rules/packages/gameplay-rules-authoring
+        version: file:../rusty-engine/rules/packages/gameplay-rules-authoring(@rusty-engine/gameplay-rules-contracts@file:../rusty-engine/rules/packages/gameplay-rules-contracts)
+      '@rusty-engine/gameplay-rules-contracts':
+        specifier: file:../../../rusty-engine/rules/packages/gameplay-rules-contracts
+        version: file:../rusty-engine/rules/packages/gameplay-rules-contracts
     devDependencies:
       '@types/node':
         specifier: ^25.0.0
@@ -312,6 +319,14 @@ packages:
 
   '@rusty-engine/application-host@file:../rusty-engine/render/artifacts/application-host':
     resolution: {directory: ../rusty-engine/render/artifacts/application-host, type: directory}
+
+  '@rusty-engine/gameplay-rules-authoring@file:../rusty-engine/rules/packages/gameplay-rules-authoring':
+    resolution: {directory: ../rusty-engine/rules/packages/gameplay-rules-authoring, type: directory}
+    peerDependencies:
+      '@rusty-engine/gameplay-rules-contracts': 0.1.0
+
+  '@rusty-engine/gameplay-rules-contracts@file:../rusty-engine/rules/packages/gameplay-rules-contracts':
+    resolution: {directory: ../rusty-engine/rules/packages/gameplay-rules-contracts, type: directory}
 
   '@types/node@25.9.5':
     resolution: {integrity: sha512-OScDchr2fwuUmWdf4kZ9h7PcJiYDVInhJizG/biAq3cAvqwYktuy/TYGGdZNMtNTFUP7rnb0NU4TUdm82kt4Rg==}
@@ -654,6 +669,12 @@ snapshots:
   '@rolldown/pluginutils@1.0.1': {}
 
   '@rusty-engine/application-host@file:../rusty-engine/render/artifacts/application-host': {}
+
+  '@rusty-engine/gameplay-rules-authoring@file:../rusty-engine/rules/packages/gameplay-rules-authoring(@rusty-engine/gameplay-rules-contracts@file:../rusty-engine/rules/packages/gameplay-rules-contracts)':
+    dependencies:
+      '@rusty-engine/gameplay-rules-contracts': file:../rusty-engine/rules/packages/gameplay-rules-contracts
+
+  '@rusty-engine/gameplay-rules-contracts@file:../rusty-engine/rules/packages/gameplay-rules-contracts': {}
 
   '@types/node@25.9.5':
     dependencies:
