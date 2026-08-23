@@ -851,3 +851,17 @@ stationary set, lived-in, cozy, increasingly shaped by salvage and repair
 The guiding image is:
 
 > **A ship interior that feels like the cockpit you remember from an old space game, except you can stand up, walk into it, see the colored instrument light crawling across battered physical surfaces, and discover that the coarse little screen world is the ship's deliberate reconstruction of an enormous universe outside.**
+
+Style: Authored neo-retro
+
+or
+
+world-space neo-retro
+
+Not necessarily a recognized genre label, but it describes the philosophy unusually well:
+
+retro influence lives primarily in asset construction and visual grammar, while the renderer remains modern, stable and free to use contemporary lighting.
+
+In summary:
+
+Prefer retro authored into the scene over retro imposed on the final image: coarse texel language, chunky forms and restrained surface detail should remain stable under a clean modern camera
