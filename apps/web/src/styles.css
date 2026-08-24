@@ -24,6 +24,7 @@ html, body, #application { height: 100%; margin: 0; overflow: hidden; width: 100
   padding: 0.55rem 0.72rem;
   position: absolute;
   top: clamp(0.7rem, 2.5vw, 1.5rem);
+  overflow-wrap: anywhere;
 }
 
 .space-status {
@@ -36,4 +37,5 @@ html, body, #application { height: 100%; margin: 0; overflow: hidden; width: 100
   padding: 0.3rem 0.72rem;
   position: absolute;
   top: calc(clamp(0.7rem, 2.5vw, 1.5rem) + 3.25rem);
+  overflow-wrap: anywhere;
 }

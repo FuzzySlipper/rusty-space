@@ -1,6 +1,8 @@
 import {
   mountRustyApplication,
+  type RustyApplicationHost,
   type RustyApplicationFrame,
+  type RustyApplicationInteractionMode,
   type RustyApplicationUiContext,
   type RustyApplicationUiOwner,
 } from '@rusty-engine/application-host';
@@ -12,7 +14,19 @@ if (root === null) throw new Error('Rusty Space application root is missing');
 
 const SESSION_PATH = '/api/session';
 
-await mountRustyApplication({
+interface RustySpaceBrowserTestProbe {
+  application?: RustyApplicationHost;
+  disposeAndRemount?: () => Promise<void>;
+  setInteractionMode?: (mode: RustyApplicationInteractionMode) => void;
+}
+
+declare global {
+  interface Window {
+    __rustySpaceBrowserTestProbe?: RustySpaceBrowserTestProbe;
+  }
+}
+
+const mountApplication = (): Promise<RustyApplicationHost> => mountRustyApplication({
   root,
   initialInteractionMode: 'gameplay',
   loadingLabel: 'Loading Rusty Space…',
@@ -21,6 +35,35 @@ await mountRustyApplication({
   renderer: { clearColor: 0x071217, pixelRatio: 1 },
   mountUi,
 });
+
+let application = await mountApplication();
+
+const testProbe = window.__rustySpaceBrowserTestProbe;
+const publishTestProbe = (): void => {
+  if (testProbe === undefined) return;
+  testProbe.application = application;
+  testProbe.setInteractionMode = (mode) => application.ui.setInteractionMode(mode);
+  testProbe.disposeAndRemount = async () => {
+    await application.dispose();
+    application = await mountApplication();
+    publishTestProbe();
+  };
+};
+publishTestProbe();
+
+// Keep the Engine host reachable for the browser lifecycle. The host owns the
+// renderer surface and the mounted UI owner; disposal on a real page exit
+// releases both before the document is discarded. A BFCache page remains
+// mounted and can be restored, while the mounted UI below still neutralizes
+// gameplay input on every pagehide event.
+const disposeApplicationOnExit = (event: PageTransitionEvent): void => {
+  // Synthetic pagehide events used to verify neutralization do not carry the
+  // PageTransitionEvent persisted bit; only a real navigation or an explicit
+  // PageTransitionEvent requests teardown here.
+  if (typeof event.persisted === 'boolean' && !event.persisted) void application.dispose();
+};
+window.addEventListener('pagehide', disposeApplicationOnExit);
+window.addEventListener('beforeunload', () => void application.dispose(), { once: true });
 
 interface ServerReadout {
   position: { x: number; z: number };
@@ -64,7 +107,7 @@ interface CommandReceiptMessage {
 
 type ServerMessage = BaselineMessage | UpdateMessage | CommandRejectedMessage | CommandReceiptMessage;
 
-function mountUi(root: HTMLElement, context: RustyApplicationUiContext): RustyApplicationUiOwner {
+function mountUi(root: HTMLElement, context: RustyApplicationUiContext): Promise<RustyApplicationUiOwner> {
   const surface = document.createElement('main');
   surface.className = 'space-surface';
   surface.setAttribute('aria-label', 'Rusty Space viewport');
@@ -99,7 +142,16 @@ function mountUi(root: HTMLElement, context: RustyApplicationUiContext): RustyAp
   let terminalFailure: string | null = null;
   let frameDelivery: Promise<void> = Promise.resolve();
   let reconnectTimer: number | undefined;
+  let interactionModeTimer: number | undefined;
   let disposed = false;
+  let startupSettled = false;
+  let resolveStartup!: (owner: RustyApplicationUiOwner) => void;
+  let rejectStartup!: (reason: Error) => void;
+  const startup = new Promise<RustyApplicationUiOwner>((resolve, reject) => {
+    resolveStartup = resolve;
+    rejectStartup = reject;
+  });
+  let disposeUi = (): void => undefined;
 
   const currentIntent = (): { throttle: number; turn: number } => {
     const thrust = [...thrustKeys].some((key) => held.has(key));
@@ -123,6 +175,16 @@ function mountUi(root: HTMLElement, context: RustyApplicationUiContext): RustyAp
     sendIntent();
   };
 
+  // The public UI context intentionally exposes a snapshot rather than a
+  // product-specific mode-change event. Polling this coarse state keeps an
+  // intent lease from surviving a host-owned transition into interface/modal
+  // mode when no keyboard event happens to follow it.
+  const neutralizeInputOutsideGameplay = (): void => {
+    if (!disposed && held.size > 0 && context.ui.interactionMode() !== 'gameplay') {
+      clearHeldInput();
+    }
+  };
+
   const updateHud = (readout: ServerReadout): void => {
     const speed = Math.hypot(readout.linearVelocity.x, readout.linearVelocity.z);
     const degrees = ((readout.heading * 180) / Math.PI).toFixed(0);
@@ -143,6 +205,11 @@ function mountUi(root: HTMLElement, context: RustyApplicationUiContext): RustyAp
     label.textContent = `Rusty Space · ${terminalFailure}`;
     status.textContent = `Session ${terminalFailure}`;
     origin?.close();
+    if (!startupSettled) {
+      startupSettled = true;
+      disposeUi();
+      rejectStartup(new Error(terminalFailure));
+    }
   };
 
   const applyFrame = async (update: ServerUpdate, baseline: boolean, origin: WebSocket): Promise<boolean> => {
@@ -181,6 +248,7 @@ function mountUi(root: HTMLElement, context: RustyApplicationUiContext): RustyAp
 
   const connect = (): void => {
     if (disposed) return;
+    clearHeldInput();
     activeGeneration = null;
     baselineApplied = false;
     lastUpdateSequence = null;
@@ -208,6 +276,10 @@ function mountUi(root: HTMLElement, context: RustyApplicationUiContext): RustyAp
             baselineApplied = true;
             lastUpdateSequence = message.update.sequence;
             status.textContent = `Session ${message.generation} ready`;
+            if (!startupSettled) {
+              startupSettled = true;
+              resolveStartup(owner);
+            }
           }
         }).catch((error: unknown) => failFrame('baseline failed', error, nextSocket));
         return;
@@ -255,7 +327,10 @@ function mountUi(root: HTMLElement, context: RustyApplicationUiContext): RustyAp
   };
 
   const onKeyDown = (event: KeyboardEvent): void => {
-    if (!context.ui.allowsGameplayInput(event)) return;
+    if (!context.ui.allowsGameplayInput(event)) {
+      clearHeldInput();
+      return;
+    }
     if (thrustKeys.has(event.code) || leftKeys.has(event.code) || rightKeys.has(event.code)) {
       held.add(event.code);
       event.preventDefault();
@@ -263,28 +338,43 @@ function mountUi(root: HTMLElement, context: RustyApplicationUiContext): RustyAp
     }
   };
   const onKeyUp = (event: KeyboardEvent): void => {
+    if (!context.ui.allowsGameplayInput(event)) {
+      clearHeldInput();
+      return;
+    }
     if (held.delete(event.code)) {
       sendIntent();
     }
+  };
+  const onVisibilityChange = (): void => {
+    if (document.visibilityState === 'hidden') clearHeldInput();
   };
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('blur', clearHeldInput);
   window.addEventListener('pagehide', clearHeldInput);
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  interactionModeTimer = window.setInterval(neutralizeInputOutsideGameplay, 50);
   connect();
   context.renderer.renderOnce();
 
-  return {
-    dispose: () => {
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-      window.removeEventListener('blur', clearHeldInput);
-      window.removeEventListener('pagehide', clearHeldInput);
-      disposed = true;
-      clearHeldInput();
-      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
-      socket?.close();
-      surface.remove();
-    },
+  const owner: RustyApplicationUiOwner = {
+    dispose: () => disposeUi(),
   };
+  disposeUi = () => {
+    if (disposed) return;
+    window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('keyup', onKeyUp);
+    window.removeEventListener('blur', clearHeldInput);
+    window.removeEventListener('pagehide', clearHeldInput);
+    clearHeldInput();
+    disposed = true;
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+    if (interactionModeTimer !== undefined) window.clearInterval(interactionModeTimer);
+    if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
+    socket?.close();
+    surface.remove();
+  };
+
+  return startup;
 }

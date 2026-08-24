@@ -41,11 +41,43 @@ async function readAcceptedCommandSequence(page: Page): Promise<number> {
 
 test('a browser session can turn and thrust the ship', async ({ page }) => {
   await page.setViewportSize({ width: 1000, height: 760 });
+  let admittedBaseline: { ops?: Array<{ op?: string; handle?: number; node?: { metadata?: { label?: string; tags?: string[] } } }> } | undefined;
+  page.on('websocket', (webSocket) => {
+    webSocket.on('framereceived', (payload) => {
+      try {
+        const encoded = typeof payload === 'string'
+          ? payload
+          : (payload as { payload?: string }).payload ?? payload.toString();
+        const message = JSON.parse(encoded) as {
+          type?: string;
+          update?: { frame?: typeof admittedBaseline };
+        };
+        if (message.type === 'baseline' && message.update?.frame !== undefined) {
+          admittedBaseline = message.update.frame;
+        }
+      } catch {
+        // Other WebSocket frames are not part of this browser evidence.
+      }
+    });
+  });
   await page.goto('/');
 
   const label = page.getByTestId('space-label');
   await expect(page.locator('canvas')).toHaveCount(1);
   await expect(label).toContainText('pos', { timeout: 15_000 });
+  await expect.poll(() => admittedBaseline).toBeDefined();
+  const admittedNodes = (admittedBaseline?.ops ?? [])
+    .filter((operation) => operation.op === 'create')
+    .map((operation) => ({ handle: operation.handle, metadata: operation.node?.metadata }))
+    .filter((operation): operation is { handle: number | undefined; metadata: { label?: string; tags?: string[] } } => operation.metadata !== undefined);
+  expect(admittedNodes.map((operation) => operation.handle)).toEqual([1, 2, 3, 4]);
+  expect(admittedNodes.map((operation) => operation.metadata.label)).toEqual([
+    'ship',
+    'heading',
+    'velocity',
+    'projected-path',
+  ]);
+  expect(admittedNodes[0]?.metadata?.tags).toContain('rusty-space-ship');
 
   // Thrust forward: the ship accelerates and its position advances.
   const start = await readPosition(label);
