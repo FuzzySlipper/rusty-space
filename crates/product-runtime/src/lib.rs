@@ -11,6 +11,9 @@ use rusty_engine::render_model::{
 use rusty_space_gameplay::{AdmissionError, AdmittedScene, decode_and_admit};
 use thiserror::Error;
 
+mod flight_runtime;
+pub use flight_runtime::{FIXED_STEP_SECONDS, FlightReadout, FlightRuntime, FlightRuntimeError};
+
 #[derive(Debug, Error)]
 pub enum ProductServiceError {
     #[error(transparent)]
