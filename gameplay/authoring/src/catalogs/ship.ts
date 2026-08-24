@@ -1,8 +1,4 @@
-/**
- * The stock ship's handling values. First-cut Asteroids-style tuning; adjust
- * here (not in Rust) when tuning the feel. See
- * docs/plans/ship-controls-prototype.md for the starting-value rationale.
- */
+/** Stock ship tuning; change it here so the admitted package stays reproducible. */
 
 import { shipHandling } from '../authoring/mod.js';
 

@@ -2,11 +2,11 @@
 
 ## Purpose
 
-This is a small, runnable reference downstream product for Rusty Engine. It
-shows a Rust-owned gameplay/content admission path, an optional TypeScript
+This is a small, runnable downstream product for Rusty Engine. It has a
+Rust-owned gameplay/content admission path, a pure build-time TypeScript
 authoring DSL, and a single bounded browser viewport through the Engine public
-application host. It is not a framework, a generic game template, or an
-Engine implementation checkout.
+application host. It is not a framework, generic template, or Engine
+implementation checkout.
 
 Read the local sibling bootstrap when available:
 `../rusty-engine/docs/topics/development/downstream-repository-bootstrap.md`.
@@ -20,10 +20,11 @@ Markdown links on GitHub.
 ## Authority
 
 Rust owns the product's admitted gameplay vocabulary, semantic interpretation,
-render-frame projection, and any future live service state. The TypeScript in
-`gameplay/authoring` is a pure build-time materializer for a Rust-defined wire
-format. The TypeScript in `apps/web` loads an already Rust-projected frame and
-owns only bounded DOM presentation/input adaptation.
+and the live session, scheduling, and renderer-neutral projection path in
+`SpaceProductService`. The TypeScript in `gameplay/authoring` is a pure
+build-time materializer for the Rust-defined package format. The TypeScript in
+`apps/web` presents live Rust-projected updates and owns only bounded DOM
+presentation/input adaptation.
 
 Do not add a TypeScript evaluator, live game state, save model, scheduler,
 generic command bus, browser storage authority, a second canvas, or a private
@@ -47,7 +48,8 @@ An operator creates adjacent sibling checkouts. Never deep-import Engine
 ## Layout
 
 - `crates/product-gameplay`: strict product content schema and admission.
-- `crates/product-runtime`: named Rust service and renderer-neutral frame projection.
+- `crates/product-runtime`: `SpaceProductService` live sessions, scheduling, and renderer-neutral projection.
+- `crates/product-host`: local browser transport and built-shell delivery.
 - `gameplay/authoring`: pure TypeScript builders that materialize committed content.
 - `content/gameplay`: admitted product artifact, not a TypeScript runtime input.
 - `apps/web`: thin Vite composition root, one Engine canvas, bounded UI root.

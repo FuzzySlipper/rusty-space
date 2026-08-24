@@ -21,4 +21,6 @@ fi
 cd "$repo_root"
 pnpm install
 pnpm authoring:materialize
-printf '%s\n' "Bootstrap complete. Start the bounded browser proof with: pnpm --dir apps/web dev"
+printf '%s\n' "Bootstrap complete. Build the browser shell with: pnpm --dir apps/web build"
+printf '%s\n' "Then start the live product with: cargo run -p rusty-space-host --bin browser-host --locked"
+printf '%s\n' "Open: http://127.0.0.1:8787"
