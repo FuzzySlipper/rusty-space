@@ -1,56 +1,27 @@
-//! browser-host: a minimal HTTP + WebSocket development adapter over the live
-//! flight runtime. It serves the built web shell, owns the fixed 60 Hz loop,
-//! accepts typed turn/thrust input intents, and pushes projected frames.
+//! browser-host: a minimal HTTP + WebSocket delivery adapter for the live
+//! Space product service. It serves the built web shell, observes wall-clock
+//! time, translates typed input, and delivers renderer-neutral product updates.
 
 use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Component, Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use rusty_engine::render_model::RenderFrameDiff;
-use rusty_space_gameplay::{FlightCommand, compile_ship_handling};
-use rusty_space_runtime::{FIXED_STEP_SECONDS, FlightReadout, FlightRuntime, ship_frame_diff};
-use serde::{Deserialize, Serialize};
+use rusty_space_runtime::{SpaceProductCommand, SpaceProductService};
+use serde::Deserialize;
 use tungstenite::{Message, accept};
 
 const DEFAULT_ADDRESS: &str = "127.0.0.1:8787";
 const SESSION_PATH: &str = "/api/session";
 
-struct Shared {
-    runtime: Mutex<FlightRuntime>,
-    command: Mutex<FlightCommand>,
-    frame: Mutex<Option<String>>,
-    frame_sequence: AtomicU64,
-}
-
-impl Shared {
-    fn new(runtime: FlightRuntime) -> Self {
-        Self {
-            runtime: Mutex::new(runtime),
-            command: Mutex::new(FlightCommand {
-                throttle: 0.0,
-                turn: 0.0,
-            }),
-            frame: Mutex::new(None),
-            frame_sequence: AtomicU64::new(0),
-        }
-    }
-}
+type SharedService = Arc<Mutex<SpaceProductService>>;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct InputIntent {
     throttle: f64,
     turn: f64,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ServerUpdate {
-    frame: RenderFrameDiff,
-    readout: FlightReadout,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,18 +44,16 @@ fn main() {
         "browser shell is not built"
     );
 
-    let handling =
-        compile_ship_handling(&std::fs::read(&arguments.handling).unwrap_or_else(|error| {
+    let service =
+        SpaceProductService::admit(&std::fs::read(&arguments.handling).unwrap_or_else(|error| {
             panic!(
                 "cannot read ship handling package {}: {error}",
                 arguments.handling.display()
             )
         }))
-        .unwrap_or_else(|error| panic!("ship handling admission failed: {error}"));
-    let runtime =
-        FlightRuntime::spawn(handling).unwrap_or_else(|error| panic!("spawn failed: {error}"));
-    let shared = Arc::new(Shared::new(runtime));
-    start_driver(&shared);
+        .unwrap_or_else(|error| panic!("live service admission failed: {error}"));
+    let service = Arc::new(Mutex::new(service));
+    start_driver(&service);
 
     let listener = TcpListener::bind(arguments.address).unwrap_or_else(|error| {
         panic!("cannot bind browser host at {}: {error}", arguments.address)
@@ -97,57 +66,35 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                let shared = Arc::clone(&shared);
+                let service = Arc::clone(&service);
                 let dist = dist.clone();
-                std::thread::spawn(move || handle_connection(stream, &shared, &dist));
+                std::thread::spawn(move || handle_connection(stream, &service, &dist));
             }
             Err(error) => eprintln!("browser-host accept error: {error}"),
         }
     }
 }
 
-/// The fixed 60 Hz loop. It owns the only authority over simulation time and
-/// publishes each tick's projected frame for connected sessions.
-fn start_driver(shared: &Arc<Shared>) {
-    let shared = Arc::clone(shared);
+/// Observe wall-clock time and hand it to the service. The service, rather
+/// than this transport adapter, owns its fixed-step accumulation policy.
+fn start_driver(service: &SharedService) {
+    let service = Arc::clone(service);
     std::thread::spawn(move || {
-        let step = Duration::from_secs_f64(FIXED_STEP_SECONDS);
         let mut previous = Instant::now();
-        let mut accumulator = Duration::ZERO;
-        let mut tick = 0_u64;
         loop {
             std::thread::sleep(Duration::from_millis(1));
             let now = Instant::now();
-            accumulator += now.saturating_duration_since(previous);
+            let elapsed = now.saturating_duration_since(previous);
             previous = now;
-            while accumulator >= step {
-                accumulator -= step;
-                tick_once(&shared, &mut tick);
-            }
-            if accumulator > step * 4 {
-                accumulator = Duration::ZERO;
+            if let Err(error) = service
+                .lock()
+                .expect("live service lock")
+                .advance_elapsed(elapsed)
+            {
+                eprintln!("browser-host product advance error: {error}");
             }
         }
     });
-}
-
-fn tick_once(shared: &Shared, tick: &mut u64) {
-    let command = *shared.command.lock().expect("command lock");
-    let mut runtime = shared.runtime.lock().expect("runtime lock");
-    match runtime.tick(command) {
-        Ok(readout) => {
-            let create = *tick == 0;
-            let update = ServerUpdate {
-                frame: ship_frame_diff(&readout, create),
-                readout,
-            };
-            let encoded = serde_json::to_string(&update).expect("encode server update");
-            *shared.frame.lock().expect("frame lock") = Some(encoded);
-            shared.frame_sequence.fetch_add(1, Ordering::Relaxed);
-            *tick += 1;
-        }
-        Err(error) => eprintln!("browser-host flight tick error: {error}"),
-    }
 }
 
 fn arguments() -> Result<HostArguments, String> {
@@ -195,9 +142,9 @@ fn parse_arguments(
     })
 }
 
-fn handle_connection(mut stream: TcpStream, shared: &Arc<Shared>, dist: &Path) {
+fn handle_connection(mut stream: TcpStream, service: &SharedService, dist: &Path) {
     if session_upgrade_requested(&stream) {
-        run_session(stream, Arc::clone(shared));
+        run_session(stream, Arc::clone(service));
         return;
     }
     let request = match read_request(&mut stream) {
@@ -226,7 +173,7 @@ fn session_upgrade_requested(stream: &TcpStream) -> bool {
         .is_some_and(|request| request.starts_with(&format!("GET {SESSION_PATH} ")))
 }
 
-fn run_session(stream: TcpStream, shared: Arc<Shared>) {
+fn run_session(stream: TcpStream, service: SharedService) {
     let mut websocket = match accept(stream) {
         Ok(websocket) => websocket,
         Err(error) => {
@@ -238,18 +185,23 @@ fn run_session(stream: TcpStream, shared: Arc<Shared>) {
         .get_ref()
         .set_read_timeout(Some(Duration::from_millis(1)));
 
-    let mut published_sequence = 0_u64;
+    let mut published_sequence = None;
     loop {
         // Drain up to a bounded batch of incoming input intents.
         let mut drained = 0;
         while drained < 32 {
             match websocket.read() {
                 Ok(Message::Text(text)) => {
-                    if let Ok(intent) = serde_json::from_str::<InputIntent>(&text) {
-                        *shared.command.lock().expect("command lock") = FlightCommand {
-                            throttle: intent.throttle.clamp(0.0, 1.0),
-                            turn: intent.turn.clamp(-1.0, 1.0),
-                        };
+                    if let Ok(intent) = serde_json::from_str::<InputIntent>(&text)
+                        && let Err(error) = service
+                            .lock()
+                            .expect("live service lock")
+                            .submit_command(SpaceProductCommand::SetFlightIntent {
+                                throttle: intent.throttle,
+                                turn: intent.turn,
+                            })
+                    {
+                        eprintln!("browser-host input rejected: {error}");
                     }
                 }
                 Ok(Message::Close(frame)) => {
@@ -269,14 +221,17 @@ fn run_session(stream: TcpStream, shared: Arc<Shared>) {
         }
 
         // Push the latest frame when it has advanced.
-        let sequence = shared.frame_sequence.load(Ordering::Relaxed);
-        if sequence != published_sequence
-            && let Some(encoded) = shared.frame.lock().expect("frame lock").clone()
-        {
+        let update = service
+            .lock()
+            .expect("live service lock")
+            .latest_update()
+            .clone();
+        if published_sequence != Some(update.sequence) {
+            let encoded = serde_json::to_string(&update).expect("encode service update");
             if websocket.send(Message::Text(encoded.into())).is_err() {
                 return;
             }
-            published_sequence = sequence;
+            published_sequence = Some(update.sequence);
         }
     }
 }

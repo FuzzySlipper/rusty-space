@@ -20,9 +20,11 @@ and invalid flight constants before it creates gameplay meaning. TypeScript
 only materializes that Rust-owned package at build time; it cannot run in play
 or evaluate live flight state.
 
-`product-host` owns the bounded local browser transport and fixed-step loop.
-It admits the committed ship package into `FlightRuntime`, projects each tick
-to a renderer-neutral frame, and sends that projection to the thin browser
+`SpaceProductService` admits the committed ship package and owns live flight
+state, semantic commands, fixed-step accumulation policy, readouts, and
+renderer-neutral projection. `product-host` owns only the bounded local
+browser transport and wall-clock observation; it passes elapsed time and typed
+intent to the service, then delivers the retained update to the thin browser
 shell. The application frame keeps all canvas and UI geometry within the
 browser/WebView viewport so the DOM shell does not become an accidental
 web-app authority.

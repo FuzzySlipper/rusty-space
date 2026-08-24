@@ -53,8 +53,8 @@ not run broad Engine verification.
 | Location | Owner | Does not own |
 | --- | --- | --- |
 | `crates/product-gameplay` | Product vocabulary and strict admission | Generic Engine grammar or a TS evaluator |
-| `crates/product-runtime` | Live flight runtime and retained-frame projection | Browser, DOM, WebGL, or host lifecycle |
-| `crates/product-host` | Live browser transport and fixed-step loop | Gameplay semantics or rendering |
+| `crates/product-runtime` | `SpaceProductService`: admitted live flight state, fixed-step policy, and retained-frame projection | Browser, DOM, WebGL, or host lifecycle |
+| `crates/product-host` | Live browser transport and wall-clock observation | Gameplay semantics, scheduling policy, or rendering |
 | `gameplay/authoring` | Pure build-time composition/materialization | New serialized meaning or gameplay state |
 | `apps/web` | Public host composition and local UI | Canvas, renderer, live gameplay state, or persistence |
 

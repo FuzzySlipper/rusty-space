@@ -10,8 +10,6 @@ path = "src/browser_host.rs"
 
 [dependencies]
 rusty-space-runtime = { path = "../product-runtime" }
-rusty-space-gameplay = { path = "../product-gameplay" }
-rusty-engine.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tungstenite.workspace = true

@@ -2184,8 +2184,6 @@ dependencies = [
 name = "rusty-space-host"
 version = "0.1.0"
 dependencies = [
- "rusty-engine",
- "rusty-space-gameplay",
  "rusty-space-runtime",
  "serde",
  "serde_json",

@@ -3,7 +3,14 @@
 #![forbid(unsafe_code)]
 
 mod flight_runtime;
-pub use flight_runtime::{FIXED_STEP_SECONDS, FlightReadout, FlightRuntime, FlightRuntimeError};
+pub use flight_runtime::{FIXED_STEP_SECONDS, FlightReadout};
+use flight_runtime::{FlightRuntime, FlightRuntimeError};
 
 mod projection;
-pub use projection::{SHIP_NODE_HANDLE, ship_frame_diff};
+use projection::ship_frame_diff;
+
+mod space_product_service;
+pub use space_product_service::{
+    MAX_ACCUMULATED_STEPS, SpaceProductAdvanceReceipt, SpaceProductCommand,
+    SpaceProductCommandReceipt, SpaceProductService, SpaceProductServiceError, SpaceProductUpdate,
+};
