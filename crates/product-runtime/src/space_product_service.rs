@@ -29,18 +29,66 @@ const UNITS_PER_SECOND: u128 = NANOSECONDS_PER_SECOND * TICKS_PER_SECOND;
 const MAX_ACCUMULATOR_UNITS: u128 = STEP_UNITS * MAX_ACCUMULATED_STEPS as u128;
 
 /// A closed semantic command vocabulary for the live Space product.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
 pub enum SpaceProductCommand {
     /// Set the current main-drive and yaw intent.
     SetFlightIntent { throttle: f64, turn: f64 },
 }
 
 /// The normalized command that the service accepted.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SpaceProductCommandReceipt {
     pub sequence: u64,
     pub command: SpaceProductCommand,
 }
+
+/// The monotonically increasing identity of one adapter session.
+///
+/// A session identity is minted by the Rust service, not a browser. It fences
+/// a controller lease, so a delayed message from a replaced transport cannot
+/// mutate the current product command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpaceProductSession {
+    pub generation: u64,
+}
+
+/// The complete renderer and readout state required before a session may
+/// consume retained-frame diffs.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpaceProductSessionBaseline {
+    pub session: SpaceProductSession,
+    pub update: SpaceProductUpdate,
+}
+
+/// The effect of an adapter declaring a session unavailable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpaceProductSessionRelease {
+    /// This session owned the controller lease and its held input was cleared.
+    ReleasedController,
+    /// A newer session already replaced this generation, so no state changed.
+    AlreadyStale,
+}
+
+/// A command was received from a session that no longer owns the controller
+/// lease.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error(
+    "session generation {session_generation} is stale; active controller is {active_generation:?}"
+)]
+pub struct SpaceProductStaleSessionError {
+    pub session_generation: u64,
+    pub active_generation: Option<u64>,
+}
+
+/// The service has issued every representable session generation. Refusing a
+/// new session is safer than silently reusing an identity that could be stale.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("session generation space is exhausted")]
+pub struct SpaceProductSessionGenerationExhausted;
 
 /// A renderer-neutral product update retained for delivery by any adapter.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -84,6 +132,8 @@ pub struct SpaceProductService {
     runtime: FlightRuntime,
     command: FlightCommand,
     command_sequence: u64,
+    next_session_generation: u64,
+    controller: Option<SpaceProductSession>,
     accumulator_units: u128,
     tick: u64,
     readout: FlightReadout,
@@ -111,6 +161,8 @@ impl SpaceProductService {
                 turn: 0.0,
             },
             command_sequence: 0,
+            next_session_generation: 0,
+            controller: None,
             accumulator_units: 0,
             tick: 0,
             readout,
@@ -120,7 +172,7 @@ impl SpaceProductService {
 
     /// Validate, normalize, and retain a semantic command for subsequent
     /// fixed steps. Invalid commands leave the current command unchanged.
-    pub fn submit_command(
+    fn submit_command(
         &mut self,
         command: SpaceProductCommand,
     ) -> Result<SpaceProductCommandReceipt, SpaceProductServiceError> {
@@ -131,6 +183,65 @@ impl SpaceProductService {
             sequence: self.command_sequence,
             command,
         })
+    }
+
+    /// Open an adapter session and replace any prior controller lease.
+    ///
+    /// The returned snapshot is always a complete retained frame, even if the
+    /// product has already advanced for many ticks. This lets each transport
+    /// initialize an empty renderer before it receives update-only diffs.
+    pub fn open_session(
+        &mut self,
+    ) -> Result<SpaceProductSessionBaseline, SpaceProductSessionGenerationExhausted> {
+        self.next_session_generation = self
+            .next_session_generation
+            .checked_add(1)
+            .ok_or(SpaceProductSessionGenerationExhausted)?;
+        let session = SpaceProductSession {
+            generation: self.next_session_generation,
+        };
+        self.controller = Some(session);
+        self.neutralize_command();
+        Ok(SpaceProductSessionBaseline {
+            session,
+            update: SpaceProductUpdate {
+                sequence: self.latest_update.sequence,
+                tick: self.tick,
+                frame: ship_frame_diff(&self.readout, true),
+                readout: self.readout,
+            },
+        })
+    }
+
+    /// Submit a semantic command only when its owning session still holds the
+    /// single-controller lease.
+    pub fn submit_session_command(
+        &mut self,
+        session: SpaceProductSession,
+        command: SpaceProductCommand,
+    ) -> Result<SpaceProductCommandReceipt, SpaceProductSessionError> {
+        if self.controller != Some(session) {
+            return Err(SpaceProductSessionError::StaleSession(
+                SpaceProductStaleSessionError {
+                    session_generation: session.generation,
+                    active_generation: self.controller.map(|active| active.generation),
+                },
+            ));
+        }
+        self.submit_command(command)
+            .map_err(SpaceProductSessionError::InvalidCommand)
+    }
+
+    /// Release a session. Only the active controller can clear live input;
+    /// delayed teardown from a replaced transport is deliberately harmless.
+    pub fn release_session(&mut self, session: SpaceProductSession) -> SpaceProductSessionRelease {
+        if self.controller == Some(session) {
+            self.controller = None;
+            self.neutralize_command();
+            SpaceProductSessionRelease::ReleasedController
+        } else {
+            SpaceProductSessionRelease::AlreadyStale
+        }
     }
 
     /// Add adapter-observed wall-clock time and run bounded fixed simulation
@@ -184,6 +295,23 @@ impl SpaceProductService {
     pub const fn latest_update(&self) -> &SpaceProductUpdate {
         &self.latest_update
     }
+
+    fn neutralize_command(&mut self) {
+        self.command = FlightCommand {
+            throttle: 0.0,
+            turn: 0.0,
+        };
+    }
+}
+
+/// Session-scoped command failure. Adapters can map this closed result to a
+/// typed receipt without inspecting error strings.
+#[derive(Debug, Error)]
+pub enum SpaceProductSessionError {
+    #[error(transparent)]
+    StaleSession(#[from] SpaceProductStaleSessionError),
+    #[error(transparent)]
+    InvalidCommand(#[from] SpaceProductServiceError),
 }
 
 fn units_to_seconds(units: u128) -> f64 {
@@ -399,5 +527,192 @@ mod tests {
                 .iter()
                 .all(|operation| matches!(operation, RenderDiff::Update { .. }))
         );
+    }
+
+    #[test]
+    fn late_and_reconnecting_sessions_receive_complete_create_baselines() {
+        let mut service = SpaceProductService::admit(HANDLING).expect("admitted service");
+        service
+            .advance_elapsed(Duration::from_secs(1))
+            .expect("advance several ticks before the first session");
+
+        let first = service.open_session().expect("first session");
+        assert!(first.session.generation > 0);
+        assert_eq!(first.update.tick, service.latest_update().tick);
+        assert!(
+            first
+                .update
+                .frame
+                .ops
+                .iter()
+                .all(|operation| matches!(operation, RenderDiff::Create { .. }))
+        );
+
+        let second = service.open_session().expect("reconnecting session");
+        assert!(second.session.generation > first.session.generation);
+        assert!(
+            second
+                .update
+                .frame
+                .ops
+                .iter()
+                .all(|operation| matches!(operation, RenderDiff::Create { .. }))
+        );
+    }
+
+    #[test]
+    fn disconnect_and_replacement_neutralize_held_input_without_reviving_stale_control() {
+        let mut service = SpaceProductService::admit(HANDLING).expect("admitted service");
+        let first = service.open_session().expect("first session").session;
+        service
+            .submit_session_command(
+                first,
+                SpaceProductCommand::SetFlightIntent {
+                    throttle: 1.0,
+                    turn: 0.5,
+                },
+            )
+            .expect("controller can command");
+
+        let second = service.open_session().expect("replacement session").session;
+        assert_eq!(
+            service.current_command(),
+            SpaceProductCommand::SetFlightIntent {
+                throttle: 0.0,
+                turn: 0.0,
+            }
+        );
+        assert!(matches!(
+            service.submit_session_command(
+                first,
+                SpaceProductCommand::SetFlightIntent {
+                    throttle: 1.0,
+                    turn: 0.0,
+                },
+            ),
+            Err(SpaceProductSessionError::StaleSession(
+                SpaceProductStaleSessionError {
+                    active_generation: Some(generation),
+                    ..
+                }
+            )) if generation == second.generation
+        ));
+        assert_eq!(
+            service.release_session(first),
+            SpaceProductSessionRelease::AlreadyStale
+        );
+        assert_eq!(
+            service.release_session(second),
+            SpaceProductSessionRelease::ReleasedController
+        );
+        assert_eq!(
+            service.current_command(),
+            SpaceProductCommand::SetFlightIntent {
+                throttle: 0.0,
+                turn: 0.0,
+            }
+        );
+    }
+
+    #[test]
+    fn releasing_the_current_controller_stops_acceleration_without_a_replacement_session() {
+        let mut service = SpaceProductService::admit(HANDLING).expect("admitted service");
+        let session = service.open_session().expect("controller session").session;
+        service
+            .submit_session_command(
+                session,
+                SpaceProductCommand::SetFlightIntent {
+                    throttle: 1.0,
+                    turn: 0.0,
+                },
+            )
+            .expect("controller starts thrusting");
+        service
+            .advance_elapsed(Duration::from_millis(100))
+            .expect("thrusting ticks");
+        assert!(service.readout().linear_velocity.magnitude() > 0.0);
+        let throttle_before_disconnect = service.readout().throttle_level;
+
+        assert_eq!(
+            service.release_session(session),
+            SpaceProductSessionRelease::ReleasedController
+        );
+        assert_eq!(
+            service.current_command(),
+            SpaceProductCommand::SetFlightIntent {
+                throttle: 0.0,
+                turn: 0.0,
+            }
+        );
+        // The flight model intentionally spools drive force down rather than
+        // braking instantaneously. These ticks run with no replacement session
+        // and prove the held-input source was removed while the spool decays.
+        for _ in 0..30 {
+            service
+                .advance_elapsed(Duration::from_nanos(16_666_667))
+                .expect("unowned coasting tick");
+        }
+        assert!(service.readout().throttle_level < throttle_before_disconnect);
+    }
+
+    #[test]
+    fn only_the_current_controller_can_submit_validated_commands() {
+        let mut service = SpaceProductService::admit(HANDLING).expect("admitted service");
+        let first = service.open_session().expect("first session").session;
+        let second = service.open_session().expect("replacement session").session;
+
+        assert!(matches!(
+            service.submit_session_command(
+                first,
+                SpaceProductCommand::SetFlightIntent {
+                    throttle: 0.0,
+                    turn: 0.0,
+                },
+            ),
+            Err(SpaceProductSessionError::StaleSession(_))
+        ));
+        assert!(matches!(
+            service.submit_session_command(
+                second,
+                SpaceProductCommand::SetFlightIntent {
+                    throttle: 2.0,
+                    turn: 0.0,
+                },
+            ),
+            Err(SpaceProductSessionError::InvalidCommand(
+                SpaceProductServiceError::InvalidCommand { .. }
+            ))
+        ));
+    }
+
+    #[test]
+    fn opening_the_first_session_neutralizes_preexisting_internal_input() {
+        let mut service = SpaceProductService::admit(HANDLING).expect("admitted service");
+        service
+            .submit_command(SpaceProductCommand::SetFlightIntent {
+                throttle: 1.0,
+                turn: -0.5,
+            })
+            .expect("private test setup command");
+
+        service.open_session().expect("first session");
+        assert_eq!(
+            service.current_command(),
+            SpaceProductCommand::SetFlightIntent {
+                throttle: 0.0,
+                turn: 0.0,
+            }
+        );
+    }
+
+    #[test]
+    fn exhausted_generation_space_never_reuses_a_session_identity() {
+        let mut service = SpaceProductService::admit(HANDLING).expect("admitted service");
+        service.next_session_generation = u64::MAX;
+
+        assert!(matches!(
+            service.open_session(),
+            Err(SpaceProductSessionGenerationExhausted)
+        ));
     }
 }

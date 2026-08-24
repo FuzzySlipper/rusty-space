@@ -8,8 +8,11 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use rusty_space_runtime::{SpaceProductCommand, SpaceProductService};
-use serde::Deserialize;
+use rusty_space_runtime::{
+    SpaceProductCommand, SpaceProductCommandReceipt, SpaceProductService, SpaceProductSession,
+    SpaceProductSessionBaseline, SpaceProductSessionError, SpaceProductUpdate,
+};
+use serde::{Deserialize, Serialize};
 use tungstenite::{Message, accept};
 
 const DEFAULT_ADDRESS: &str = "127.0.0.1:8787";
@@ -17,11 +20,69 @@ const SESSION_PATH: &str = "/api/session";
 
 type SharedService = Arc<Mutex<SpaceProductService>>;
 
+/// Guarantees that every completed or unwound transport turn releases its
+/// controller lease. A stale guard is harmless because the Rust service fences
+/// release by generation.
+struct SessionReleaseGuard {
+    service: SharedService,
+    session: SpaceProductSession,
+}
+
+impl Drop for SessionReleaseGuard {
+    fn drop(&mut self) {
+        self.service
+            .lock()
+            .expect("live service lock")
+            .release_session(self.session);
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct InputIntent {
+    #[serde(rename = "type")]
+    command_type: String,
+    generation: u64,
     throttle: f64,
     turn: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+enum CommandRejectionCode {
+    MalformedCommand,
+    UnsupportedCommand,
+    StaleGeneration,
+    InvalidCommand,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+enum ServerMessage {
+    /// A full `Create` frame required before retained-frame diffs are valid.
+    Baseline {
+        generation: u64,
+        update: SpaceProductUpdate,
+    },
+    Update {
+        generation: u64,
+        update: SpaceProductUpdate,
+    },
+    CommandReceipt {
+        generation: u64,
+        receipt: SpaceProductCommandReceipt,
+    },
+    CommandRejected {
+        generation: u64,
+        code: CommandRejectionCode,
+        message: String,
+    },
+}
+
+#[derive(Debug)]
+struct CommandRejection {
+    code: CommandRejectionCode,
+    message: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -185,37 +246,105 @@ fn run_session(stream: TcpStream, service: SharedService) {
         .get_ref()
         .set_read_timeout(Some(Duration::from_millis(1)));
 
-    let mut published_sequence = None;
+    let baseline = match service.lock().expect("live service lock").open_session() {
+        Ok(baseline) => baseline,
+        Err(error) => {
+            eprintln!("browser-host cannot open session: {error}");
+            let _ = websocket.close(None);
+            return;
+        }
+    };
+    let session = baseline.session;
+    let _release = SessionReleaseGuard {
+        service: Arc::clone(&service),
+        session,
+    };
+    let result = run_session_loop(&mut websocket, &service, session, baseline);
+    if let Err(error) = result {
+        eprintln!("browser-host session transport failed: {error}");
+    }
+}
+
+fn run_session_loop(
+    websocket: &mut tungstenite::WebSocket<TcpStream>,
+    service: &SharedService,
+    session: SpaceProductSession,
+    baseline: SpaceProductSessionBaseline,
+) -> Result<(), tungstenite::Error> {
+    send_server_message(
+        websocket,
+        ServerMessage::Baseline {
+            generation: session.generation,
+            update: baseline.update.clone(),
+        },
+    )?;
+
+    let mut published_sequence = Some(baseline.update.sequence);
     loop {
         // Drain up to a bounded batch of incoming input intents.
         let mut drained = 0;
         while drained < 32 {
             match websocket.read() {
-                Ok(Message::Text(text)) => {
-                    if let Ok(intent) = serde_json::from_str::<InputIntent>(&text)
-                        && let Err(error) = service
+                Ok(Message::Text(text)) => match parse_input_intent(&text) {
+                    Ok(intent) if intent.generation != session.generation => {
+                        send_rejection(
+                            websocket,
+                            session,
+                            CommandRejection {
+                                code: CommandRejectionCode::StaleGeneration,
+                                message: format!(
+                                    "command generation {} does not match this session",
+                                    intent.generation
+                                ),
+                            },
+                        )?;
+                    }
+                    Ok(intent) => {
+                        let result = service
                             .lock()
                             .expect("live service lock")
-                            .submit_command(SpaceProductCommand::SetFlightIntent {
-                                throttle: intent.throttle,
-                                turn: intent.turn,
-                            })
-                    {
-                        eprintln!("browser-host input rejected: {error}");
+                            .submit_session_command(
+                                session,
+                                SpaceProductCommand::SetFlightIntent {
+                                    throttle: intent.throttle,
+                                    turn: intent.turn,
+                                },
+                            );
+                        match result {
+                            Ok(receipt) => send_server_message(
+                                websocket,
+                                ServerMessage::CommandReceipt {
+                                    generation: session.generation,
+                                    receipt,
+                                },
+                            )?,
+                            Err(error) => send_rejection(
+                                websocket,
+                                session,
+                                command_rejection_from_service(error),
+                            )?,
+                        }
                     }
-                }
+                    Err(rejection) => send_rejection(websocket, session, rejection)?,
+                },
                 Ok(Message::Close(frame)) => {
                     let _ = websocket.close(frame);
-                    return;
+                    return Ok(());
                 }
                 Ok(Message::Ping(payload)) => {
-                    if websocket.send(Message::Pong(payload)).is_err() {
-                        return;
-                    }
+                    websocket.send(Message::Pong(payload))?;
                 }
-                Ok(Message::Pong(_)) | Ok(Message::Frame(_)) | Ok(Message::Binary(_)) => {}
+                Ok(Message::Pong(_)) | Ok(Message::Frame(_)) => {}
+                Ok(Message::Binary(_)) => send_rejection(
+                    websocket,
+                    session,
+                    CommandRejection {
+                        code: CommandRejectionCode::UnsupportedCommand,
+                        message: "binary commands are unsupported".to_owned(),
+                    },
+                )?,
                 Err(error) if websocket_would_block(&error) => break,
-                Err(_) => return,
+                Err(_) => return Ok(()),
             }
             drained += 1;
         }
@@ -227,13 +356,85 @@ fn run_session(stream: TcpStream, service: SharedService) {
             .latest_update()
             .clone();
         if published_sequence != Some(update.sequence) {
-            let encoded = serde_json::to_string(&update).expect("encode service update");
-            if websocket.send(Message::Text(encoded.into())).is_err() {
-                return;
-            }
-            published_sequence = Some(update.sequence);
+            let update_sequence = update.sequence;
+            send_server_message(
+                websocket,
+                ServerMessage::Update {
+                    generation: session.generation,
+                    update,
+                },
+            )?;
+            published_sequence = Some(update_sequence);
         }
     }
+}
+
+fn parse_input_intent(text: &str) -> Result<InputIntent, CommandRejection> {
+    let value: serde_json::Value =
+        serde_json::from_str(text).map_err(|error| CommandRejection {
+            code: CommandRejectionCode::MalformedCommand,
+            message: format!("command is not valid JSON: {error}"),
+        })?;
+    let command_type = value
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| CommandRejection {
+            code: CommandRejectionCode::MalformedCommand,
+            message: "command type is missing".to_owned(),
+        })?;
+    if command_type != "setFlightIntent" {
+        return Err(CommandRejection {
+            code: CommandRejectionCode::UnsupportedCommand,
+            message: format!("unsupported command type {command_type}"),
+        });
+    }
+    let intent: InputIntent = serde_json::from_value(value).map_err(|error| CommandRejection {
+        code: CommandRejectionCode::MalformedCommand,
+        message: format!("setFlightIntent command is malformed: {error}"),
+    })?;
+    // Keep the deserialized discriminator checked as part of the strict wire
+    // format, rather than accepting a structurally compatible command.
+    if intent.command_type != "setFlightIntent" {
+        return Err(CommandRejection {
+            code: CommandRejectionCode::UnsupportedCommand,
+            message: format!("unsupported command type {}", intent.command_type),
+        });
+    }
+    Ok(intent)
+}
+
+fn command_rejection_from_service(error: SpaceProductSessionError) -> CommandRejection {
+    let code = match error {
+        SpaceProductSessionError::StaleSession(_) => CommandRejectionCode::StaleGeneration,
+        SpaceProductSessionError::InvalidCommand(_) => CommandRejectionCode::InvalidCommand,
+    };
+    CommandRejection {
+        code,
+        message: error.to_string(),
+    }
+}
+
+fn send_rejection(
+    websocket: &mut tungstenite::WebSocket<TcpStream>,
+    session: SpaceProductSession,
+    rejection: CommandRejection,
+) -> Result<(), tungstenite::Error> {
+    send_server_message(
+        websocket,
+        ServerMessage::CommandRejected {
+            generation: session.generation,
+            code: rejection.code,
+            message: rejection.message,
+        },
+    )
+}
+
+fn send_server_message(
+    websocket: &mut tungstenite::WebSocket<TcpStream>,
+    message: ServerMessage,
+) -> Result<(), tungstenite::Error> {
+    let encoded = serde_json::to_string(&message).expect("encode server message");
+    websocket.send(Message::Text(encoded.into()))
 }
 
 fn websocket_would_block(error: &tungstenite::Error) -> bool {
@@ -384,11 +585,42 @@ mod tests {
     #[test]
     fn input_intent_rejects_unknown_fields() {
         assert!(
-            serde_json::from_str::<InputIntent>(r#"{"throttle":1.0,"turn":0.0,"junk":1}"#).is_err()
+            serde_json::from_str::<InputIntent>(
+                r#"{"type":"setFlightIntent","generation":1,"throttle":1.0,"turn":0.0,"junk":1}"#
+            )
+            .is_err()
         );
-        let intent =
-            serde_json::from_str::<InputIntent>(r#"{"throttle":1.0,"turn":-1.0}"#).unwrap();
+        let intent = serde_json::from_str::<InputIntent>(
+            r#"{"type":"setFlightIntent","generation":1,"throttle":1.0,"turn":-1.0}"#,
+        )
+        .unwrap();
         assert_eq!(intent.throttle, 1.0);
         assert_eq!(intent.turn, -1.0);
+        assert_eq!(intent.command_type, "setFlightIntent");
+    }
+
+    #[test]
+    fn malformed_and_unsupported_input_have_typed_rejections() {
+        assert!(matches!(
+            parse_input_intent("not JSON"),
+            Err(CommandRejection {
+                code: CommandRejectionCode::MalformedCommand,
+                ..
+            })
+        ));
+        assert!(matches!(
+            parse_input_intent(r#"{"type":"warp","generation":1}"#),
+            Err(CommandRejection {
+                code: CommandRejectionCode::UnsupportedCommand,
+                ..
+            })
+        ));
+        assert!(matches!(
+            parse_input_intent(r#"{"type":"setFlightIntent","generation":1,"throttle":1.0}"#),
+            Err(CommandRejection {
+                code: CommandRejectionCode::MalformedCommand,
+                ..
+            })
+        ));
     }
 }

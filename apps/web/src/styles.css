@@ -26,3 +26,14 @@ html, body, #application { height: 100%; margin: 0; overflow: hidden; width: 100
   top: clamp(0.7rem, 2.5vw, 1.5rem);
 }
 
+.space-status {
+  background: rgba(4, 16, 22, 0.72);
+  color: #b4d9d5;
+  font-size: clamp(0.62rem, 1.25vw, 0.76rem);
+  left: clamp(0.7rem, 2.5vw, 1.5rem);
+  margin: 0;
+  max-width: min(31rem, calc(100% - 1.5rem));
+  padding: 0.3rem 0.72rem;
+  position: absolute;
+  top: calc(clamp(0.7rem, 2.5vw, 1.5rem) + 3.25rem);
+}
