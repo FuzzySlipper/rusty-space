@@ -1,17 +1,35 @@
 import { expect, test, type Page } from '@playwright/test';
 
+type Label = ReturnType<Page['getByTestId']>;
+
 interface Position {
   x: number;
   z: number;
 }
 
-async function readPosition(label: ReturnType<Page['getByTestId']>): Promise<Position> {
-  const text = await label.textContent();
-  const match = /pos (-?[\d.]+), (-?[\d.]+)/.exec(text ?? '');
-  if (match === null) {
-    throw new Error(`ship position not found in HUD label: ${text ?? ''}`);
-  }
+async function readLabelText(label: Label): Promise<string> {
+  return (await label.textContent()) ?? '';
+}
+
+async function readPosition(label: Label): Promise<Position> {
+  const text = await readLabelText(label);
+  const match = /pos (-?[\d.]+), (-?[\d.]+)/.exec(text);
+  if (match === null) throw new Error(`ship position not found in HUD label: ${text}`);
   return { x: Number(match[1]), z: Number(match[2]) };
+}
+
+async function readSpeed(label: Label): Promise<number> {
+  const text = await readLabelText(label);
+  const match = /speed (-?[\d.]+)/.exec(text);
+  if (match === null) throw new Error(`ship speed not found in HUD label: ${text}`);
+  return Number(match[1]);
+}
+
+async function readHeadingDegrees(label: Label): Promise<number> {
+  const text = await readLabelText(label);
+  const match = /heading (-?[\d.]+)°/.exec(text);
+  if (match === null) throw new Error(`ship heading not found in HUD label: ${text}`);
+  return Number(match[1]);
 }
 
 test('a browser session can turn and thrust the ship', async ({ page }) => {
@@ -36,4 +54,17 @@ test('a browser session can turn and thrust the ship', async ({ page }) => {
   await page.waitForTimeout(500);
   const coastEnd = await readPosition(label);
   expect(Math.hypot(coastEnd.x - coastStart.x, coastEnd.z - coastStart.z)).toBeGreaterThan(0.2);
+
+  // Turning while drifting changes heading without changing speed: heading and
+  // velocity are decoupled.
+  const headingBefore = await readHeadingDegrees(label);
+  const speedBefore = await readSpeed(label);
+  await page.keyboard.down('ArrowRight');
+  await page.waitForTimeout(400);
+  await page.keyboard.up('ArrowRight');
+  await page.waitForTimeout(120);
+  const headingAfter = await readHeadingDegrees(label);
+  const speedAfter = await readSpeed(label);
+  expect(Math.abs(headingAfter - headingBefore)).toBeGreaterThan(15);
+  expect(Math.abs(speedAfter - speedBefore)).toBeLessThan(0.5);
 });
