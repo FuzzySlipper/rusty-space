@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "materialize": "pnpm build && node scripts/materialize.mjs",
-    "check": "pnpm build && node scripts/materialize.mjs --check",
+    "check": "pnpm build && node scripts/materialize.mjs --check && node --test scripts/materialize.test.mjs",
+    "test": "pnpm build && node --test scripts/materialize.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

@@ -8,11 +8,18 @@
 use serde::Deserialize;
 use thiserror::Error;
 
-use rusty_engine::gameplay_rules::{RulePackageError, decode_rule_package};
+use rusty_engine::gameplay_rules::{
+    AdmittedRulePackage, RulePackageError, RulePackageSchemaVersion, decode_canonical_rule_package,
+};
 
 pub const SHIP_HANDLING_SCHEMA_VERSION: u64 = 1;
 pub const SHIP_HANDLING_DOMAIN: &str = "rusty-space";
 pub const SHIP_HANDLING_PACKAGE: &str = "core";
+pub const SHIP_HANDLING_PACKAGE_VERSION: u64 = 1;
+
+const SHIP_HANDLING_SOURCE_ID: &str = "ship-handling";
+const SHIP_HANDLING_SOURCE_PATH: &str = "gameplay/authoring/src/catalogs/ship.ts";
+const SHIP_HANDLING_SUBJECT: &str = "rusty-space-ship";
 
 /// Generous but finite admission bounds; they reject nonsense while leaving
 /// room to tune in the authoring catalog.
@@ -102,8 +109,20 @@ impl ShipHandlingDefinition {
 pub enum ShipHandlingError {
     #[error("ship handling package rejected: {0}")]
     Package(#[from] RulePackageError),
-    #[error("ship handling package has unexpected identity {domain}/{package}")]
-    WrongIdentity { domain: String, package: String },
+    #[error("ship handling package has unexpected identity {domain}/{package}@{version}")]
+    WrongIdentity {
+        domain: String,
+        package: String,
+        version: u64,
+    },
+    #[error("ship handling package has unexpected envelope schema version {actual}")]
+    WrongEnvelopeSchema { actual: u64 },
+    #[error("ship handling package must not declare dependencies")]
+    UnexpectedDependencies,
+    #[error("ship handling package has unexpected source records")]
+    UnexpectedSources,
+    #[error("ship handling package has unexpected provenance records")]
+    UnexpectedProvenance,
     #[error("ship handling payload rejected: {0}")]
     Payload(#[from] serde_json::Error),
     #[error("unsupported ship handling schema version {actual}; expected {expected}")]
@@ -112,19 +131,12 @@ pub enum ShipHandlingError {
     InvalidField { field: &'static str, maximum: f64 },
 }
 
-/// Compile one canonical `rusty-space/core` package into the ship handling
-/// definition. Fail-atomic: an error yields no partial definition.
+/// Compile one canonical, fully identified `rusty-space/core@1` package into
+/// the ship handling definition. Fail-atomic: an error yields no partial
+/// definition.
 pub fn compile_ship_handling(bytes: &[u8]) -> Result<ShipHandlingDefinition, ShipHandlingError> {
-    let package = decode_rule_package(bytes)?;
-    let identity = package.identity();
-    if identity.domain().as_str() != SHIP_HANDLING_DOMAIN
-        || identity.package().as_str() != SHIP_HANDLING_PACKAGE
-    {
-        return Err(ShipHandlingError::WrongIdentity {
-            domain: identity.domain().as_str().to_owned(),
-            package: identity.package().as_str().to_owned(),
-        });
-    }
+    let package = decode_canonical_rule_package(bytes)?;
+    validate_package_identity(&package)?;
 
     let mut payload_value = package.payload().clone();
     normalize_binary64_integers(&mut payload_value);
@@ -142,6 +154,48 @@ pub fn compile_ship_handling(bytes: &[u8]) -> Result<ShipHandlingDefinition, Shi
         authored.throttle_response_time,
         authored.steering_response_time,
     )
+}
+
+fn validate_package_identity(package: &AdmittedRulePackage) -> Result<(), ShipHandlingError> {
+    if package.schema_version() != RulePackageSchemaVersion::Binary64V2 {
+        return Err(ShipHandlingError::WrongEnvelopeSchema {
+            actual: package.schema_version().get(),
+        });
+    }
+
+    let identity = package.identity();
+    if identity.domain().as_str() != SHIP_HANDLING_DOMAIN
+        || identity.package().as_str() != SHIP_HANDLING_PACKAGE
+        || identity.version().get() != SHIP_HANDLING_PACKAGE_VERSION
+    {
+        return Err(ShipHandlingError::WrongIdentity {
+            domain: identity.domain().as_str().to_owned(),
+            package: identity.package().as_str().to_owned(),
+            version: identity.version().get(),
+        });
+    }
+
+    if !package.dependencies().is_empty() {
+        return Err(ShipHandlingError::UnexpectedDependencies);
+    }
+
+    if !matches!(package.sources(), [source]
+        if source.id().as_str() == SHIP_HANDLING_SOURCE_ID
+            && source.path() == SHIP_HANDLING_SOURCE_PATH)
+    {
+        return Err(ShipHandlingError::UnexpectedSources);
+    }
+
+    if !matches!(package.provenance(), [provenance]
+        if provenance.subject().as_str() == SHIP_HANDLING_SUBJECT
+            && provenance.source().as_str() == SHIP_HANDLING_SOURCE_ID
+            && provenance.line().is_none()
+            && provenance.column().is_none())
+    {
+        return Err(ShipHandlingError::UnexpectedProvenance);
+    }
+
+    Ok(())
 }
 
 fn validate_field(field: &'static str, value: f64, maximum: f64) -> Result<(), ShipHandlingError> {
@@ -186,6 +240,8 @@ fn normalize_binary64_integers(value: &mut serde_json::Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rusty_engine::gameplay_rules::{decode_rule_package, encode_rule_package};
+    use serde_json::{Value, json};
 
     fn fixture() -> Vec<u8> {
         std::fs::read(
@@ -204,6 +260,18 @@ mod tests {
         text.replace(from, to).into_bytes()
     }
 
+    fn canonicalize(mutator: impl FnOnce(&mut Value)) -> Vec<u8> {
+        let mut value: Value = serde_json::from_slice(&fixture()).expect("fixture is JSON");
+        mutator(&mut value);
+        let altered = serde_json::to_vec(&value).expect("altered fixture serializes");
+        let admitted = decode_rule_package(&altered).expect("altered envelope remains valid");
+        encode_rule_package(&admitted)
+    }
+
+    fn root(value: &mut Value) -> &mut serde_json::Map<String, Value> {
+        value.as_object_mut().expect("fixture root is an object")
+    }
+
     #[test]
     fn committed_typescript_artifact_compiles_to_the_named_definition() {
         let handling = compile_ship_handling(&fixture()).expect("committed artifact compiles");
@@ -216,25 +284,168 @@ mod tests {
 
     #[test]
     fn rejects_wrong_package_domain() {
-        let bytes = replace(
-            &fixture(),
-            "\"domain\":\"rusty-space\"",
-            "\"domain\":\"other-space\"",
-        );
+        let bytes = canonicalize(|value| {
+            root(value).insert("domain".to_owned(), json!("other-space"));
+        });
         let error = compile_ship_handling(&bytes).expect_err("wrong domain is rejected");
         assert!(matches!(error, ShipHandlingError::WrongIdentity { .. }));
     }
 
     #[test]
+    fn rejects_wrong_package_version() {
+        let bytes = canonicalize(|value| {
+            root(value).insert("version".to_owned(), json!(2));
+        });
+        let error = compile_ship_handling(&bytes).expect_err("wrong version is rejected");
+        assert!(matches!(
+            error,
+            ShipHandlingError::WrongIdentity { version: 2, .. }
+        ));
+    }
+
+    #[test]
+    fn rejects_wrong_envelope_schema_version() {
+        let bytes = canonicalize(|value| {
+            root(value).insert("schemaVersion".to_owned(), json!(1));
+            root(value).insert(
+                "payload".to_owned(),
+                json!({
+                    "schemaVersion": 1,
+                    "maxSpeed": 12,
+                    "maxThrust": 18,
+                    "maxTurnRate": 3,
+                    "throttleResponseTime": 1,
+                    "steeringResponseTime": 1,
+                }),
+            );
+        });
+        let error = compile_ship_handling(&bytes).expect_err("wrong envelope schema is rejected");
+        assert!(matches!(
+            error,
+            ShipHandlingError::WrongEnvelopeSchema { actual: 1 }
+        ));
+    }
+
+    #[test]
+    fn rejects_noncanonical_package_bytes() {
+        let bytes = replace(&fixture(), "{\"kind\"", "{ \"kind\"");
+        let error = compile_ship_handling(&bytes).expect_err("noncanonical bytes are rejected");
+        assert!(matches!(
+            error,
+            ShipHandlingError::Package(RulePackageError::NonCanonicalArtifact { .. })
+        ));
+    }
+
+    #[test]
+    fn rejects_unexpected_envelope_closure() {
+        let dependency = canonicalize(|value| {
+            root(value).insert(
+                "dependencies".to_owned(),
+                json!([{"domain":"other","package":"rules","version":1}]),
+            );
+        });
+        assert!(matches!(
+            compile_ship_handling(&dependency),
+            Err(ShipHandlingError::UnexpectedDependencies)
+        ));
+
+        let source = canonicalize(|value| {
+            root(value).insert(
+                "sources".to_owned(),
+                json!([{"id":"other","path":"other.ts"}]),
+            );
+            root(value).insert(
+                "provenance".to_owned(),
+                json!([{"subject":"rusty-space-ship","source":"other"}]),
+            );
+        });
+        assert!(matches!(
+            compile_ship_handling(&source),
+            Err(ShipHandlingError::UnexpectedSources)
+        ));
+
+        let provenance = canonicalize(|value| {
+            root(value).insert(
+                "provenance".to_owned(),
+                json!([{"subject":"other-subject","source":"ship-handling"}]),
+            );
+        });
+        assert!(matches!(
+            compile_ship_handling(&provenance),
+            Err(ShipHandlingError::UnexpectedProvenance)
+        ));
+    }
+
+    #[test]
+    fn rejects_source_path_and_provenance_location_mismatches() {
+        let source_path = canonicalize(|value| {
+            root(value).insert(
+                "sources".to_owned(),
+                json!([{"id":"ship-handling","path":"gameplay/authoring/src/catalogs/other.ts"}]),
+            );
+        });
+        assert!(matches!(
+            compile_ship_handling(&source_path),
+            Err(ShipHandlingError::UnexpectedSources)
+        ));
+
+        for location in [json!({"line": 1}), json!({"column": 1})] {
+            let provenance = canonicalize(|value| {
+                let entry = root(value)
+                    .get_mut("provenance")
+                    .and_then(Value::as_array_mut)
+                    .and_then(|entries| entries.first_mut())
+                    .and_then(Value::as_object_mut)
+                    .expect("fixture has provenance");
+                entry.extend(location.as_object().expect("location is an object").clone());
+            });
+            assert!(matches!(
+                compile_ship_handling(&provenance),
+                Err(ShipHandlingError::UnexpectedProvenance)
+            ));
+        }
+    }
+
+    #[test]
     fn rejects_unknown_payload_field() {
-        let bytes = replace(&fixture(), "\"maxSpeed\":12", "\"maxSpeed\":12,\"bogus\":1");
+        let bytes = canonicalize(|value| {
+            root(value)
+                .get_mut("payload")
+                .and_then(Value::as_object_mut)
+                .expect("payload is an object")
+                .insert("bogus".to_owned(), json!(1));
+        });
         let error = compile_ship_handling(&bytes).expect_err("unknown field is rejected");
         assert!(matches!(error, ShipHandlingError::Payload(_)));
     }
 
     #[test]
+    fn rejects_unknown_nested_envelope_fields() {
+        let mut value: Value = serde_json::from_slice(&fixture()).expect("fixture is JSON");
+        root(&mut value)
+            .get_mut("sources")
+            .and_then(Value::as_array_mut)
+            .and_then(|sources| sources.first_mut())
+            .and_then(Value::as_object_mut)
+            .expect("fixture has a source")
+            .insert("nestedBogus".to_owned(), json!(true));
+        let bytes = serde_json::to_vec(&value).expect("altered fixture serializes");
+        let error = compile_ship_handling(&bytes).expect_err("unknown source field is rejected");
+        assert!(matches!(
+            error,
+            ShipHandlingError::Package(RulePackageError::UnknownField { .. })
+        ));
+    }
+
+    #[test]
     fn rejects_non_positive_speed() {
-        let bytes = replace(&fixture(), "\"maxSpeed\":12", "\"maxSpeed\":0");
+        let bytes = canonicalize(|value| {
+            root(value)
+                .get_mut("payload")
+                .and_then(Value::as_object_mut)
+                .expect("payload is an object")
+                .insert("maxSpeed".to_owned(), json!(0));
+        });
         let error = compile_ship_handling(&bytes).expect_err("zero speed is rejected");
         assert!(matches!(
             error,
@@ -242,6 +453,16 @@ mod tests {
                 field: "maxSpeed",
                 ..
             }
+        ));
+    }
+
+    #[test]
+    fn rejects_nonfinite_payload_numbers_before_typed_compilation() {
+        let bytes = replace(&fixture(), "\"maxSpeed\":12", "\"maxSpeed\":1e999");
+        let error = compile_ship_handling(&bytes).expect_err("nonfinite JSON number is rejected");
+        assert!(matches!(
+            error,
+            ShipHandlingError::Package(RulePackageError::JsonNumberOutOfRange { .. })
         ));
     }
 
@@ -277,8 +498,47 @@ mod tests {
 
     #[test]
     fn rejects_unsupported_schema_version() {
-        let bytes = replace(&fixture(), "\"schemaVersion\":1", "\"schemaVersion\":2");
+        let bytes = canonicalize(|value| {
+            root(value)
+                .get_mut("payload")
+                .and_then(Value::as_object_mut)
+                .expect("payload is an object")
+                .insert("schemaVersion".to_owned(), json!(2));
+        });
         let error = compile_ship_handling(&bytes).expect_err("wrong schema is rejected");
         assert!(matches!(error, ShipHandlingError::UnsupportedSchema { .. }));
+    }
+
+    #[test]
+    fn admits_inclusive_numeric_bounds_and_rejects_values_just_beyond_them() {
+        let at_bounds = canonicalize(|value| {
+            root(value).insert(
+                "payload".to_owned(),
+                json!({
+                    "schemaVersion": 1,
+                    "maxSpeed": MAX_SPEED,
+                    "maxThrust": MAX_THRUST,
+                    "maxTurnRate": MAX_TURN_RATE,
+                    "throttleResponseTime": MAX_RESPONSE_TIME,
+                    "steeringResponseTime": MAX_RESPONSE_TIME,
+                }),
+            );
+        });
+        assert!(compile_ship_handling(&at_bounds).is_ok());
+
+        let beyond_speed = canonicalize(|value| {
+            root(value)
+                .get_mut("payload")
+                .and_then(Value::as_object_mut)
+                .expect("payload is an object")
+                .insert("maxSpeed".to_owned(), json!(MAX_SPEED + 0.5));
+        });
+        assert!(matches!(
+            compile_ship_handling(&beyond_speed),
+            Err(ShipHandlingError::InvalidField {
+                field: "maxSpeed",
+                ..
+            })
+        ));
     }
 }

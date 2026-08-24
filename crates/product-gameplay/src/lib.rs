@@ -9,7 +9,8 @@
 mod ship_handling;
 pub use ship_handling::{
     AuthoredShipHandling, SHIP_HANDLING_DOMAIN, SHIP_HANDLING_PACKAGE,
-    SHIP_HANDLING_SCHEMA_VERSION, ShipHandlingDefinition, ShipHandlingError, compile_ship_handling,
+    SHIP_HANDLING_PACKAGE_VERSION, SHIP_HANDLING_SCHEMA_VERSION, ShipHandlingDefinition,
+    ShipHandlingError, compile_ship_handling,
 };
 
 mod flight;
