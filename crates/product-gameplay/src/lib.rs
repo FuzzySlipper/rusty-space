@@ -15,6 +15,11 @@ pub use ship_handling::{
     SHIP_HANDLING_SCHEMA_VERSION, ShipHandlingDefinition, ShipHandlingError, compile_ship_handling,
 };
 
+mod flight;
+pub use flight::{
+    ControllerOutput, FlightCommand, FlightState, NavigationBodyState, ShipWrench, Vec2, controller,
+};
+
 pub const SCENE_SCHEMA_VERSION: u32 = 1;
 const MAX_LABEL_BYTES: usize = 64;
 const MAX_CUBE_SCALE: f32 = 8.0;
