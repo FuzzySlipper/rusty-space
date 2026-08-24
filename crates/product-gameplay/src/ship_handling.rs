@@ -12,10 +12,10 @@ use rusty_engine::gameplay_rules::{
     AdmittedRulePackage, RulePackageError, RulePackageSchemaVersion, decode_canonical_rule_package,
 };
 
-pub const SHIP_HANDLING_SCHEMA_VERSION: u64 = 1;
+pub const SHIP_HANDLING_SCHEMA_VERSION: u64 = 2;
 pub const SHIP_HANDLING_DOMAIN: &str = "rusty-space";
 pub const SHIP_HANDLING_PACKAGE: &str = "core";
-pub const SHIP_HANDLING_PACKAGE_VERSION: u64 = 1;
+pub const SHIP_HANDLING_PACKAGE_VERSION: u64 = 2;
 
 const SHIP_HANDLING_SOURCE_ID: &str = "ship-handling";
 const SHIP_HANDLING_SOURCE_PATH: &str = "gameplay/authoring/src/catalogs/ship.ts";
@@ -27,6 +27,7 @@ const MAX_SPEED: f64 = 10_000.0;
 const MAX_THRUST: f64 = 1_000_000.0;
 const MAX_TURN_RATE: f64 = 100.0;
 const MAX_RESPONSE_TIME: f64 = 10.0;
+const MAX_FIELD_COUPLING: f64 = 1.0;
 
 /// Authored payload DTO (decoded candidate only). Mirrors
 /// `gameplay/authoring/src/authoring/definitions.ts`.
@@ -39,6 +40,7 @@ pub struct AuthoredShipHandling {
     pub max_turn_rate: f64,
     pub throttle_response_time: f64,
     pub steering_response_time: f64,
+    pub field_coupling: f64,
 }
 
 /// Canonical compiled definition the runtime consumes.
@@ -49,6 +51,7 @@ pub struct ShipHandlingDefinition {
     max_turn_rate: f64,
     throttle_response_time: f64,
     steering_response_time: f64,
+    field_coupling: f64,
 }
 
 impl ShipHandlingDefinition {
@@ -61,6 +64,27 @@ impl ShipHandlingDefinition {
         max_turn_rate: f64,
         throttle_response_time: f64,
         steering_response_time: f64,
+    ) -> Result<Self, ShipHandlingError> {
+        Self::new_with_field_coupling(
+            max_speed,
+            max_thrust,
+            max_turn_rate,
+            throttle_response_time,
+            steering_response_time,
+            0.0,
+        )
+    }
+
+    /// Construct handling with an explicit field coupling.  The five-argument
+    /// [`Self::new`] constructor remains an exact uncoupled/inertial default
+    /// for callers that only need calm-space flight tests.
+    pub fn new_with_field_coupling(
+        max_speed: f64,
+        max_thrust: f64,
+        max_turn_rate: f64,
+        throttle_response_time: f64,
+        steering_response_time: f64,
+        field_coupling: f64,
     ) -> Result<Self, ShipHandlingError> {
         validate_field("maxSpeed", max_speed, MAX_SPEED)?;
         validate_field("maxThrust", max_thrust, MAX_THRUST)?;
@@ -75,12 +99,14 @@ impl ShipHandlingDefinition {
             steering_response_time,
             MAX_RESPONSE_TIME,
         )?;
+        validate_coupling(field_coupling)?;
         Ok(Self {
             max_speed,
             max_thrust,
             max_turn_rate,
             throttle_response_time,
             steering_response_time,
+            field_coupling,
         })
     }
 
@@ -102,6 +128,10 @@ impl ShipHandlingDefinition {
 
     pub const fn steering_response_time(&self) -> f64 {
         self.steering_response_time
+    }
+
+    pub const fn field_coupling(&self) -> f64 {
+        self.field_coupling
     }
 }
 
@@ -129,9 +159,11 @@ pub enum ShipHandlingError {
     UnsupportedSchema { expected: u64, actual: u64 },
     #[error("ship handling field {field} must be finite and within (0, {maximum}]")]
     InvalidField { field: &'static str, maximum: f64 },
+    #[error("ship handling field coupling must be finite and within [0, {maximum}]")]
+    InvalidFieldCoupling { maximum: f64 },
 }
 
-/// Compile one canonical, fully identified `rusty-space/core@1` package into
+/// Compile one canonical, fully identified `rusty-space/core@2` package into
 /// the ship handling definition. Fail-atomic: an error yields no partial
 /// definition.
 pub fn compile_ship_handling(bytes: &[u8]) -> Result<ShipHandlingDefinition, ShipHandlingError> {
@@ -147,13 +179,23 @@ pub fn compile_ship_handling(bytes: &[u8]) -> Result<ShipHandlingDefinition, Shi
             actual: authored.schema_version,
         });
     }
-    ShipHandlingDefinition::new(
+    ShipHandlingDefinition::new_with_field_coupling(
         authored.max_speed,
         authored.max_thrust,
         authored.max_turn_rate,
         authored.throttle_response_time,
         authored.steering_response_time,
+        authored.field_coupling,
     )
+}
+
+fn validate_coupling(value: f64) -> Result<(), ShipHandlingError> {
+    if !value.is_finite() || !(0.0..=MAX_FIELD_COUPLING).contains(&value) {
+        return Err(ShipHandlingError::InvalidFieldCoupling {
+            maximum: MAX_FIELD_COUPLING,
+        });
+    }
+    Ok(())
 }
 
 fn validate_package_identity(package: &AdmittedRulePackage) -> Result<(), ShipHandlingError> {
@@ -205,8 +247,8 @@ fn validate_field(field: &'static str, value: f64, maximum: f64) -> Result<(), S
     Ok(())
 }
 
-/// Schema 2 (binary64) canonicalizes every payload number as a float, so an
-/// integer field like `schemaVersion: 1` arrives as `1.0`. Convert
+/// Schema 2 (binary64 envelope) canonicalizes every payload number as a float,
+/// so an integer field like `schemaVersion: 2` arrives as `2.0`. Convert
 /// integer-valued floats back to integers before typed deserialization, so
 /// `u64` fields decode and integer-authored feel values stay exact.
 fn normalize_binary64_integers(value: &mut serde_json::Value) {
@@ -280,6 +322,7 @@ mod tests {
         assert_eq!(handling.max_turn_rate(), 3.0);
         assert_eq!(handling.throttle_response_time(), 0.08);
         assert_eq!(handling.steering_response_time(), 0.12);
+        assert_eq!(handling.field_coupling(), 0.55);
     }
 
     #[test]
@@ -294,12 +337,12 @@ mod tests {
     #[test]
     fn rejects_wrong_package_version() {
         let bytes = canonicalize(|value| {
-            root(value).insert("version".to_owned(), json!(2));
+            root(value).insert("version".to_owned(), json!(1));
         });
         let error = compile_ship_handling(&bytes).expect_err("wrong version is rejected");
         assert!(matches!(
             error,
-            ShipHandlingError::WrongIdentity { version: 2, .. }
+            ShipHandlingError::WrongIdentity { version: 1, .. }
         ));
     }
 
@@ -310,7 +353,7 @@ mod tests {
             root(value).insert(
                 "payload".to_owned(),
                 json!({
-                    "schemaVersion": 1,
+                    "schemaVersion": 2,
                     "maxSpeed": 12,
                     "maxThrust": 18,
                     "maxTurnRate": 3,
@@ -494,6 +537,21 @@ mod tests {
                 matches!(handling, Err(ShipHandlingError::InvalidField { field: rejected, .. }) if rejected == field)
             );
         }
+        assert!(matches!(
+            ShipHandlingDefinition::new_with_field_coupling(12.0, 18.0, 3.0, 0.08, 0.12, -0.01),
+            Err(ShipHandlingError::InvalidFieldCoupling { .. })
+        ));
+        assert!(matches!(
+            ShipHandlingDefinition::new_with_field_coupling(
+                12.0,
+                18.0,
+                3.0,
+                0.08,
+                0.12,
+                MAX_FIELD_COUPLING + 0.01,
+            ),
+            Err(ShipHandlingError::InvalidFieldCoupling { .. })
+        ));
     }
 
     #[test]
@@ -503,7 +561,7 @@ mod tests {
                 .get_mut("payload")
                 .and_then(Value::as_object_mut)
                 .expect("payload is an object")
-                .insert("schemaVersion".to_owned(), json!(2));
+                .insert("schemaVersion".to_owned(), json!(3));
         });
         let error = compile_ship_handling(&bytes).expect_err("wrong schema is rejected");
         assert!(matches!(error, ShipHandlingError::UnsupportedSchema { .. }));
@@ -515,12 +573,13 @@ mod tests {
             root(value).insert(
                 "payload".to_owned(),
                 json!({
-                    "schemaVersion": 1,
+                    "schemaVersion": 2,
                     "maxSpeed": MAX_SPEED,
                     "maxThrust": MAX_THRUST,
                     "maxTurnRate": MAX_TURN_RATE,
                     "throttleResponseTime": MAX_RESPONSE_TIME,
                     "steeringResponseTime": MAX_RESPONSE_TIME,
+                    "fieldCoupling": MAX_FIELD_COUPLING,
                 }),
             );
         });

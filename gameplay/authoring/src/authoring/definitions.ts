@@ -10,15 +10,20 @@ export interface ShipHandlingDefinition {
   readonly maxTurnRate: number;
   readonly throttleResponseTime: number;
   readonly steeringResponseTime: number;
+  /** Dimensionless environmental-field response; zero preserves inertia. */
+  readonly fieldCoupling: number;
 }
 
 export function shipHandling(
   values: ShipHandlingDefinition,
 ): ShipHandlingDefinition {
   for (const [field, value] of Object.entries(values)) {
-    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    const valid = typeof value === 'number'
+      && Number.isFinite(value)
+      && (field === 'fieldCoupling' ? value >= 0 : value > 0);
+    if (!valid) {
       throw new Error(
-        `shipHandling ${field} must be a finite positive number, got ${String(value)}`,
+        `shipHandling ${field} must be a finite ${field === 'fieldCoupling' ? 'non-negative' : 'positive'} number, got ${String(value)}`,
       );
     }
   }

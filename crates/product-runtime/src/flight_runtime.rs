@@ -15,8 +15,8 @@ use rusty_engine::entity_state::{
     EntityAuthoringService, EntityDefinition, EntityState, Quat, RigidBodyComponent, RigidBodyShape,
 };
 use rusty_space_gameplay::{
-    FlightCommand, FlightState, NavigationBodyState, ShipHandlingDefinition, ShipWrench, Vec2,
-    controller,
+    FieldSample, FlightCommand, FlightState, NavigationBodyState, ShipHandlingDefinition,
+    ShipWrench, Vec2, controller, field_wrench, sample_field,
 };
 
 /// One fixed simulation step (60 Hz).
@@ -36,6 +36,7 @@ pub struct FlightReadout {
     pub linear_velocity: Vec2,
     pub angular_velocity: f64,
     pub throttle_level: f64,
+    pub field: FieldSample,
 }
 
 #[derive(Debug, Error)]
@@ -111,6 +112,7 @@ impl FlightRuntime {
     /// Run one fixed 60 Hz step with the given command, returning the readout.
     pub fn tick(&mut self, command: FlightCommand) -> Result<FlightReadout, FlightRuntimeError> {
         let body = self.sample()?;
+        let field = sample_field(body.position);
         let flight_state = FlightState {
             body,
             throttle_level: self.throttle_level,
@@ -122,7 +124,16 @@ impl FlightRuntime {
             self.moment_of_inertia,
             FIXED_STEP_SECONDS,
         );
-        let (force, torque) = to_engine_wrench(&output.wrench);
+        // Keep the player controller and field response as named gameplay
+        // contributions until their single net wrench crosses the Engine
+        // action seam.  The field is relative-flow based, never world-origin
+        // damping, and its authored coupling may return an exact zero.
+        let field_contribution = field_wrench(&body, &field, &self.handling);
+        let net_wrench = ShipWrench {
+            force: output.wrench.force + field_contribution.force,
+            torque_y: output.wrench.torque_y + field_contribution.torque_y,
+        };
+        let (force, torque) = to_engine_wrench(&net_wrench);
         self.service
             .step(
                 &mut self.state,
@@ -158,6 +169,7 @@ impl FlightRuntime {
             linear_velocity: body.linear_velocity,
             angular_velocity: body.angular_velocity,
             throttle_level: self.throttle_level,
+            field: sample_field(body.position),
         })
     }
 
@@ -212,6 +224,10 @@ mod tests {
         compile_ship_handling(&bytes).expect("committed artifact compiles")
     }
 
+    fn uncoupled_handling() -> ShipHandlingDefinition {
+        ShipHandlingDefinition::new(12.0, 18.0, 3.0, 0.08, 0.12).expect("valid uncoupled handling")
+    }
+
     #[test]
     fn spawns_a_stationary_ship_at_the_origin() {
         let runtime = FlightRuntime::spawn(handling()).expect("spawn");
@@ -224,7 +240,7 @@ mod tests {
 
     #[test]
     fn thrust_accelerates_forward_and_caps_at_max_speed() {
-        let handling = handling();
+        let handling = uncoupled_handling();
         let mut runtime = FlightRuntime::spawn(handling.clone()).expect("spawn");
         for _ in 0..240 {
             runtime
@@ -246,7 +262,7 @@ mod tests {
 
     #[test]
     fn releasing_thrust_preserves_velocity() {
-        let mut runtime = FlightRuntime::spawn(handling()).expect("spawn");
+        let mut runtime = FlightRuntime::spawn(uncoupled_handling()).expect("spawn");
         // Thrust long enough to reach the max-speed plateau (mass 2.0, so
         // acceleration is max_thrust / mass = 9 u/s²; ~80 ticks to 12 u/s).
         for _ in 0..120 {
@@ -272,7 +288,7 @@ mod tests {
 
     #[test]
     fn turning_yaws_without_linear_motion() {
-        let mut runtime = FlightRuntime::spawn(handling()).expect("spawn");
+        let mut runtime = FlightRuntime::spawn(uncoupled_handling()).expect("spawn");
         for _ in 0..30 {
             runtime
                 .tick(FlightCommand {
@@ -296,7 +312,7 @@ mod tests {
 
     #[test]
     fn steering_reaches_max_turn_rate() {
-        let handling = handling();
+        let handling = uncoupled_handling();
         let mut runtime = FlightRuntime::spawn(handling.clone()).expect("spawn");
         for _ in 0..120 {
             runtime
@@ -316,7 +332,7 @@ mod tests {
 
     #[test]
     fn steering_angular_response_matches_the_derived_inertia() {
-        let handling = handling();
+        let handling = uncoupled_handling();
         let mut runtime = FlightRuntime::spawn(handling.clone()).expect("spawn");
         // One full-turn tick from rest. If the derived yaw inertia matches the
         // Engine's solver inertia, the angular delta is
@@ -334,6 +350,42 @@ mod tests {
             (angular_velocity - expected).abs() < 0.05,
             "first-tick angular velocity {angular_velocity} should be ~{expected}"
         );
+    }
+
+    #[test]
+    fn authored_field_carries_and_bends_a_coupled_ship_without_erasing_control() {
+        let mut coupled = FlightRuntime::spawn(handling()).expect("spawn coupled ship");
+        let mut uncoupled =
+            FlightRuntime::spawn(uncoupled_handling()).expect("spawn inertial ship");
+        let thrust = FlightCommand {
+            throttle: 1.0,
+            turn: 0.0,
+        };
+        for _ in 0..90 {
+            coupled.tick(thrust).expect("coupled tick");
+            uncoupled.tick(thrust).expect("uncoupled tick");
+        }
+
+        let coupled_readout = coupled.readout().expect("coupled readout");
+        let uncoupled_readout = uncoupled.readout().expect("uncoupled readout");
+        assert!(coupled_readout.position.x > 0.0);
+        assert!(coupled_readout.position.z.abs() > 0.1);
+        assert!(coupled_readout.linear_velocity.x > 0.0);
+        assert!(coupled_readout.field.intensity > 0.0);
+        assert!(uncoupled_readout.position.z.abs() < 1e-6);
+
+        // A turn command still changes heading while the current is carrying
+        // the ship; field response contests but does not own the controller.
+        let heading_before = coupled_readout.heading;
+        for _ in 0..12 {
+            coupled
+                .tick(FlightCommand {
+                    throttle: 0.0,
+                    turn: 1.0,
+                })
+                .expect("turning coupled tick");
+        }
+        assert!(coupled.readout().expect("turned readout").heading > heading_before);
     }
 
     #[test]

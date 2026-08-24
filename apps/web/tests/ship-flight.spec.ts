@@ -32,6 +32,13 @@ async function readHeadingDegrees(label: Label): Promise<number> {
   return Number(match[1]);
 }
 
+async function readFieldFlowZ(label: Label): Promise<number> {
+  const text = await readLabelText(label);
+  const match = /field flow (-?[\d.]+), (-?[\d.]+)/.exec(text);
+  if (match === null) throw new Error(`field flow not found in HUD label: ${text}`);
+  return Number(match[2]);
+}
+
 async function readAcceptedCommandSequence(page: Page): Promise<number> {
   const text = (await page.getByTestId('session-status').textContent()) ?? '';
   const match = /command (\d+) accepted/.exec(text);
@@ -70,12 +77,15 @@ test('a browser session can turn and thrust the ship', async ({ page }) => {
     .filter((operation) => operation.op === 'create')
     .map((operation) => ({ handle: operation.handle, metadata: operation.node?.metadata }))
     .filter((operation): operation is { handle: number | undefined; metadata: { label?: string; tags?: string[] } } => operation.metadata !== undefined);
-  expect(admittedNodes.map((operation) => operation.handle)).toEqual([1, 2, 3, 4]);
+  expect(admittedNodes.map((operation) => operation.handle)).toEqual([1, 2, 3, 4, 5, 6, 7]);
   expect(admittedNodes.map((operation) => operation.metadata.label)).toEqual([
     'ship',
     'heading',
     'velocity',
     'projected-path',
+    'field-flow',
+    'field-wake',
+    'field-planet',
   ]);
   expect(admittedNodes[0]?.metadata?.tags).toContain('rusty-space-ship');
 
@@ -94,8 +104,9 @@ test('a browser session can turn and thrust the ship', async ({ page }) => {
   const coastEnd = await readPosition(label);
   expect(Math.hypot(coastEnd.x - coastStart.x, coastEnd.z - coastStart.z)).toBeGreaterThan(0.2);
 
-  // Turning while drifting changes heading without changing speed: heading and
-  // velocity are decoupled.
+  // Turning while drifting changes heading while the authored field remains a
+  // separate force source. Heading and velocity are decoupled, so field load
+  // may change the speed modestly during the turn.
   const headingBefore = await readHeadingDegrees(label);
   const speedBefore = await readSpeed(label);
   await page.keyboard.down('ArrowRight');
@@ -105,7 +116,40 @@ test('a browser session can turn and thrust the ship', async ({ page }) => {
   const headingAfter = await readHeadingDegrees(label);
   const speedAfter = await readSpeed(label);
   expect(Math.abs(headingAfter - headingBefore)).toBeGreaterThan(15);
-  expect(Math.abs(speedAfter - speedBefore)).toBeLessThan(0.5);
+  expect(Math.abs(speedAfter - speedBefore)).toBeLessThan(1.0);
+});
+
+test('a coupled ship catches the projected current while thrust and steering remain effective', async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 760 });
+  await page.goto('/');
+
+  const label = page.getByTestId('space-label');
+  await expect(label).toContainText('field flow', { timeout: 15_000 });
+  const start = await readPosition(label);
+  const initialFieldFlowZ = await readFieldFlowZ(label);
+
+  // The authored ship is coupled to the deterministic broad current.  A
+  // forward thrust command therefore advances in X while the field produces
+  // a readable cross-track bend in Z.
+  await page.keyboard.down('ArrowUp');
+  await page.waitForTimeout(1_250);
+  await page.keyboard.up('ArrowUp');
+  await page.waitForTimeout(120);
+
+  const afterThrust = await readPosition(label);
+  const bentDistance = Math.hypot(afterThrust.x - start.x, afterThrust.z - start.z);
+  expect(afterThrust.x - start.x).toBeGreaterThan(0.5);
+  expect(Math.abs(afterThrust.z - start.z)).toBeGreaterThan(0.15);
+  expect(bentDistance).toBeGreaterThan(0.6);
+  expect(await readFieldFlowZ(label)).toBeGreaterThan(0);
+  expect(initialFieldFlowZ).toBeGreaterThan(0);
+
+  // Steering is still observable after the current has changed the route.
+  const headingBefore = await readHeadingDegrees(label);
+  await page.keyboard.down('ArrowRight');
+  await page.waitForTimeout(250);
+  await page.keyboard.up('ArrowRight');
+  await expect.poll(() => readHeadingDegrees(label)).toBeGreaterThan(headingBefore + 8);
 });
 
 test('late, reconnecting, and concurrent sessions preserve a complete baseline and one controller', async ({ page }) => {
@@ -157,10 +201,13 @@ test('late, reconnecting, and concurrent sessions preserve a complete baseline a
   await reconnected.goto('/');
   const reconnectedLabel = reconnected.getByTestId('space-label');
   await expect(reconnectedLabel).toContainText('pos', { timeout: 15_000 });
+  await expect(reconnectedLabel).toContainText('field flow');
   const speedAfterDisconnect = await readSpeed(reconnectedLabel);
   await reconnected.waitForTimeout(450);
   const speedAfterWait = await readSpeed(reconnectedLabel);
-  expect(Math.abs(speedAfterWait - speedAfterDisconnect)).toBeLessThan(0.2);
+  // Closing the held-input session neutralizes the controller; a coupled
+  // ship may still change speed under its admitted relative-flow force.
+  expect(Math.abs(speedAfterWait - speedAfterDisconnect)).toBeLessThan(1.2);
 
   // A reload is a real browser transport replacement and must render a fresh
   // baseline before its subsequent frame diffs are applied.

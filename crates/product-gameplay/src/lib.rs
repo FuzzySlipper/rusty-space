@@ -13,6 +13,12 @@ pub use ship_handling::{
     ShipHandlingError, compile_ship_handling,
 };
 
+mod field;
+pub use field::{
+    FIELD_PLANET_POSITION, FIELD_WAKE_LENGTH, FieldGradient, FieldSample, StellarField,
+    field_wrench, sample_field,
+};
+
 mod flight;
 pub use flight::{
     ControllerOutput, FlightCommand, FlightState, NavigationBodyState, ShipWrench, Vec2, controller,

@@ -1,10 +1,11 @@
 //! Renderer-neutral projection of the flight state into a retained frame.
 //!
-//! The frame shows four things on the XZ navigation plane: the ship hull
-//! (whose long axis is its heading), an explicit heading rod, a velocity rod
-//! (length proportional to speed), and a projected-path rod along the velocity.
-//! Heading (cyan) and velocity (orange) being distinct colors is what makes the
-//! "heading is not velocity" invariant legible.
+//! The frame shows the ship and navigation telemetry on the XZ plane: the hull
+//! (whose long axis is its heading), explicit heading/velocity/path rods, a
+//! live field-flow rod, and the one planet/wake source. Heading (cyan) and
+//! velocity (orange) being distinct colors is what makes the "heading is not
+//! velocity" invariant legible; the green/purple field nodes keep current and
+//! wake state legible beside it.
 
 use thiserror::Error;
 
@@ -12,7 +13,7 @@ use rusty_engine::render_model::{
     Geometry, Material, RenderDiff, RenderFrameDiff, RenderFrameError, RenderHandle, RenderLayer,
     RenderMetadata, RenderNode, Transform,
 };
-use rusty_space_gameplay::Vec2;
+use rusty_space_gameplay::{FieldSample, Vec2};
 
 use crate::flight_runtime::FlightReadout;
 
@@ -21,6 +22,9 @@ pub const SHIP_NODE_HANDLE: u64 = 1;
 pub const HEADING_NODE_HANDLE: u64 = 2;
 pub const VELOCITY_NODE_HANDLE: u64 = 3;
 pub const PATH_NODE_HANDLE: u64 = 4;
+pub const FIELD_FLOW_NODE_HANDLE: u64 = 5;
+pub const FIELD_WAKE_NODE_HANDLE: u64 = 6;
+pub const FIELD_PLANET_NODE_HANDLE: u64 = 7;
 
 const HEADING_LENGTH: f64 = 2.0;
 const HEADING_THICKNESS: f32 = 0.05;
@@ -31,11 +35,27 @@ const VELOCITY_THICKNESS: f32 = 0.06;
 const PATH_SECONDS: f64 = 1.5;
 const PATH_MAX_LENGTH: f64 = 40.0;
 const PATH_THICKNESS: f32 = 0.03;
+const FIELD_THICKNESS: f32 = 0.08;
+const FIELD_WAKE_THICKNESS: f32 = 0.045;
+
+// The application host uses a top-down camera. Give coplanar overlays stable
+// depth ordering so the wake cannot z-fight with (or completely hide) the
+// ship and its navigation cues where they cross.
+const WAKE_HEIGHT: f32 = -0.30;
+const PATH_HEIGHT: f32 = -0.10;
+const SHIP_HEIGHT: f32 = 0.10;
+const VELOCITY_HEIGHT: f32 = 0.25;
+const FIELD_HEIGHT: f32 = 0.40;
+const HEADING_HEIGHT: f32 = 0.55;
+const FIELD_LATERAL_OFFSET: f64 = 0.8;
 
 const SHIP_COLOR: [f32; 4] = [0.23, 0.79, 1.0, 1.0];
 const HEADING_COLOR: [f32; 4] = [0.85, 1.0, 1.0, 1.0];
 const VELOCITY_COLOR: [f32; 4] = [1.0, 0.55, 0.1, 1.0];
 const PATH_COLOR: [f32; 4] = [0.45, 0.55, 0.65, 1.0];
+const FIELD_COLOR: [f32; 4] = [0.33, 1.0, 0.58, 1.0];
+const FIELD_WAKE_COLOR: [f32; 4] = [0.92, 0.35, 0.88, 1.0];
+const FIELD_PLANET_COLOR: [f32; 4] = [0.96, 0.72, 0.25, 1.0];
 
 /// A readout could not be safely represented by the f32 renderer contract.
 /// This remains a typed product failure instead of emitting invalid frame data
@@ -58,11 +78,12 @@ pub fn ship_frame_diff(
 ) -> Result<RenderFrameDiff, FlightProjectionError> {
     validate_readout(readout)?;
     let ship = ship_transform(readout);
-    let heading = rod(
+    let heading = rod_at_height(
         readout.position,
         forward(readout.heading),
         HEADING_LENGTH,
         HEADING_THICKNESS,
+        HEADING_HEIGHT,
     );
     let speed = readout.linear_velocity.magnitude();
     let direction = if speed > 1e-6 {
@@ -70,14 +91,24 @@ pub fn ship_frame_diff(
     } else {
         Vec2::new(1.0, 0.0)
     };
-    let velocity = rod(
+    let velocity = rod_at_height(
         readout.position,
         direction,
         speed * VELOCITY_SECONDS,
         VELOCITY_THICKNESS,
+        VELOCITY_HEIGHT,
     );
     let path_length = (speed * PATH_SECONDS).min(PATH_MAX_LENGTH);
-    let path = rod(readout.position, direction, path_length, PATH_THICKNESS);
+    let path = rod_at_height(
+        readout.position,
+        direction,
+        path_length,
+        PATH_THICKNESS,
+        PATH_HEIGHT,
+    );
+    let field_flow = field_flow_rod(readout.position, &readout.field);
+    let field_wake = wake_transform();
+    let field_planet = planet_transform();
 
     let operations = if create {
         vec![
@@ -85,6 +116,19 @@ pub fn ship_frame_diff(
             create_node(HEADING_NODE_HANDLE, heading, HEADING_COLOR, "heading"),
             create_node(VELOCITY_NODE_HANDLE, velocity, VELOCITY_COLOR, "velocity"),
             create_node(PATH_NODE_HANDLE, path, PATH_COLOR, "projected-path"),
+            create_node(
+                FIELD_FLOW_NODE_HANDLE,
+                field_flow,
+                FIELD_COLOR,
+                "field-flow",
+            ),
+            create_node(
+                FIELD_WAKE_NODE_HANDLE,
+                field_wake,
+                FIELD_WAKE_COLOR,
+                "field-wake",
+            ),
+            create_planet_node(FIELD_PLANET_NODE_HANDLE, field_planet),
         ]
     } else {
         vec![
@@ -92,6 +136,7 @@ pub fn ship_frame_diff(
             update_transform(HEADING_NODE_HANDLE, heading),
             update_transform(VELOCITY_NODE_HANDLE, velocity),
             update_transform(PATH_NODE_HANDLE, path),
+            update_transform(FIELD_FLOW_NODE_HANDLE, field_flow),
         ]
     };
     RenderFrameDiff::try_from_ops(operations)
@@ -114,6 +159,29 @@ fn validate_readout(readout: &FlightReadout) -> Result<(), FlightProjectionError
         if value.abs() > f32::MAX as f64 {
             return Err(FlightProjectionError::ReadoutOutOfRange { field });
         }
+    }
+    for (field, value) in [
+        ("field.flowVelocity.x", readout.field.flow_velocity.x),
+        ("field.flowVelocity.z", readout.field.flow_velocity.z),
+        ("field.intensity", readout.field.intensity),
+        ("field.turbulence.x", readout.field.turbulence.x),
+        ("field.turbulence.z", readout.field.turbulence.z),
+        ("field.gradient.x.x", readout.field.gradient[0][0]),
+        ("field.gradient.x.z", readout.field.gradient[0][1]),
+        ("field.gradient.z.x", readout.field.gradient[1][0]),
+        ("field.gradient.z.z", readout.field.gradient[1][1]),
+    ] {
+        if !value.is_finite() {
+            return Err(FlightProjectionError::NonFiniteReadout { field });
+        }
+        if value.abs() > f32::MAX as f64 {
+            return Err(FlightProjectionError::ReadoutOutOfRange { field });
+        }
+    }
+    if !(0.0..=1.0).contains(&readout.field.intensity) {
+        return Err(FlightProjectionError::ReadoutOutOfRange {
+            field: "field.intensity",
+        });
     }
     Ok(())
 }
@@ -139,6 +207,27 @@ fn create_node(handle: u64, transform: Transform, color: [f32; 4], name: &str) -
     }
 }
 
+fn create_planet_node(handle: u64, transform: Transform) -> RenderDiff {
+    let mut node = RenderNode::new(Geometry::Sphere);
+    node.material = Material {
+        color: FIELD_PLANET_COLOR,
+        wireframe: false,
+    };
+    node.transform = transform;
+    node.layer = RenderLayer::Scene;
+    node.metadata = RenderMetadata {
+        source_entity: None,
+        source_scene_node: None,
+        tags: vec!["rusty-space-field-planet".to_owned()],
+        label: Some("field-planet".to_owned()),
+    };
+    RenderDiff::Create {
+        handle: RenderHandle::new(handle),
+        parent: None,
+        node,
+    }
+}
+
 fn update_transform(handle: u64, transform: Transform) -> RenderDiff {
     RenderDiff::Update {
         handle: RenderHandle::new(handle),
@@ -150,22 +239,79 @@ fn update_transform(handle: u64, transform: Transform) -> RenderDiff {
 }
 
 fn ship_transform(readout: &FlightReadout) -> Transform {
-    yaw_transform(
+    yaw_transform_at_height(
         [readout.position.x, readout.position.z],
         readout.heading,
         [1.4, 0.3, 0.7],
+        SHIP_HEIGHT,
+    )
+}
+
+fn field_flow_rod(position: Vec2, field: &FieldSample) -> Transform {
+    let speed = field.flow_velocity.magnitude();
+    let direction = if speed > 1e-6 {
+        field.flow_velocity.scale(1.0 / speed)
+    } else {
+        Vec2::new(1.0, 0.0)
+    };
+    let origin = position + Vec2::new(-direction.z, direction.x).scale(FIELD_LATERAL_OFFSET);
+    rod_at_height(
+        origin,
+        direction,
+        (speed * 0.55).max(0.35),
+        FIELD_THICKNESS,
+        FIELD_HEIGHT,
+    )
+}
+
+fn wake_transform() -> Transform {
+    use rusty_space_gameplay::{FIELD_PLANET_POSITION, FIELD_WAKE_LENGTH};
+
+    // A fixed ribbon makes the one analytic wake legible even before the ship
+    // reaches it; the sampled flow/intensity in the HUD remains live.
+    rod_at_height(
+        Vec2::new(
+            FIELD_PLANET_POSITION.x - FIELD_WAKE_LENGTH,
+            FIELD_PLANET_POSITION.z,
+        ),
+        Vec2::new(1.0, 0.0),
+        FIELD_WAKE_LENGTH,
+        FIELD_WAKE_THICKNESS,
+        WAKE_HEIGHT,
+    )
+}
+
+fn planet_transform() -> Transform {
+    use rusty_space_gameplay::FIELD_PLANET_POSITION;
+
+    yaw_transform(
+        [FIELD_PLANET_POSITION.x, FIELD_PLANET_POSITION.z],
+        0.0,
+        [1.4, 1.4, 1.4],
     )
 }
 
 /// A thin elongated cube (a "rod") from `origin` along `direction`, used for
 /// heading, velocity, and projected-path overlays.
+#[cfg(test)]
 fn rod(origin: Vec2, direction: Vec2, length: f64, thickness: f32) -> Transform {
+    rod_at_height(origin, direction, length, thickness, 0.0)
+}
+
+fn rod_at_height(
+    origin: Vec2,
+    direction: Vec2,
+    length: f64,
+    thickness: f32,
+    height: f32,
+) -> Transform {
     let yaw = direction.z.atan2(direction.x);
     let half = length / 2.0;
-    yaw_transform(
+    yaw_transform_at_height(
         [origin.x + direction.x * half, origin.z + direction.z * half],
         yaw,
         [length as f32, thickness, thickness],
+        height,
     )
 }
 
@@ -174,8 +320,17 @@ fn forward(heading: f64) -> Vec2 {
 }
 
 fn yaw_transform(position: [f64; 2], yaw: f64, scale: [f32; 3]) -> Transform {
+    yaw_transform_at_height(position, yaw, scale, 0.0)
+}
+
+fn yaw_transform_at_height(
+    position: [f64; 2],
+    yaw: f64,
+    scale: [f32; 3],
+    height: f32,
+) -> Transform {
     Transform {
-        translation: [position[0] as f32, 0.0, position[1] as f32],
+        translation: [position[0] as f32, height, position[1] as f32],
         // Yaw-only quaternion in x/y/z/w order.
         rotation: [0.0, (yaw / 2.0).sin() as f32, 0.0, (yaw / 2.0).cos() as f32],
         scale,
@@ -193,13 +348,14 @@ mod tests {
             linear_velocity: Vec2::new(1.0, 2.0),
             angular_velocity: 0.5,
             throttle_level: 0.75,
+            field: rusty_space_gameplay::sample_field(Vec2::new(3.0, -4.0)),
         }
     }
 
     #[test]
-    fn first_frame_creates_all_four_navigation_nodes() {
+    fn first_frame_creates_navigation_and_field_nodes() {
         let frame = ship_frame_diff(&readout(), true).expect("valid readout projects");
-        assert_eq!(frame.ops.len(), 4);
+        assert_eq!(frame.ops.len(), 7);
         assert!(
             frame
                 .ops
@@ -209,9 +365,9 @@ mod tests {
     }
 
     #[test]
-    fn later_frames_update_only_transforms() {
+    fn later_frames_update_live_navigation_and_field_transforms() {
         let frame = ship_frame_diff(&readout(), false).expect("valid readout projects");
-        assert_eq!(frame.ops.len(), 4);
+        assert_eq!(frame.ops.len(), 5);
         assert!(frame.ops.iter().all(|operation| {
             matches!(
                 operation,
@@ -238,6 +394,35 @@ mod tests {
     }
 
     #[test]
+    fn top_down_overlays_have_stable_depth_and_the_field_cue_is_offset() {
+        let readout = readout();
+        let ship = ship_transform(&readout);
+        let heading = rod_at_height(
+            readout.position,
+            forward(readout.heading),
+            HEADING_LENGTH,
+            HEADING_THICKNESS,
+            HEADING_HEIGHT,
+        );
+        let field = field_flow_rod(readout.position, &readout.field);
+        let wake = wake_transform();
+
+        assert!(wake.translation[1] < ship.translation[1]);
+        assert!(ship.translation[1] < field.translation[1]);
+        assert!(field.translation[1] < heading.translation[1]);
+
+        let flow = readout.field.flow_velocity;
+        let direction = flow.scale(1.0 / flow.magnitude());
+        let unoffset_midpoint = readout.position + direction.scale(flow.magnitude() * 0.55 / 2.0);
+        let lateral_distance = Vec2::new(
+            f64::from(field.translation[0]) - unoffset_midpoint.x,
+            f64::from(field.translation[2]) - unoffset_midpoint.z,
+        )
+        .magnitude();
+        assert!((lateral_distance - FIELD_LATERAL_OFFSET).abs() < 1e-5);
+    }
+
+    #[test]
     fn a_ship_at_rest_has_a_zero_length_velocity_rod() {
         let readout = FlightReadout {
             position: Vec2::ZERO,
@@ -245,6 +430,7 @@ mod tests {
             linear_velocity: Vec2::ZERO,
             angular_velocity: 0.0,
             throttle_level: 0.0,
+            field: rusty_space_gameplay::sample_field(Vec2::ZERO),
         };
         let frame = ship_frame_diff(&readout, false).expect("valid readout projects");
         // The velocity rod has zero length (invisible) when speed is zero.
@@ -266,12 +452,30 @@ mod tests {
             Err(FlightProjectionError::NonFiniteReadout { field: "heading" })
         ));
 
+        let mut non_finite_field = readout();
+        non_finite_field.field.turbulence.z = f64::NAN;
+        assert!(matches!(
+            ship_frame_diff(&non_finite_field, false),
+            Err(FlightProjectionError::NonFiniteReadout {
+                field: "field.turbulence.z"
+            })
+        ));
+
         let mut overflowing = readout();
         overflowing.position.x = f64::from(f32::MAX) * 2.0;
         assert!(matches!(
             ship_frame_diff(&overflowing, false),
             Err(FlightProjectionError::ReadoutOutOfRange {
                 field: "position.x"
+            })
+        ));
+
+        let mut overflowing_field = readout();
+        overflowing_field.field.gradient[1][0] = f64::from(f32::MAX) * 2.0;
+        assert!(matches!(
+            ship_frame_diff(&overflowing_field, false),
+            Err(FlightProjectionError::ReadoutOutOfRange {
+                field: "field.gradient.z.x"
             })
         ));
 
@@ -284,6 +488,7 @@ mod tests {
             linear_velocity: Vec2::new(f64::from(f32::MAX), f64::from(f32::MAX)),
             angular_velocity: 0.0,
             throttle_level: 0.0,
+            field: rusty_space_gameplay::sample_field(Vec2::ZERO),
         };
         assert!(matches!(
             ship_frame_diff(&derived_overflow, false),

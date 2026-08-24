@@ -8,4 +8,5 @@ export const stockShipHandling = shipHandling({
   maxTurnRate: 3,
   throttleResponseTime: 0.08,
   steeringResponseTime: 0.12,
+  fieldCoupling: 0.55,
 });

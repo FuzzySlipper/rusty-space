@@ -8,11 +8,11 @@ import { stockShipHandling } from '../catalogs/ship.js';
 
 export const gameplayPackage = composePackage({
   packageId: 'core',
-  version: 1,
+  version: 2,
   source: { id: 'ship-handling', path: 'gameplay/authoring/src/catalogs/ship.ts' },
   subject: 'rusty-space-ship',
   payload: {
-    schemaVersion: 1,
+    schemaVersion: 2,
     ...stockShipHandling,
   },
 });

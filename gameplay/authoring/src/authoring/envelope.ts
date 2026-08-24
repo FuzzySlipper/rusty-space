@@ -11,7 +11,7 @@ import type { JsonValue } from '@rusty-engine/gameplay-rules-contracts';
 import type { ShipHandlingDefinition } from './definitions.js';
 
 export interface ShipHandlingPayload extends ShipHandlingDefinition {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
 }
 
 export interface PackageInput {

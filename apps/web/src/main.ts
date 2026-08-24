@@ -71,6 +71,12 @@ interface ServerReadout {
   linearVelocity: { x: number; z: number };
   angularVelocity: number;
   throttleLevel: number;
+  field: {
+    flowVelocity: { x: number; z: number };
+    intensity: number;
+    gradient: [[number, number], [number, number]];
+    turbulence: { x: number; z: number };
+  };
 }
 
 interface ServerUpdate {
@@ -190,7 +196,9 @@ function mountUi(root: HTMLElement, context: RustyApplicationUiContext): Promise
     const degrees = ((readout.heading * 180) / Math.PI).toFixed(0);
     label.textContent =
       `Rusty Space · pos ${readout.position.x.toFixed(1)}, ${readout.position.z.toFixed(1)} · ` +
-      `speed ${speed.toFixed(1)} · heading ${degrees}°`;
+      `speed ${speed.toFixed(1)} · heading ${degrees}° · ` +
+      `field flow ${readout.field.flowVelocity.x.toFixed(1)}, ${readout.field.flowVelocity.z.toFixed(1)} ` +
+      `· intensity ${readout.field.intensity.toFixed(2)}`;
   };
 
   const failFrame = (
@@ -229,6 +237,14 @@ function mountUi(root: HTMLElement, context: RustyApplicationUiContext): Promise
         );
         return false;
       }
+      // Keep the bounded viewport centered on the Rust-authoritative ship.
+      // This is presentation-only camera adaptation; the browser neither
+      // predicts nor mutates gameplay position.
+      context.renderer.setCameraPose({
+        position: [update.readout.position.x, 25, update.readout.position.z],
+        pitchDegrees: -90,
+        yawDegrees: 0,
+      });
       context.renderer.renderOnce();
       updateHud(update.readout);
       return true;
