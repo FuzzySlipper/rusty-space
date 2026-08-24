@@ -21,5 +21,4 @@ fi
 cd "$repo_root"
 pnpm install
 pnpm authoring:materialize
-pnpm export:frame
 printf '%s\n' "Bootstrap complete. Start the bounded browser proof with: pnpm --dir apps/web dev"

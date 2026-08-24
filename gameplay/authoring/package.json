@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "materialize": "tsx src/materialize.ts && pnpm build && node scripts/materialize.mjs",
-    "check": "tsx src/materialize.ts --check && pnpm build && node scripts/materialize.mjs --check",
+    "materialize": "pnpm build && node scripts/materialize.mjs",
+    "check": "pnpm build && node scripts/materialize.mjs --check",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

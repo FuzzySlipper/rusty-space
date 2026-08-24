@@ -21,7 +21,7 @@ relative to the repository root: the Rust facade
 `@rusty-engine/application-host` artifact. The operator prepares that sibling;
 this repository never fetches, clones, pins, or manages it.
 
-Bootstrap dependencies and export the Rust frame:
+Bootstrap dependencies and materialize the Rust-admitted ship package:
 
 ```bash
 ./scripts/bootstrap.sh
@@ -44,17 +44,17 @@ pnpm build:application-host-artifact
 ```
 
 The script checks TypeScript authoring drift, Rust formatting/tests/lints,
-TypeScript, deterministic Rust frame export, Vite build, and real Chromium
-evidence at square and wide viewport shapes. It assumes the sibling public
-Engine artifact exists and does not run broad Engine verification.
+TypeScript, the Vite build, and real Chromium evidence at square and wide
+viewport shapes. It assumes the sibling public Engine artifact exists and does
+not run broad Engine verification.
 
 ## Ownership at a glance
 
 | Location | Owner | Does not own |
 | --- | --- | --- |
 | `crates/product-gameplay` | Product vocabulary and strict admission | Generic Engine grammar or a TS evaluator |
-| `crates/product-runtime` | Product service and retained-frame projection | Browser, DOM, WebGL, or host lifecycle |
-| `crates/product-export` | Static initial-frame export | Live game runtime or server |
+| `crates/product-runtime` | Live flight runtime and retained-frame projection | Browser, DOM, WebGL, or host lifecycle |
+| `crates/product-host` | Live browser transport and fixed-step loop | Gameplay semantics or rendering |
 | `gameplay/authoring` | Pure build-time composition/materialization | New serialized meaning or gameplay state |
 | `apps/web` | Public host composition and local UI | Canvas, renderer, live gameplay state, or persistence |
 

@@ -27,9 +27,9 @@ owns only bounded DOM presentation/input adaptation.
 
 Do not add a TypeScript evaluator, live game state, save model, scheduler,
 generic command bus, browser storage authority, a second canvas, or a private
-Engine renderer import. A later live browser or Tauri product replaces the
-static export adapter with one named Rust product service; it does not move
-gameplay meaning into TypeScript.
+Engine renderer import. A live browser or Tauri product keeps gameplay meaning
+in one named Rust product service; it does not move that meaning into
+TypeScript.
 
 ## Engine boundary
 
@@ -48,7 +48,6 @@ An operator creates adjacent sibling checkouts. Never deep-import Engine
 
 - `crates/product-gameplay`: strict product content schema and admission.
 - `crates/product-runtime`: named Rust service and renderer-neutral frame projection.
-- `crates/product-export`: static development/export adapter only.
 - `gameplay/authoring`: pure TypeScript builders that materialize committed content.
 - `content/gameplay`: admitted product artifact, not a TypeScript runtime input.
 - `apps/web`: thin Vite composition root, one Engine canvas, bounded UI root.
@@ -56,7 +55,7 @@ An operator creates adjacent sibling checkouts. Never deep-import Engine
 ## Verification
 
 Run `./scripts/verify.sh` from the repository root after `pnpm install`. It
-checks authoring drift, Rust formatting/tests/lints, TypeScript, the Rust frame
-export, web build, and a real Chromium viewport proof. It assumes the sibling
-Engine application-host artifact already exists; build that artifact in the
-Engine checkout only when it is absent or intentionally changed.
+checks authoring drift, Rust formatting/tests/lints, TypeScript, the web build,
+and a real Chromium viewport proof. It assumes the sibling Engine
+application-host artifact already exists; build that artifact in the Engine
+checkout only when it is absent or intentionally changed.

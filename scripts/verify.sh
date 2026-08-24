@@ -16,8 +16,6 @@ cargo fmt --check
 cargo test --workspace --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
 pnpm typecheck
-pnpm export:frame
 pnpm --dir apps/web build
 cargo build -p rusty-space-host --bin browser-host --locked
 pnpm test:browser
-

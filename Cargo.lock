@@ -2171,15 +2171,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rusty-space-export"
-version = "0.1.0"
-dependencies = [
- "rusty-space-runtime",
- "serde_json",
- "thiserror 2.0.20",
-]
-
-[[package]]
 name = "rusty-space-gameplay"
 version = "0.1.0"
 dependencies = [

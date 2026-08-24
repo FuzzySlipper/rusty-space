@@ -7,10 +7,9 @@
   "scripts": {
     "authoring:materialize": "pnpm --dir gameplay/authoring materialize",
     "authoring:check": "pnpm --dir gameplay/authoring check",
-    "export:frame": "cargo run --locked -p rusty-space-export -- content/gameplay/sample-scene.json apps/web/public/content/initial-frame.json",
-    "build": "pnpm authoring:check && pnpm export:frame && pnpm --dir apps/web build",
+    "build": "pnpm authoring:check && pnpm --dir apps/web build",
     "typecheck": "pnpm --dir gameplay/authoring typecheck && pnpm --dir apps/web typecheck",
     "test:browser": "pnpm --dir apps/web test:browser",
-    "verify": "pnpm authoring:check && cargo fmt --check && cargo test --workspace --locked && cargo clippy --workspace --all-targets --locked -- -D warnings && pnpm typecheck && pnpm export:frame && pnpm --dir apps/web build && pnpm test:browser"
+    "verify": "pnpm authoring:check && cargo fmt --check && cargo test --workspace --locked && cargo clippy --workspace --all-targets --locked -- -D warnings && pnpm typecheck && pnpm --dir apps/web build && pnpm test:browser"
   }
 }
