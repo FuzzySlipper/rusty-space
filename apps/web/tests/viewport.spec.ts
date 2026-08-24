@@ -13,6 +13,8 @@ for (const viewport of [
     const label = page.getByTestId('space-label');
     await expect(canvas).toHaveCount(1);
     await expect(label).toBeVisible();
+    // Wait for the WebSocket session to deliver the first projected ship frame.
+    await expect(label).toContainText('pos', { timeout: 15_000 });
 
     const layout = await page.evaluate(() => {
       const canvas = document.querySelector('canvas');

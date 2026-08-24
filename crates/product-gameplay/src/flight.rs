@@ -9,7 +9,7 @@
 use crate::ship_handling::ShipHandlingDefinition;
 
 /// A 2D vector in the XZ navigation plane (Y-up, yaw around +Y).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
 pub struct Vec2 {
     pub x: f64,
     pub z: f64,

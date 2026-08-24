@@ -14,6 +14,9 @@ use thiserror::Error;
 mod flight_runtime;
 pub use flight_runtime::{FIXED_STEP_SECONDS, FlightReadout, FlightRuntime, FlightRuntimeError};
 
+mod projection;
+pub use projection::{SHIP_NODE_HANDLE, ship_frame_diff};
+
 #[derive(Debug, Error)]
 pub enum ProductServiceError {
     #[error(transparent)]

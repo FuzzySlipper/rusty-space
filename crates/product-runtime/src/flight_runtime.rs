@@ -28,7 +28,8 @@ const SHIP_MASS: f32 = 2.0;
 const SHIP_HALF_EXTENTS: [f32; 3] = [1.0, 0.25, 0.6];
 
 /// The renderer-neutral state the runtime projects each tick for presentation.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FlightReadout {
     pub position: Vec2,
     pub heading: f64,
