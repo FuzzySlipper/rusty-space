@@ -38,13 +38,35 @@ impl Drop for SessionReleaseGuard {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct InputIntent {
-    #[serde(rename = "type")]
-    command_type: String,
-    generation: u64,
-    throttle: f64,
-    turn: f64,
+#[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
+enum BrowserCommand {
+    SetFlightIntent {
+        generation: u64,
+        throttle: f64,
+        turn: f64,
+    },
+    ResetFlight {
+        generation: u64,
+    },
+}
+
+impl BrowserCommand {
+    const fn generation(&self) -> u64 {
+        match self {
+            Self::SetFlightIntent { generation, .. } | Self::ResetFlight { generation } => {
+                *generation
+            }
+        }
+    }
+
+    const fn into_product_command(self) -> SpaceProductCommand {
+        match self {
+            Self::SetFlightIntent { throttle, turn, .. } => {
+                SpaceProductCommand::SetFlightIntent { throttle, turn }
+            }
+            Self::ResetFlight { .. } => SpaceProductCommand::ResetFlight,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -285,8 +307,8 @@ fn run_session_loop(
         let mut drained = 0;
         while drained < 32 {
             match websocket.read() {
-                Ok(Message::Text(text)) => match parse_input_intent(&text) {
-                    Ok(intent) if intent.generation != session.generation => {
+                Ok(Message::Text(text)) => match parse_browser_command(&text) {
+                    Ok(command) if command.generation() != session.generation => {
                         send_rejection(
                             websocket,
                             session,
@@ -294,22 +316,16 @@ fn run_session_loop(
                                 code: CommandRejectionCode::StaleGeneration,
                                 message: format!(
                                     "command generation {} does not match this session",
-                                    intent.generation
+                                    command.generation()
                                 ),
                             },
                         )?;
                     }
-                    Ok(intent) => {
+                    Ok(command) => {
                         let result = service
                             .lock()
                             .expect("live service lock")
-                            .submit_session_command(
-                                session,
-                                SpaceProductCommand::SetFlightIntent {
-                                    throttle: intent.throttle,
-                                    turn: intent.turn,
-                                },
-                            );
+                            .submit_session_command(session, command.into_product_command());
                         match result {
                             Ok(receipt) => send_server_message(
                                 websocket,
@@ -369,7 +385,7 @@ fn run_session_loop(
     }
 }
 
-fn parse_input_intent(text: &str) -> Result<InputIntent, CommandRejection> {
+fn parse_browser_command(text: &str) -> Result<BrowserCommand, CommandRejection> {
     let value: serde_json::Value =
         serde_json::from_str(text).map_err(|error| CommandRejection {
             code: CommandRejectionCode::MalformedCommand,
@@ -378,29 +394,21 @@ fn parse_input_intent(text: &str) -> Result<InputIntent, CommandRejection> {
     let command_type = value
         .get("type")
         .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
         .ok_or_else(|| CommandRejection {
             code: CommandRejectionCode::MalformedCommand,
             message: "command type is missing".to_owned(),
         })?;
-    if command_type != "setFlightIntent" {
+    if command_type != "setFlightIntent" && command_type != "resetFlight" {
         return Err(CommandRejection {
             code: CommandRejectionCode::UnsupportedCommand,
             message: format!("unsupported command type {command_type}"),
         });
     }
-    let intent: InputIntent = serde_json::from_value(value).map_err(|error| CommandRejection {
+    serde_json::from_value(value).map_err(|error| CommandRejection {
         code: CommandRejectionCode::MalformedCommand,
-        message: format!("setFlightIntent command is malformed: {error}"),
-    })?;
-    // Keep the deserialized discriminator checked as part of the strict wire
-    // format, rather than accepting a structurally compatible command.
-    if intent.command_type != "setFlightIntent" {
-        return Err(CommandRejection {
-            code: CommandRejectionCode::UnsupportedCommand,
-            message: format!("unsupported command type {}", intent.command_type),
-        });
-    }
-    Ok(intent)
+        message: format!("{command_type} command is malformed: {error}"),
+    })
 }
 
 fn command_rejection_from_service(error: SpaceProductSessionError) -> CommandRejection {
@@ -583,40 +591,62 @@ mod tests {
     }
 
     #[test]
-    fn input_intent_rejects_unknown_fields() {
+    fn browser_commands_reject_unknown_fields_and_keep_their_closed_shapes() {
         assert!(
-            serde_json::from_str::<InputIntent>(
+            serde_json::from_str::<BrowserCommand>(
                 r#"{"type":"setFlightIntent","generation":1,"throttle":1.0,"turn":0.0,"junk":1}"#
             )
             .is_err()
         );
-        let intent = serde_json::from_str::<InputIntent>(
+        assert!(
+            serde_json::from_str::<BrowserCommand>(
+                r#"{"type":"resetFlight","generation":1,"throttle":0.0}"#
+            )
+            .is_err()
+        );
+        let intent = serde_json::from_str::<BrowserCommand>(
             r#"{"type":"setFlightIntent","generation":1,"throttle":1.0,"turn":-1.0}"#,
         )
         .unwrap();
-        assert_eq!(intent.throttle, 1.0);
-        assert_eq!(intent.turn, -1.0);
-        assert_eq!(intent.command_type, "setFlightIntent");
+        assert!(matches!(
+            intent,
+            BrowserCommand::SetFlightIntent {
+                generation: 1,
+                throttle: 1.0,
+                turn: -1.0,
+            }
+        ));
+        assert!(matches!(
+            serde_json::from_str::<BrowserCommand>(r#"{"type":"resetFlight","generation":9}"#),
+            Ok(BrowserCommand::ResetFlight { generation: 9 })
+        ));
     }
 
     #[test]
     fn malformed_and_unsupported_input_have_typed_rejections() {
         assert!(matches!(
-            parse_input_intent("not JSON"),
+            parse_browser_command("not JSON"),
             Err(CommandRejection {
                 code: CommandRejectionCode::MalformedCommand,
                 ..
             })
         ));
         assert!(matches!(
-            parse_input_intent(r#"{"type":"warp","generation":1}"#),
+            parse_browser_command(r#"{"type":"warp","generation":1}"#),
             Err(CommandRejection {
                 code: CommandRejectionCode::UnsupportedCommand,
                 ..
             })
         ));
         assert!(matches!(
-            parse_input_intent(r#"{"type":"setFlightIntent","generation":1,"throttle":1.0}"#),
+            parse_browser_command(r#"{"type":"setFlightIntent","generation":1,"throttle":1.0}"#),
+            Err(CommandRejection {
+                code: CommandRejectionCode::MalformedCommand,
+                ..
+            })
+        ));
+        assert!(matches!(
+            parse_browser_command(r#"{"type":"resetFlight"}"#),
             Err(CommandRejection {
                 code: CommandRejectionCode::MalformedCommand,
                 ..

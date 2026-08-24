@@ -108,7 +108,10 @@ interface CommandRejectedMessage {
 interface CommandReceiptMessage {
   type: 'commandReceipt';
   generation: number;
-  receipt: { sequence: number };
+  receipt: {
+    sequence: number;
+    command: { type: 'setFlightIntent' } | { type: 'resetFlight' };
+  };
 }
 
 type ServerMessage = BaselineMessage | UpdateMessage | CommandRejectedMessage | CommandReceiptMessage;
@@ -129,22 +132,96 @@ function mountUi(root: HTMLElement, context: RustyApplicationUiContext): Promise
   status.dataset.testid = 'session-status';
   status.textContent = 'Session connecting…';
   surface.append(status);
+
+  const controls = document.createElement('p');
+  controls.className = 'space-controls';
+  controls.dataset.testid = 'space-controls';
+  controls.textContent = 'W / ↑ thrust · A/D / ←/→ turn · R reset · wheel zoom';
+  surface.append(controls);
   root.append(surface);
 
-  // Top-down navigation view: look straight down at the XZ flight plane.
-  context.renderer.setCameraPose({ position: [0, 25, 0], pitchDegrees: -90, yawDegrees: 0 });
+  // Top-down navigation view: the browser presents the Rust-authoritative
+  // target with lag; it never predicts or changes flight position.
+  const defaultCameraHeight = 25;
+  const minimumCameraHeight = 8;
+  const maximumCameraHeight = 60;
+  const camera = {
+    x: 0,
+    z: 0,
+    velocityX: 0,
+    velocityZ: 0,
+    targetX: 0,
+    targetZ: 0,
+    height: defaultCameraHeight,
+  };
+  let cameraFrame: number | undefined;
+  let cameraLastTime: number | undefined;
+  const renderCamera = (): void => {
+    context.renderer.setCameraPose({
+      position: [camera.x, camera.height, camera.z],
+      pitchDegrees: -90,
+      yawDegrees: 0,
+    });
+    // The deliberately cheap CSS star layer is parallaxed from the same
+    // presentation state, giving camera motion a visible reference without a
+    // second canvas or any gameplay authority in the DOM.
+    surface.style.setProperty('--star-near-x', `${-camera.x * 18}px`);
+    surface.style.setProperty('--star-near-z', `${-camera.z * 18}px`);
+    surface.style.setProperty('--star-far-x', `${-camera.x * 5}px`);
+    surface.style.setProperty('--star-far-z', `${-camera.z * 5}px`);
+    context.renderer.renderOnce();
+  };
+  const snapCamera = (readout: ServerReadout): void => {
+    camera.x = readout.position.x;
+    camera.z = readout.position.z;
+    camera.targetX = readout.position.x;
+    camera.targetZ = readout.position.z;
+    camera.velocityX = 0;
+    camera.velocityZ = 0;
+    renderCamera();
+  };
+  const targetCamera = (readout: ServerReadout): void => {
+    camera.targetX = readout.position.x;
+    camera.targetZ = readout.position.z;
+  };
+  const animateCamera = (time: number): void => {
+    if (disposed) return;
+    const elapsed = cameraLastTime === undefined ? 0 : Math.min((time - cameraLastTime) / 1000, 0.05);
+    cameraLastTime = time;
+    // Semi-implicit Euler integration of a critically damped spring. The
+    // cap keeps a backgrounded tab from hurling the camera across the scene.
+    const omega = 8;
+    const advanceAxis = (position: number, velocity: number, target: number): [number, number] => {
+      const acceleration = omega * omega * (target - position) - 2 * omega * velocity;
+      const nextVelocity = velocity + acceleration * elapsed;
+      return [position + nextVelocity * elapsed, nextVelocity];
+    };
+    [camera.x, camera.velocityX] = advanceAxis(camera.x, camera.velocityX, camera.targetX);
+    [camera.z, camera.velocityZ] = advanceAxis(camera.z, camera.velocityZ, camera.targetZ);
+    renderCamera();
+    cameraFrame = window.requestAnimationFrame(animateCamera);
+  };
+  renderCamera();
 
   // Classic Asteroids input: up = thrust, left/right = turn. Input is local
   // presentation only — it routes a typed intent to the Rust host.
   const thrustKeys = new Set(['ArrowUp', 'KeyW']);
   const leftKeys = new Set(['ArrowLeft', 'KeyA']);
   const rightKeys = new Set(['ArrowRight', 'KeyD']);
+  const movementKeys = new Set([...thrustKeys, ...leftKeys, ...rightKeys]);
   const held = new Set<string>();
+  // A reset (or another gameplay neutralization) clears intent immediately,
+  // but browsers may subsequently deliver `repeat: true` for a physically
+  // held key. Keep that old press inert until its keyup; a genuinely fresh
+  // non-repeat keydown deliberately re-arms it, including after a focus
+  // transition where a keyup may have been lost.
+  const suppressedUntilKeyUp = new Set<string>();
 
   let socket: WebSocket | null = null;
   let activeGeneration: number | null = null;
   let baselineApplied = false;
   let lastUpdateSequence: number | null = null;
+  let resetUpdatePending = false;
   let terminalFailure: string | null = null;
   let frameDelivery: Promise<void> = Promise.resolve();
   let reconnectTimer: number | undefined;
@@ -176,7 +253,20 @@ function mountUi(root: HTMLElement, context: RustyApplicationUiContext): Promise
     }
   };
 
+  const sendReset = (): void => {
+    if (socket?.readyState !== WebSocket.OPEN || activeGeneration === null || !baselineApplied) return;
+    try {
+      socket.send(JSON.stringify({ type: 'resetFlight', generation: activeGeneration }));
+    } catch {
+      // The session release guard neutralizes a lease if a close races this
+      // presentation-only send.
+    }
+  };
+
   const clearHeldInput = (): void => {
+    for (const key of held) {
+      if (movementKeys.has(key)) suppressedUntilKeyUp.add(key);
+    }
     held.clear();
     sendIntent();
   };
@@ -237,15 +327,16 @@ function mountUi(root: HTMLElement, context: RustyApplicationUiContext): Promise
         );
         return false;
       }
-      // Keep the bounded viewport centered on the Rust-authoritative ship.
-      // This is presentation-only camera adaptation; the browser neither
-      // predicts nor mutates gameplay position.
-      context.renderer.setCameraPose({
-        position: [update.readout.position.x, 25, update.readout.position.z],
-        pitchDegrees: -90,
-        yawDegrees: 0,
-      });
-      context.renderer.renderOnce();
+      // Baselines are complete renderer replacements and should never inherit
+      // the old transport's camera position. An accepted reset likewise snaps
+      // immediately; ordinary Rust updates advance a lagging presentation
+      // target only.
+      if (baseline || resetUpdatePending) {
+        snapCamera(update.readout);
+        resetUpdatePending = false;
+      } else {
+        targetCamera(update.readout);
+      }
       updateHud(update.readout);
       return true;
     } catch (error) {
@@ -268,6 +359,7 @@ function mountUi(root: HTMLElement, context: RustyApplicationUiContext): Promise
     activeGeneration = null;
     baselineApplied = false;
     lastUpdateSequence = null;
+    resetUpdatePending = false;
     terminalFailure = null;
     label.textContent = 'Rusty Space · connecting…';
     status.textContent = 'Session connecting…';
@@ -317,6 +409,7 @@ function mountUi(root: HTMLElement, context: RustyApplicationUiContext): Promise
           status.textContent = `Controls rejected: ${message.code}`;
         }
       } else if (message.type === 'commandReceipt' && message.generation === activeGeneration) {
+        if (message.receipt.command.type === 'resetFlight') resetUpdatePending = true;
         status.textContent = `Session ${message.generation} command ${message.receipt.sequence} accepted`;
       }
     });
@@ -327,6 +420,7 @@ function mountUi(root: HTMLElement, context: RustyApplicationUiContext): Promise
       activeGeneration = null;
       baselineApplied = false;
       lastUpdateSequence = null;
+      resetUpdatePending = false;
       if (terminalFailure === null) {
         label.textContent = 'Rusty Space · disconnected';
         status.textContent = 'Session disconnected; reconnecting…';
@@ -347,7 +441,23 @@ function mountUi(root: HTMLElement, context: RustyApplicationUiContext): Promise
       clearHeldInput();
       return;
     }
+    if (event.code === 'KeyR') {
+      if (!event.repeat) {
+        // A held movement key must be deliberately pressed again after reset;
+        // clearing this local set prevents keyboard autorepeat from reviving
+        // old thrust intent.
+        clearHeldInput();
+        sendReset();
+      }
+      event.preventDefault();
+      return;
+    }
     if (thrustKeys.has(event.code) || leftKeys.has(event.code) || rightKeys.has(event.code)) {
+      if (event.repeat && suppressedUntilKeyUp.has(event.code)) {
+        event.preventDefault();
+        return;
+      }
+      if (!event.repeat) suppressedUntilKeyUp.delete(event.code);
       held.add(event.code);
       event.preventDefault();
       sendIntent();
@@ -358,21 +468,33 @@ function mountUi(root: HTMLElement, context: RustyApplicationUiContext): Promise
       clearHeldInput();
       return;
     }
-    if (held.delete(event.code)) {
+    const releasedSuppressedKey = suppressedUntilKeyUp.delete(event.code);
+    if (held.delete(event.code) || releasedSuppressedKey) {
       sendIntent();
     }
   };
   const onVisibilityChange = (): void => {
     if (document.visibilityState === 'hidden') clearHeldInput();
   };
+  const onWheel = (event: WheelEvent): void => {
+    if (!context.ui.allowsGameplayInput(event)) return;
+    const nextHeight = Math.min(
+      maximumCameraHeight,
+      Math.max(minimumCameraHeight, camera.height + event.deltaY * 0.025),
+    );
+    if (Number.isFinite(nextHeight)) camera.height = nextHeight;
+    event.preventDefault();
+    renderCamera();
+  };
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('blur', clearHeldInput);
   window.addEventListener('pagehide', clearHeldInput);
   document.addEventListener('visibilitychange', onVisibilityChange);
+  window.addEventListener('wheel', onWheel, { passive: false });
   interactionModeTimer = window.setInterval(neutralizeInputOutsideGameplay, 50);
   connect();
-  context.renderer.renderOnce();
+  cameraFrame = window.requestAnimationFrame(animateCamera);
 
   const owner: RustyApplicationUiOwner = {
     dispose: () => disposeUi(),
@@ -383,11 +505,13 @@ function mountUi(root: HTMLElement, context: RustyApplicationUiContext): Promise
     window.removeEventListener('keyup', onKeyUp);
     window.removeEventListener('blur', clearHeldInput);
     window.removeEventListener('pagehide', clearHeldInput);
+    window.removeEventListener('wheel', onWheel);
     clearHeldInput();
     disposed = true;
     document.removeEventListener('visibilitychange', onVisibilityChange);
     if (interactionModeTimer !== undefined) window.clearInterval(interactionModeTimer);
     if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
+    if (cameraFrame !== undefined) window.cancelAnimationFrame(cameraFrame);
     socket?.close();
     surface.remove();
   };

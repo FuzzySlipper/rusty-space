@@ -152,6 +152,60 @@ test('a coupled ship catches the projected current while thrust and steering rem
   await expect.poll(() => readHeadingDegrees(label)).toBeGreaterThan(headingBefore + 8);
 });
 
+test('R atomically resets flight and clears a held thrust intent', async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 760 });
+  await page.goto('/');
+  const label = page.getByTestId('space-label');
+  await expect(label).toContainText('pos', { timeout: 15_000 });
+  await expect(page.getByTestId('space-controls')).toContainText('R reset');
+  await expect(page.getByTestId('space-controls')).toContainText('wheel zoom');
+
+  await page.keyboard.down('KeyW');
+  await page.waitForTimeout(750);
+  expect(await readSpeed(label)).toBeGreaterThan(1);
+
+  // Keep W physically held through reset. The browser must clear local held
+  // state before sending the closed Rust reset command, so this old keypress
+  // cannot reactivate thrust without a new keydown.
+  await page.keyboard.press('KeyR');
+  await expect(page.getByTestId('session-status')).toContainText('command', { timeout: 5_000 });
+  await expect.poll(() => readSpeed(label)).toBeLessThan(0.15);
+  await expect.poll(() => readHeadingDegrees(label)).toBeLessThan(1);
+  // Simulate browser autorepeat from the key that was physically held across
+  // reset. It must not recreate a local held intent or send a new thrust.
+  await page.evaluate(() => {
+    window.dispatchEvent(new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      code: 'KeyW',
+      key: 'w',
+      repeat: true,
+    }));
+  });
+  await page.waitForTimeout(350);
+  expect(await readSpeed(label)).toBeLessThan(0.8);
+  await page.keyboard.up('KeyW');
+});
+
+test('the bounded viewport has a cheap star reference and gameplay wheel zoom', async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 760 });
+  await page.goto('/');
+  await expect(page.getByTestId('space-label')).toContainText('pos', { timeout: 15_000 });
+  const presentation = page.locator('.space-surface');
+  await expect(presentation).toHaveCSS('position', 'absolute');
+  const starBackground = await presentation.evaluate((element) =>
+    getComputedStyle(element, '::before').backgroundImage,
+  );
+  expect(starBackground).toContain('radial-gradient');
+
+  // The page itself is intentionally non-scrollable; wheel is consumed only
+  // while the host allows gameplay input and updates the public camera pose.
+  await page.mouse.wheel(0, 400);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  await page.mouse.wheel(0, -800);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+});
+
 test('late, reconnecting, and concurrent sessions preserve a complete baseline and one controller', async ({ page }) => {
   const browserContext = page.context();
   await page.setViewportSize({ width: 1000, height: 760 });

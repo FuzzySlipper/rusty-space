@@ -8,6 +8,31 @@
 html, body, #application { height: 100%; margin: 0; overflow: hidden; width: 100%; }
 
 .space-surface {
+  --star-near-x: 0px;
+  --star-near-z: 0px;
+  --star-far-x: 0px;
+  --star-far-z: 0px;
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+/* Purposefully low-fi: a few repeated radial gradients on the presentation
+ * overlay. They give the spring camera a readable motion reference while the
+ * actual ship/field geometry remains in the one Engine-owned WebGL canvas. */
+.space-surface::before {
+  background-image:
+    radial-gradient(circle at 17px 23px, rgba(229, 246, 255, 0.92) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 73px 61px, rgba(127, 206, 255, 0.78) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 41px 83px, rgba(255, 235, 173, 0.7) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 111px 19px, rgba(255, 255, 255, 0.52) 0 0.8px, transparent 1.6px);
+  background-position:
+    var(--star-near-x) var(--star-near-z),
+    var(--star-near-x) var(--star-near-z),
+    var(--star-far-x) var(--star-far-z),
+    var(--star-far-x) var(--star-far-z);
+  background-size: 128px 112px, 173px 151px, 239px 197px, 307px 281px;
+  content: '';
   inset: 0;
   pointer-events: none;
   position: absolute;
@@ -25,6 +50,7 @@ html, body, #application { height: 100%; margin: 0; overflow: hidden; width: 100
   position: absolute;
   top: clamp(0.7rem, 2.5vw, 1.5rem);
   overflow-wrap: anywhere;
+  z-index: 1;
 }
 
 .space-status {
@@ -38,4 +64,19 @@ html, body, #application { height: 100%; margin: 0; overflow: hidden; width: 100
   position: absolute;
   top: calc(clamp(0.7rem, 2.5vw, 1.5rem) + 3.25rem);
   overflow-wrap: anywhere;
+  z-index: 1;
+}
+
+.space-controls {
+  background: rgba(4, 16, 22, 0.72);
+  color: #b4d9d5;
+  font-size: clamp(0.62rem, 1.25vw, 0.76rem);
+  left: clamp(0.7rem, 2.5vw, 1.5rem);
+  margin: 0;
+  max-width: min(31rem, calc(100% - 1.5rem));
+  padding: 0.3rem 0.72rem;
+  position: absolute;
+  top: calc(clamp(0.7rem, 2.5vw, 1.5rem) + 5.35rem);
+  overflow-wrap: anywhere;
+  z-index: 1;
 }

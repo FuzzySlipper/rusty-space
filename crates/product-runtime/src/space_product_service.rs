@@ -10,7 +10,9 @@ use std::time::Duration;
 use thiserror::Error;
 
 use rusty_engine::render_model::RenderFrameDiff;
-use rusty_space_gameplay::{FlightCommand, ShipHandlingError, compile_ship_handling};
+use rusty_space_gameplay::{
+    FlightCommand, ShipHandlingDefinition, ShipHandlingError, compile_ship_handling,
+};
 
 use crate::{
     FlightProjectionError, FlightReadout, FlightRuntime, FlightRuntimeError, ship_frame_diff,
@@ -36,6 +38,8 @@ const MAX_ACCUMULATOR_UNITS: u128 = STEP_UNITS * MAX_ACCUMULATED_STEPS as u128;
 pub enum SpaceProductCommand {
     /// Set the current main-drive and yaw intent.
     SetFlightIntent { throttle: f64, turn: f64 },
+    /// Restore the admitted ship to its original spawn state.
+    ResetFlight,
 }
 
 /// The normalized command that the service accepted.
@@ -134,6 +138,8 @@ pub enum SpaceProductServiceError {
         maximum: f64,
         actual: f64,
     },
+    #[error("renderer update sequence space is exhausted")]
+    UpdateSequenceExhausted,
 }
 
 /// One admitted, live Rusty Space product instance.
@@ -143,12 +149,16 @@ pub enum SpaceProductServiceError {
 /// [`SpaceProductUpdate`] without duplicating product meaning.
 pub struct SpaceProductService {
     runtime: FlightRuntime,
+    /// The admitted definition is retained exclusively so reset can construct
+    /// a replacement runtime without asking an adapter to resend content.
+    handling: ShipHandlingDefinition,
     command: FlightCommand,
     command_sequence: u64,
     next_session_generation: u64,
     controller: Option<SpaceProductSession>,
     accumulator_units: u128,
     tick: u64,
+    update_sequence: u64,
     readout: FlightReadout,
     latest_update: SpaceProductUpdate,
 }
@@ -159,7 +169,7 @@ impl SpaceProductService {
     /// returned if package compilation or runtime spawn fails.
     pub fn admit(handling_bytes: &[u8]) -> Result<Self, SpaceProductServiceError> {
         let handling = compile_ship_handling(handling_bytes)?;
-        let runtime = FlightRuntime::spawn(handling)?;
+        let runtime = FlightRuntime::spawn(handling.clone())?;
         let readout = runtime.readout()?;
         let latest_update = SpaceProductUpdate {
             sequence: 0,
@@ -169,6 +179,7 @@ impl SpaceProductService {
         };
         Ok(Self {
             runtime,
+            handling,
             command: FlightCommand {
                 throttle: 0.0,
                 turn: 0.0,
@@ -178,6 +189,7 @@ impl SpaceProductService {
             controller: None,
             accumulator_units: 0,
             tick: 0,
+            update_sequence: 0,
             readout,
             latest_update,
         })
@@ -190,7 +202,11 @@ impl SpaceProductService {
         command: SpaceProductCommand,
     ) -> Result<SpaceProductCommandReceipt, SpaceProductServiceError> {
         let command = normalize_command(command)?;
-        self.command = flight_command(command);
+        if command == SpaceProductCommand::ResetFlight {
+            self.reset_flight()?;
+        } else {
+            self.command = flight_command(command);
+        }
         self.command_sequence = self.command_sequence.saturating_add(1);
         Ok(SpaceProductCommandReceipt {
             sequence: self.command_sequence,
@@ -271,10 +287,11 @@ impl SpaceProductService {
 
         let mut steps = 0;
         while self.accumulator_units >= STEP_UNITS && steps < MAX_ACCUMULATED_STEPS {
+            let next_sequence = self.next_update_sequence()?;
             let next_readout = self.runtime.tick(self.command)?;
             let next_tick = self.tick.saturating_add(1);
             let next_update = SpaceProductUpdate {
-                sequence: next_tick,
+                sequence: next_sequence,
                 tick: next_tick,
                 frame: ship_frame_diff(&next_readout, false)?,
                 readout: next_readout,
@@ -285,6 +302,7 @@ impl SpaceProductService {
             // this last successful boundary.
             self.accumulator_units -= STEP_UNITS;
             self.tick = next_tick;
+            self.update_sequence = next_sequence;
             self.readout = next_readout;
             self.latest_update = next_update;
             steps += 1;
@@ -325,6 +343,39 @@ impl SpaceProductService {
             turn: 0.0,
         };
     }
+
+    /// Replace the entire live runtime only after its spawn readout and reset
+    /// projection have both succeeded. This makes reset one atomic product
+    /// transition instead of an in-place collection of velocity edits.
+    fn reset_flight(&mut self) -> Result<(), SpaceProductServiceError> {
+        let runtime = FlightRuntime::spawn(self.handling.clone())?;
+        let readout = runtime.readout()?;
+        let frame = ship_frame_diff(&readout, false)?;
+        let sequence = self.next_update_sequence()?;
+        let update = SpaceProductUpdate {
+            sequence,
+            tick: self.tick,
+            frame,
+            readout,
+        };
+
+        self.runtime = runtime;
+        self.command = FlightCommand {
+            throttle: 0.0,
+            turn: 0.0,
+        };
+        self.accumulator_units = 0;
+        self.readout = readout;
+        self.update_sequence = sequence;
+        self.latest_update = update;
+        Ok(())
+    }
+
+    fn next_update_sequence(&self) -> Result<u64, SpaceProductServiceError> {
+        self.update_sequence
+            .checked_add(1)
+            .ok_or(SpaceProductServiceError::UpdateSequenceExhausted)
+    }
 }
 
 /// Session-scoped command failure. Adapters can map this closed result to a
@@ -344,13 +395,17 @@ fn units_to_seconds(units: u128) -> f64 {
 fn normalize_command(
     command: SpaceProductCommand,
 ) -> Result<SpaceProductCommand, SpaceProductServiceError> {
-    let SpaceProductCommand::SetFlightIntent { throttle, turn } = command;
-    validate_command_field("throttle", throttle, 0.0, 1.0)?;
-    validate_command_field("turn", turn, -1.0, 1.0)?;
-    Ok(SpaceProductCommand::SetFlightIntent {
-        throttle: normalize_zero(throttle),
-        turn: normalize_zero(turn),
-    })
+    match command {
+        SpaceProductCommand::SetFlightIntent { throttle, turn } => {
+            validate_command_field("throttle", throttle, 0.0, 1.0)?;
+            validate_command_field("turn", turn, -1.0, 1.0)?;
+            Ok(SpaceProductCommand::SetFlightIntent {
+                throttle: normalize_zero(throttle),
+                turn: normalize_zero(turn),
+            })
+        }
+        SpaceProductCommand::ResetFlight => Ok(SpaceProductCommand::ResetFlight),
+    }
 }
 
 fn validate_command_field(
@@ -375,8 +430,15 @@ fn normalize_zero(value: f64) -> f64 {
 }
 
 fn flight_command(command: SpaceProductCommand) -> FlightCommand {
-    let SpaceProductCommand::SetFlightIntent { throttle, turn } = command;
-    FlightCommand { throttle, turn }
+    match command {
+        SpaceProductCommand::SetFlightIntent { throttle, turn } => FlightCommand { throttle, turn },
+        // This branch is unreachable because the reset transition is consumed
+        // above, but keeps the closed command vocabulary explicit here.
+        SpaceProductCommand::ResetFlight => FlightCommand {
+            throttle: 0.0,
+            turn: 0.0,
+        },
+    }
 }
 
 #[cfg(test)]
@@ -587,6 +649,78 @@ mod tests {
                 .iter()
                 .all(|operation| matches!(operation, RenderDiff::Update { .. }))
         );
+    }
+
+    #[test]
+    fn reset_replaces_flight_at_spawn_clears_input_and_publishes_a_new_update() {
+        let mut service = SpaceProductService::admit(HANDLING).expect("admitted service");
+        let session = service.open_session().expect("controller session").session;
+        service
+            .submit_session_command(
+                session,
+                SpaceProductCommand::SetFlightIntent {
+                    throttle: 1.0,
+                    turn: 1.0,
+                },
+            )
+            .expect("starts flight");
+        for _ in 0..45 {
+            service
+                .advance_elapsed(Duration::from_nanos(16_666_667))
+                .expect("flight advances");
+        }
+        service
+            .advance_elapsed(Duration::from_nanos(1))
+            .expect("leaves a partial accumulator");
+        let sequence_before_reset = service.latest_update().sequence;
+        assert!(service.readout().position.magnitude() > 0.1);
+
+        let receipt = service
+            .submit_session_command(session, SpaceProductCommand::ResetFlight)
+            .expect("active controller can reset");
+
+        assert_eq!(receipt.command, SpaceProductCommand::ResetFlight);
+        assert_eq!(service.readout().position, rusty_space_gameplay::Vec2::ZERO);
+        assert_eq!(service.readout().heading, 0.0);
+        assert_eq!(
+            service.readout().linear_velocity,
+            rusty_space_gameplay::Vec2::ZERO
+        );
+        assert_eq!(service.readout().angular_velocity, 0.0);
+        assert_eq!(service.readout().throttle_level, 0.0);
+        assert_eq!(service.accumulator_units, 0);
+        assert_eq!(
+            service.current_command(),
+            SpaceProductCommand::SetFlightIntent {
+                throttle: 0.0,
+                turn: 0.0,
+            }
+        );
+        assert!(service.latest_update().sequence > sequence_before_reset);
+        assert_eq!(service.latest_update().tick, service.tick);
+        assert!(
+            service
+                .latest_update()
+                .frame
+                .ops
+                .iter()
+                .all(|operation| matches!(operation, RenderDiff::Update { .. }))
+        );
+    }
+
+    #[test]
+    fn stale_session_cannot_reset_live_flight() {
+        let mut service = SpaceProductService::admit(HANDLING).expect("admitted service");
+        let stale = service.open_session().expect("first session").session;
+        let active = service.open_session().expect("replacement session").session;
+        let sequence_before = service.latest_update().sequence;
+
+        assert!(matches!(
+            service.submit_session_command(stale, SpaceProductCommand::ResetFlight),
+            Err(SpaceProductSessionError::StaleSession(_))
+        ));
+        assert_eq!(service.latest_update().sequence, sequence_before);
+        assert_eq!(service.controller, Some(active));
     }
 
     #[test]
