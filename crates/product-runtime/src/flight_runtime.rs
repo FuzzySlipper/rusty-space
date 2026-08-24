@@ -122,8 +122,6 @@ impl FlightRuntime {
             self.moment_of_inertia,
             FIXED_STEP_SECONDS,
         );
-        self.throttle_level = output.throttle_level;
-
         let (force, torque) = to_engine_wrench(&output.wrench);
         self.service
             .step(
@@ -145,6 +143,9 @@ impl FlightRuntime {
             )
             .map_err(|error| FlightRuntimeError::Step(error.to_string()))?;
 
+        // The Engine commits body state atomically. Only after that succeeds
+        // may the product commit its paired actuator state.
+        self.throttle_level = output.throttle_level;
         self.readout()
     }
 
@@ -236,8 +237,8 @@ mod tests {
         let readout = runtime.readout().unwrap();
         let speed = readout.linear_velocity.magnitude();
         // Without the cap, 4 s of thrust would reach ~72 u/s.
-        assert!(speed > handling.max_speed - 0.5);
-        assert!(speed < handling.max_speed + 0.5);
+        assert!(speed > handling.max_speed() - 0.5);
+        assert!(speed < handling.max_speed() + 0.5);
         // Pure thrust never yaws nor drifts sideways.
         assert!(readout.heading.abs() < 1e-3);
         assert!(readout.linear_velocity.z.abs() < 1e-3);
@@ -307,9 +308,9 @@ mod tests {
         }
         let angular_velocity = runtime.readout().unwrap().angular_velocity;
         assert!(
-            (angular_velocity - handling.max_turn_rate).abs() < 0.2,
+            (angular_velocity - handling.max_turn_rate()).abs() < 0.2,
             "steady-state turn rate {angular_velocity} should approach {}",
-            handling.max_turn_rate
+            handling.max_turn_rate()
         );
     }
 
@@ -328,10 +329,49 @@ mod tests {
             .unwrap();
         let angular_velocity = runtime.readout().unwrap().angular_velocity;
         let expected =
-            handling.max_turn_rate / handling.steering_response_time * FIXED_STEP_SECONDS;
+            handling.max_turn_rate() / handling.steering_response_time() * FIXED_STEP_SECONDS;
         assert!(
             (angular_velocity - expected).abs() < 0.05,
             "first-tick angular velocity {angular_velocity} should be ~{expected}"
         );
+    }
+
+    #[test]
+    fn engine_rejected_step_leaves_ship_entity_and_actuator_unchanged() {
+        // The public Engine facade rejects this force before committing: its
+        // off-side dynamics candidate exceeds the one-unit translation limit.
+        let handling = ShipHandlingDefinition::new(12.0, 1_000_000.0, 3.0, 0.08, 0.12)
+            .expect("maximum admitted thrust remains valid handling");
+        let mut runtime = FlightRuntime::spawn(handling).expect("spawn runtime");
+        let readout_before = runtime.readout().expect("initial readout");
+        let transform_before = *runtime
+            .state
+            .transform(runtime.ship)
+            .expect("ship transform exists");
+        let body_before = *runtime
+            .state
+            .rigid_body(runtime.ship)
+            .expect("ship rigid body exists");
+
+        let error = runtime
+            .tick(FlightCommand {
+                throttle: 1.0,
+                turn: 0.5,
+            })
+            .expect_err("Engine rejects the oversized first-step translation");
+        assert!(
+            matches!(error, FlightRuntimeError::Step(message) if message.contains("dynamics-motion-limit-exceeded"))
+        );
+
+        assert_eq!(
+            runtime.readout().expect("readout after failure"),
+            readout_before
+        );
+        assert_eq!(runtime.throttle_level, readout_before.throttle_level);
+        assert_eq!(
+            runtime.state.transform(runtime.ship),
+            Some(&transform_before)
+        );
+        assert_eq!(runtime.state.rigid_body(runtime.ship), Some(&body_before));
     }
 }

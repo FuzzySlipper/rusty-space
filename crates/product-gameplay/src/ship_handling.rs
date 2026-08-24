@@ -37,11 +37,65 @@ pub struct AuthoredShipHandling {
 /// Canonical compiled definition the runtime consumes.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShipHandlingDefinition {
-    pub max_speed: f64,
-    pub max_thrust: f64,
-    pub max_turn_rate: f64,
-    pub throttle_response_time: f64,
-    pub steering_response_time: f64,
+    max_speed: f64,
+    max_thrust: f64,
+    max_turn_rate: f64,
+    throttle_response_time: f64,
+    steering_response_time: f64,
+}
+
+impl ShipHandlingDefinition {
+    /// Construct a runtime-safe handling definition. Keeping the fields
+    /// private prevents callers from bypassing the same bounds that package
+    /// admission applies.
+    pub fn new(
+        max_speed: f64,
+        max_thrust: f64,
+        max_turn_rate: f64,
+        throttle_response_time: f64,
+        steering_response_time: f64,
+    ) -> Result<Self, ShipHandlingError> {
+        validate_field("maxSpeed", max_speed, MAX_SPEED)?;
+        validate_field("maxThrust", max_thrust, MAX_THRUST)?;
+        validate_field("maxTurnRate", max_turn_rate, MAX_TURN_RATE)?;
+        validate_field(
+            "throttleResponseTime",
+            throttle_response_time,
+            MAX_RESPONSE_TIME,
+        )?;
+        validate_field(
+            "steeringResponseTime",
+            steering_response_time,
+            MAX_RESPONSE_TIME,
+        )?;
+        Ok(Self {
+            max_speed,
+            max_thrust,
+            max_turn_rate,
+            throttle_response_time,
+            steering_response_time,
+        })
+    }
+
+    pub const fn max_speed(&self) -> f64 {
+        self.max_speed
+    }
+
+    pub const fn max_thrust(&self) -> f64 {
+        self.max_thrust
+    }
+
+    pub const fn max_turn_rate(&self) -> f64 {
+        self.max_turn_rate
+    }
+
+    pub const fn throttle_response_time(&self) -> f64 {
+        self.throttle_response_time
+    }
+
+    pub const fn steering_response_time(&self) -> f64 {
+        self.steering_response_time
+    }
 }
 
 #[derive(Debug, Error)]
@@ -81,27 +135,13 @@ pub fn compile_ship_handling(bytes: &[u8]) -> Result<ShipHandlingDefinition, Shi
             actual: authored.schema_version,
         });
     }
-    validate_field("maxSpeed", authored.max_speed, MAX_SPEED)?;
-    validate_field("maxThrust", authored.max_thrust, MAX_THRUST)?;
-    validate_field("maxTurnRate", authored.max_turn_rate, MAX_TURN_RATE)?;
-    validate_field(
-        "throttleResponseTime",
+    ShipHandlingDefinition::new(
+        authored.max_speed,
+        authored.max_thrust,
+        authored.max_turn_rate,
         authored.throttle_response_time,
-        MAX_RESPONSE_TIME,
-    )?;
-    validate_field(
-        "steeringResponseTime",
         authored.steering_response_time,
-        MAX_RESPONSE_TIME,
-    )?;
-
-    Ok(ShipHandlingDefinition {
-        max_speed: authored.max_speed,
-        max_thrust: authored.max_thrust,
-        max_turn_rate: authored.max_turn_rate,
-        throttle_response_time: authored.throttle_response_time,
-        steering_response_time: authored.steering_response_time,
-    })
+    )
 }
 
 fn validate_field(field: &'static str, value: f64, maximum: f64) -> Result<(), ShipHandlingError> {
@@ -167,11 +207,11 @@ mod tests {
     #[test]
     fn committed_typescript_artifact_compiles_to_the_named_definition() {
         let handling = compile_ship_handling(&fixture()).expect("committed artifact compiles");
-        assert_eq!(handling.max_speed, 12.0);
-        assert_eq!(handling.max_thrust, 18.0);
-        assert_eq!(handling.max_turn_rate, 3.0);
-        assert_eq!(handling.throttle_response_time, 0.08);
-        assert_eq!(handling.steering_response_time, 0.12);
+        assert_eq!(handling.max_speed(), 12.0);
+        assert_eq!(handling.max_thrust(), 18.0);
+        assert_eq!(handling.max_turn_rate(), 3.0);
+        assert_eq!(handling.throttle_response_time(), 0.08);
+        assert_eq!(handling.steering_response_time(), 0.12);
     }
 
     #[test]
@@ -203,6 +243,36 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn direct_construction_revalidates_every_runtime_field() {
+        for (field, handling) in [
+            (
+                "maxSpeed",
+                ShipHandlingDefinition::new(0.0, 18.0, 3.0, 0.08, 0.12),
+            ),
+            (
+                "maxThrust",
+                ShipHandlingDefinition::new(12.0, -1.0, 3.0, 0.08, 0.12),
+            ),
+            (
+                "maxTurnRate",
+                ShipHandlingDefinition::new(12.0, 18.0, f64::NAN, 0.08, 0.12),
+            ),
+            (
+                "throttleResponseTime",
+                ShipHandlingDefinition::new(12.0, 18.0, 3.0, 11.0, 0.12),
+            ),
+            (
+                "steeringResponseTime",
+                ShipHandlingDefinition::new(12.0, 18.0, 3.0, 0.08, f64::INFINITY),
+            ),
+        ] {
+            assert!(
+                matches!(handling, Err(ShipHandlingError::InvalidField { field: rejected, .. }) if rejected == field)
+            );
+        }
     }
 
     #[test]

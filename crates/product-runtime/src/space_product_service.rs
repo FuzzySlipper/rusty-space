@@ -12,7 +12,9 @@ use thiserror::Error;
 use rusty_engine::render_model::RenderFrameDiff;
 use rusty_space_gameplay::{FlightCommand, ShipHandlingError, compile_ship_handling};
 
-use crate::{FlightReadout, FlightRuntime, FlightRuntimeError, ship_frame_diff};
+use crate::{
+    FlightProjectionError, FlightReadout, FlightRuntime, FlightRuntimeError, ship_frame_diff,
+};
 
 /// At most this many fixed ticks may remain accumulated after an advance.
 /// Older excess elapsed time is intentionally discarded, preventing a stalled
@@ -90,6 +92,15 @@ pub struct SpaceProductStaleSessionError {
 #[error("session generation space is exhausted")]
 pub struct SpaceProductSessionGenerationExhausted;
 
+/// Opening a controller session failed before the service changed its lease.
+#[derive(Debug, Error)]
+pub enum SpaceProductSessionOpenError {
+    #[error(transparent)]
+    GenerationExhausted(#[from] SpaceProductSessionGenerationExhausted),
+    #[error(transparent)]
+    Projection(#[from] FlightProjectionError),
+}
+
 /// A renderer-neutral product update retained for delivery by any adapter.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -114,6 +125,8 @@ pub enum SpaceProductServiceError {
     Admission(#[from] ShipHandlingError),
     #[error("live flight runtime rejected: {0}")]
     Runtime(#[from] FlightRuntimeError),
+    #[error("renderer projection rejected: {0}")]
+    Projection(#[from] FlightProjectionError),
     #[error("flight intent {field} must be finite and within {minimum}..={maximum}; got {actual}")]
     InvalidCommand {
         field: &'static str,
@@ -151,7 +164,7 @@ impl SpaceProductService {
         let latest_update = SpaceProductUpdate {
             sequence: 0,
             tick: 0,
-            frame: ship_frame_diff(&readout, true),
+            frame: ship_frame_diff(&readout, true)?,
             readout,
         };
         Ok(Self {
@@ -192,14 +205,17 @@ impl SpaceProductService {
     /// initialize an empty renderer before it receives update-only diffs.
     pub fn open_session(
         &mut self,
-    ) -> Result<SpaceProductSessionBaseline, SpaceProductSessionGenerationExhausted> {
-        self.next_session_generation = self
+    ) -> Result<SpaceProductSessionBaseline, SpaceProductSessionOpenError> {
+        let next_session_generation = self
             .next_session_generation
             .checked_add(1)
             .ok_or(SpaceProductSessionGenerationExhausted)?;
         let session = SpaceProductSession {
-            generation: self.next_session_generation,
+            generation: next_session_generation,
         };
+        let frame = ship_frame_diff(&self.readout, true)?;
+        // Do not publish a new lease until its complete baseline is valid.
+        self.next_session_generation = next_session_generation;
         self.controller = Some(session);
         self.neutralize_command();
         Ok(SpaceProductSessionBaseline {
@@ -207,7 +223,7 @@ impl SpaceProductService {
             update: SpaceProductUpdate {
                 sequence: self.latest_update.sequence,
                 tick: self.tick,
-                frame: ship_frame_diff(&self.readout, true),
+                frame,
                 readout: self.readout,
             },
         })
@@ -255,15 +271,22 @@ impl SpaceProductService {
 
         let mut steps = 0;
         while self.accumulator_units >= STEP_UNITS && steps < MAX_ACCUMULATED_STEPS {
-            self.readout = self.runtime.tick(self.command)?;
-            self.accumulator_units -= STEP_UNITS;
-            self.tick = self.tick.saturating_add(1);
-            self.latest_update = SpaceProductUpdate {
-                sequence: self.tick,
-                tick: self.tick,
-                frame: ship_frame_diff(&self.readout, false),
-                readout: self.readout,
+            let next_readout = self.runtime.tick(self.command)?;
+            let next_tick = self.tick.saturating_add(1);
+            let next_update = SpaceProductUpdate {
+                sequence: next_tick,
+                tick: next_tick,
+                frame: ship_frame_diff(&next_readout, false)?,
+                readout: next_readout,
             };
+            // A completed Engine tick becomes the authoritative retained
+            // product state before attempting another tick. If a later step
+            // rejects, runtime and published service state remain aligned at
+            // this last successful boundary.
+            self.accumulator_units -= STEP_UNITS;
+            self.tick = next_tick;
+            self.readout = next_readout;
+            self.latest_update = next_update;
             steps += 1;
         }
 
@@ -363,6 +386,14 @@ mod tests {
 
     const HANDLING: &[u8] =
         include_bytes!("../../../content/gameplay/rusty-space-core.package.json");
+
+    fn handling_with_max_thrust(max_thrust: u64) -> Vec<u8> {
+        let fixture = std::str::from_utf8(HANDLING).expect("handling fixture is UTF-8");
+        fixture
+            .replace("\"maxSpeed\":12", "\"maxSpeed\":10000")
+            .replace("\"maxThrust\":18", &format!("\"maxThrust\":{max_thrust}"))
+            .into_bytes()
+    }
 
     #[test]
     fn admits_complete_handling_and_projects_the_startup_frame() {
@@ -466,6 +497,35 @@ mod tests {
         assert_eq!(receipt.steps, MAX_ACCUMULATED_STEPS);
         assert!(receipt.discarded_seconds.is_finite());
         assert!(receipt.discarded_seconds > 1.0e18);
+    }
+
+    #[test]
+    fn later_failed_step_retains_the_last_successful_runtime_publication() {
+        // At this admitted thrust and high speed cap the first fixed tick
+        // succeeds, then a later one is rejected by the Engine's one-unit
+        // motion limit.
+        let mut service = SpaceProductService::admit(&handling_with_max_thrust(34_000))
+            .expect("admitted high-thrust service");
+        service
+            .submit_command(SpaceProductCommand::SetFlightIntent {
+                throttle: 1.0,
+                turn: 0.0,
+            })
+            .expect("valid command");
+
+        let error = service
+            .advance_elapsed(Duration::from_nanos(33_333_334))
+            .expect_err("second Engine step exceeds its motion bound");
+        assert!(matches!(
+            error,
+            SpaceProductServiceError::Runtime(FlightRuntimeError::Step(message))
+                if message.contains("dynamics-motion-limit-exceeded")
+        ));
+
+        assert_eq!(service.latest_update().tick, 1);
+        assert_eq!(service.readout(), service.runtime.readout().unwrap());
+        assert_eq!(service.latest_update().readout, service.readout());
+        assert_eq!(service.accumulator_units, 1_000_000_040);
     }
 
     fn assert_partition_equivalent(total_nanoseconds: u64, parts: &[u64], expected_steps: u32) {
@@ -712,7 +772,9 @@ mod tests {
 
         assert!(matches!(
             service.open_session(),
-            Err(SpaceProductSessionGenerationExhausted)
+            Err(SpaceProductSessionOpenError::GenerationExhausted(
+                SpaceProductSessionGenerationExhausted
+            ))
         ));
     }
 }

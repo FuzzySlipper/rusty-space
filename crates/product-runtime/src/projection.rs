@@ -6,9 +6,11 @@
 //! Heading (cyan) and velocity (orange) being distinct colors is what makes the
 //! "heading is not velocity" invariant legible.
 
+use thiserror::Error;
+
 use rusty_engine::render_model::{
-    Geometry, Material, RenderDiff, RenderFrameDiff, RenderHandle, RenderLayer, RenderMetadata,
-    RenderNode, Transform,
+    Geometry, Material, RenderDiff, RenderFrameDiff, RenderFrameError, RenderHandle, RenderLayer,
+    RenderMetadata, RenderNode, Transform,
 };
 use rusty_space_gameplay::Vec2;
 
@@ -35,9 +37,26 @@ const HEADING_COLOR: [f32; 4] = [0.85, 1.0, 1.0, 1.0];
 const VELOCITY_COLOR: [f32; 4] = [1.0, 0.55, 0.1, 1.0];
 const PATH_COLOR: [f32; 4] = [0.45, 0.55, 0.65, 1.0];
 
+/// A readout could not be safely represented by the f32 renderer contract.
+/// This remains a typed product failure instead of emitting invalid frame data
+/// or panicking while constructing a retained frame.
+#[derive(Debug, Error)]
+pub enum FlightProjectionError {
+    #[error("flight readout {field} must be finite")]
+    NonFiniteReadout { field: &'static str },
+    #[error("flight readout {field} is outside the renderer f32 range")]
+    ReadoutOutOfRange { field: &'static str },
+    #[error("projected renderer frame was rejected: {error:?}")]
+    InvalidFrame { error: RenderFrameError },
+}
+
 /// Project the ship and its navigation rods into a frame: `Create` on the
 /// first tick, transform-only `Update` afterward.
-pub fn ship_frame_diff(readout: &FlightReadout, create: bool) -> RenderFrameDiff {
+pub fn ship_frame_diff(
+    readout: &FlightReadout,
+    create: bool,
+) -> Result<RenderFrameDiff, FlightProjectionError> {
+    validate_readout(readout)?;
     let ship = ship_transform(readout);
     let heading = rod(
         readout.position,
@@ -75,7 +94,28 @@ pub fn ship_frame_diff(readout: &FlightReadout, create: bool) -> RenderFrameDiff
             update_transform(PATH_NODE_HANDLE, path),
         ]
     };
-    RenderFrameDiff::try_from_ops(operations).expect("ship frame is valid")
+    RenderFrameDiff::try_from_ops(operations)
+        .map_err(|error| FlightProjectionError::InvalidFrame { error })
+}
+
+fn validate_readout(readout: &FlightReadout) -> Result<(), FlightProjectionError> {
+    for (field, value) in [
+        ("position.x", readout.position.x),
+        ("position.z", readout.position.z),
+        ("heading", readout.heading),
+        ("linearVelocity.x", readout.linear_velocity.x),
+        ("linearVelocity.z", readout.linear_velocity.z),
+        ("angularVelocity", readout.angular_velocity),
+        ("throttleLevel", readout.throttle_level),
+    ] {
+        if !value.is_finite() {
+            return Err(FlightProjectionError::NonFiniteReadout { field });
+        }
+        if value.abs() > f32::MAX as f64 {
+            return Err(FlightProjectionError::ReadoutOutOfRange { field });
+        }
+    }
+    Ok(())
 }
 
 fn create_node(handle: u64, transform: Transform, color: [f32; 4], name: &str) -> RenderDiff {
@@ -158,7 +198,7 @@ mod tests {
 
     #[test]
     fn first_frame_creates_all_four_navigation_nodes() {
-        let frame = ship_frame_diff(&readout(), true);
+        let frame = ship_frame_diff(&readout(), true).expect("valid readout projects");
         assert_eq!(frame.ops.len(), 4);
         assert!(
             frame
@@ -170,7 +210,7 @@ mod tests {
 
     #[test]
     fn later_frames_update_only_transforms() {
-        let frame = ship_frame_diff(&readout(), false);
+        let frame = ship_frame_diff(&readout(), false).expect("valid readout projects");
         assert_eq!(frame.ops.len(), 4);
         assert!(frame.ops.iter().all(|operation| {
             matches!(
@@ -206,7 +246,7 @@ mod tests {
             angular_velocity: 0.0,
             throttle_level: 0.0,
         };
-        let frame = ship_frame_diff(&readout, false);
+        let frame = ship_frame_diff(&readout, false).expect("valid readout projects");
         // The velocity rod has zero length (invisible) when speed is zero.
         match &frame.ops[2] {
             RenderDiff::Update {
@@ -215,5 +255,39 @@ mod tests {
             } => assert_eq!(transform.scale[0], 0.0),
             other => panic!("expected velocity Update, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn non_finite_and_overflowing_readouts_return_typed_errors() {
+        let mut non_finite = readout();
+        non_finite.heading = f64::NAN;
+        assert!(matches!(
+            ship_frame_diff(&non_finite, false),
+            Err(FlightProjectionError::NonFiniteReadout { field: "heading" })
+        ));
+
+        let mut overflowing = readout();
+        overflowing.position.x = f64::from(f32::MAX) * 2.0;
+        assert!(matches!(
+            ship_frame_diff(&overflowing, false),
+            Err(FlightProjectionError::ReadoutOutOfRange {
+                field: "position.x"
+            })
+        ));
+
+        // Every direct readout field fits f32, but the velocity rod's midpoint
+        // overflows once it is added to this valid edge-position. Frame
+        // validation must still return a typed failure rather than panic.
+        let derived_overflow = FlightReadout {
+            position: Vec2::new(f64::from(f32::MAX), f64::from(f32::MAX)),
+            heading: 0.0,
+            linear_velocity: Vec2::new(f64::from(f32::MAX), f64::from(f32::MAX)),
+            angular_velocity: 0.0,
+            throttle_level: 0.0,
+        };
+        assert!(matches!(
+            ship_frame_diff(&derived_overflow, false),
+            Err(FlightProjectionError::InvalidFrame { .. })
+        ));
     }
 }

@@ -118,8 +118,8 @@ pub fn controller(
     let turn = command.turn.clamp(-1.0, 1.0);
 
     // Drive spool: first-order lag toward the commanded thrust.
-    let desired_thrust = throttle * handling.max_thrust;
-    let lag = lag_factor(dt, handling.throttle_response_time);
+    let desired_thrust = throttle * handling.max_thrust();
+    let lag = lag_factor(dt, handling.throttle_response_time());
     let throttle_level = state.throttle_level + (desired_thrust - state.throttle_level) * lag;
 
     // Main thrust along ship-forward, then the hard max-speed gate. At or above
@@ -127,7 +127,7 @@ pub fn controller(
     // component along the current velocity.
     let mut force = ship_forward(state.body.heading).scale(throttle_level);
     let speed = state.body.linear_velocity.magnitude();
-    if speed >= handling.max_speed && speed > 0.0 {
+    if speed >= handling.max_speed() && speed > 0.0 {
         let velocity_direction = state.body.linear_velocity.scale(1.0 / speed);
         let along_velocity = force.dot(velocity_direction);
         if along_velocity > 0.0 {
@@ -136,12 +136,12 @@ pub fn controller(
     }
 
     // Steering as angular-rate intent with a finite torque authority.
-    let desired_angular_velocity = turn * handling.max_turn_rate;
+    let desired_angular_velocity = turn * handling.max_turn_rate();
     let error = desired_angular_velocity - state.body.angular_velocity;
     let torque_y = if moment_of_inertia.is_finite() && moment_of_inertia > 0.0 {
         let authority =
-            moment_of_inertia * handling.max_turn_rate / handling.steering_response_time;
-        let requested = moment_of_inertia * error / handling.steering_response_time;
+            moment_of_inertia * handling.max_turn_rate() / handling.steering_response_time();
+        let requested = moment_of_inertia * error / handling.steering_response_time();
         requested.clamp(-authority, authority)
     } else {
         0.0
@@ -166,13 +166,7 @@ mod tests {
     const DT: f64 = 1.0 / 60.0;
 
     fn stock() -> ShipHandlingDefinition {
-        ShipHandlingDefinition {
-            max_speed: 12.0,
-            max_thrust: 18.0,
-            max_turn_rate: 3.0,
-            throttle_response_time: 0.08,
-            steering_response_time: 0.12,
-        }
+        ShipHandlingDefinition::new(12.0, 18.0, 3.0, 0.08, 0.12).expect("valid stock handling")
     }
 
     fn at_rest() -> FlightState {
@@ -305,8 +299,8 @@ mod tests {
             tick(&mut state, &thrust, &stock());
         }
         let speed = state.body.linear_velocity.magnitude();
-        assert!(speed >= stock().max_speed);
-        assert!(speed <= stock().max_speed + stock().max_thrust * DT + 1e-9);
+        assert!(speed >= stock().max_speed());
+        assert!(speed <= stock().max_speed() + stock().max_thrust() * DT + 1e-9);
     }
 
     #[test]
@@ -331,7 +325,7 @@ mod tests {
             1.0,
             DT,
         );
-        let authority = handling.max_turn_rate / handling.steering_response_time;
+        let authority = handling.max_turn_rate() / handling.steering_response_time();
         assert_eq!(output.wrench.torque_y, -authority);
     }
 }
