@@ -1,63 +1,83 @@
-# Rusty Space agent guidance
+# Rusty Space C# downstream guidance
 
-## Purpose
+## Current direction
 
-This is a small, runnable downstream product for Rusty Engine. It has a
-Rust-owned gameplay/content admission path, a pure build-time TypeScript
-authoring DSL, and a single bounded browser viewport through the Engine public
-application host. It is not a framework, generic template, or Engine
-implementation checkout.
+Rusty Space is a raw, evolving C# downstream product. `Product.Game` and its
+thin NativeAOT composition are the only local product implementation. Earlier
+Rust and TypeScript gameplay, WebSocket hosting, and browser-world rendering
+were retired during the cutover; consult Git history only when a future task
+needs to recover a donor idea.
 
-Read the local sibling bootstrap when available:
-`../rusty-engine/docs/topics/development/downstream-repository-bootstrap.md`.
-For GitHub or other remote agents, use the canonical bootstrap at
-<https://github.com/FuzzySlipper/rusty-engine/blob/main/docs/topics/development/downstream-repository-bootstrap.md>,
-then continue with the
-[greenfield product guide](https://github.com/FuzzySlipper/rusty-engine/blob/main/docs/topics/development/greenfield-downstream-product.md).
-Local relative paths are useful in an adjacent checkout but are not portable
-Markdown links on GitHub.
+The C# path is fresh and raw. The current Den task and the Engine guidance
+handles `rusty-engine/downstream-csharp-agent-brief` and
+`rusty-engine/downstream-csharp-code-and-tuning` override this file when they
+are more specific.
 
-## Authority
+## Ownership and boundary
 
-Rust owns the product's admitted gameplay vocabulary, semantic interpretation,
-and the live session, scheduling, and renderer-neutral projection path in
-`SpaceProductService`. The TypeScript in `gameplay/authoring` is a pure
-build-time materializer for the Rust-defined package format. The TypeScript in
-`apps/web` presents live Rust-projected updates and owns only bounded DOM
-presentation/input adaptation.
+> The product decides. The Engine guarantees.
 
-Do not add a TypeScript evaluator, live game state, save model, scheduler,
-generic command bus, browser storage authority, a second canvas, or a private
-Engine renderer import. A live browser or Tauri product keeps gameplay meaning
-in one named Rust product service; it does not move that meaning into
-TypeScript.
+C# owns product/application logic, authoritative product state, domain
+records, content meaning, policy, orchestration, and UI facts. Rusty Engine
+owns host lifecycle and update admission, input delivery, rendering resources
+and frames, canvas/backend, spatial and physics mechanisms, content/resource
+mechanisms, persistence primitives, diagnostics, and other published Engine
+capabilities.
 
-## Engine boundary
+Do not recreate Engine mechanisms in C#, Rust, or TypeScript. C# publishes
+renderer-neutral facts through named Engine APIs; it does not build a renderer,
+retained-frame substitute, resource loader, canvas, private loop, timer, or
+browser simulation. TypeScript may provide DOM UI and accessibility only; it
+does not render game elements or acquire gameplay state.
 
-The sibling Engine path is required for development:
+If the safe generated Engine API cannot express needed behavior, identify the
+missing named upstream capability and stop with a narrow Engine request. That
+is a valid result; do not substitute downstream infrastructure or fake proof.
 
-- Rust depends only on `../rusty-engine/rust/crates/rusty-engine`.
-- Browser code depends only on the public
-  `@rusty-engine/application-host` artifact at
-  `../rusty-engine/render/artifacts/application-host`.
+## Source lanes
 
-Do not clone, fetch, pin, or manage Engine from this product's source or CI.
-An operator creates adjacent sibling checkouts. Never deep-import Engine
-`src/` trees or renderer packages.
+- `src/Product.Game/` is ordinary safe C# product code. It references the
+  generated safe `Rusty.Engine` SDK and may not use `unsafe`, handwritten ABI,
+  P/Invoke, raw native handles, pointer lifetimes, ambient service lookup, or
+  a parallel update loop.
+- `src/Product.NativeProduct/` is the thin NativeAOT composition
+  boundary. It references `Product.Game`, the Engine SDK, and the Engine
+  generator. Unsafe code is permitted only in generator-owned boundary output.
+  Do not add handwritten gameplay, ABI layouts, function tables, pointer
+  decoding, `GCHandle` ownership, or lifecycle behavior here.
+- `src/ui/` contains only static/DOM-only host material. It must not simulate
+  input, retain product state, render the world, or own a canvas.
 
-## Layout
+Generated, intermediate, and NativeAOT output belongs under ignored build
+directories. Never edit or commit it. The assembly selection in
+`Product.NativeProduct` is the real Space product, not a fixture.
 
-- `crates/product-gameplay`: strict product content schema and admission.
-- `crates/product-runtime`: `SpaceProductService` live sessions, scheduling, and renderer-neutral projection.
-- `crates/product-host`: local browser transport and built-shell delivery.
-- `gameplay/authoring`: pure TypeScript builders that materialize committed content.
-- `content/gameplay`: admitted product artifact, not a TypeScript runtime input.
-- `apps/web`: thin Vite composition root, one Engine canvas, bounded UI root.
+## Product organization
 
-## Verification
+Place code by product domain so a change normally stays near the state,
+behavior, tuning, and projection it owns. A module is optional vocabulary for
+such a boundary, not an Engine interface, registry, plugin, assembly,
+reflection convention, ECS/ESS, event bus, or framework requirement.
 
-Run `./scripts/verify.sh` from the repository root after `pnpm install`. It
-checks authoring drift, Rust formatting/tests/lints, TypeScript, the web build,
-and a real Chromium viewport proof. It assumes the sibling Engine
-application-host artifact already exists; build that artifact in the Engine
-checkout only when it is absent or intentionally changed.
+Use explicit construction and constructor-supplied dependencies. Each mutable
+state family has one clear owner; coordinators remain thin and follow a bounded
+read -> decide -> apply -> publish flow. Use records for immutable facts,
+definitions, settings, and views; use named classes for mutable owners and
+meaningful behavior. Avoid generic `Manager`, `Helper`, `Utils`, `Runtime`, or
+`Data` containers.
+
+Production literals must have product meaning: keep structural constants beside
+their owning algorithm, tuning defaults beside their domain, and identities in
+typed IDs or named definitions. Adjustable authored values belong in immutable
+domain tuning records. Compose those records into one discoverable root tuning
+aggregate at the explicit composition root, then inject each owner only its
+own record. A partial JSON development overlay may be added later when useful;
+it is not a prerequisite, user-settings system, save format, or Engine concern.
+
+## Evidence
+
+Use the smallest evidence that answers the seam: focused C# build, NativeAOT
+publish, and a direct standard-host exercise. Do not create a legacy Rust/TS
+gate, browser certification, packaging framework, or interactive-parity claim.
+Known missing product behavior is future experimentation, not a reason to add
+fallback infrastructure.

@@ -1,35 +1,36 @@
 # Rusty Space architecture
 
-Rusty Space keeps one bounded downstream ownership path:
+Rusty Space is a C# product base for continued experimentation, not a finished
+interactive product.
 
 ```text
-TypeScript pure builders
-  -> content/gameplay/rusty-space-core.package.json (committed ship-handling artifact)
-  -> Rust ship-handling admission
-  -> SpaceProductService live sessions and fixed-step scheduling
-  -> renderer-neutral retained-frame projection
-  -> thin Rust browser host
-  -> public Engine application-host
-  -> one Engine canvas plus bounded downstream UI root
+Product.Game (safe C# product state and domain behavior)
+  -> named generated Rusty Engine service contracts
+  -> Engine host, input, rendering, canvas/backend, spatial/physics, resources
+
+Product.NativeProduct (thin generated NativeAOT composition)
+  -> Engine binding and product generators
+
+ui/host (static DOM-only host page)
+  -> no gameplay state, world renderer, canvas, or input authority
 ```
 
-The `rusty-space/core` package is a closed product format. Rust rejects the
-wrong package identity, unknown payload fields, unsupported schema versions,
-and invalid flight constants before it creates gameplay meaning. TypeScript
-only materializes that Rust-owned package at build time; it cannot run in play
-or evaluate live flight state.
+Product code owns authoritative product facts, gameplay decisions, content
+meaning, and explicitly ordered work inside Engine-admitted updates. Engine
+owns reusable mechanisms and lifecycle. The UI does not own product state or
+world rendering.
 
-`SpaceProductService` admits the committed ship package and owns live flight
-state, controller sessions, semantic commands, fixed-step accumulation,
-readouts, and renderer-neutral retained-frame projection. `product-host` owns
-only local browser transport, wall-clock observation, and built-shell
-delivery; it passes elapsed time and typed intent to the service, then sends
-each session its baseline and retained updates. The application frame keeps all
-canvas and UI geometry within the browser/WebView viewport so the DOM shell
-does not become an accidental web-app authority.
+The intended local shape is domain-oriented. An owner such as `FlightState` or
+`FlightController` keeps its related behavior and tuning nearby; one clear
+owner mutates each state family. Composition is explicit, dependencies arrive
+through constructors, and coordination stays thin. “Module” may describe a
+coherent folder and ownership boundary, but requires no registry, framework,
+separate assembly, or dynamic loading.
 
-Related Engine documents:
-
-- [Greenfield downstream product path](https://github.com/FuzzySlipper/rusty-engine/blob/main/docs/topics/development/greenfield-downstream-product.md)
-- [Downstream renderer and Studio boundary](https://github.com/FuzzySlipper/rusty-engine/blob/main/docs/topics/development/downstream-renderer-and-studio.md)
-- [Rust code style](https://github.com/FuzzySlipper/rusty-engine/blob/main/docs/topics/development/rust-style.md)
+The standard Engine runtime/host owns control epochs, input clear/rebind,
+baseline-fenced output, and lifecycle. Space owns only closed command meaning,
+flight reset policy, field/flight values, and published appearance facts. The
+Engine C# surface is expected to grow. If a product need lacks a named safe API,
+record the narrow upstream capability and stop at that boundary; do not add a
+downstream renderer, simulation host, ABI layer, or fallback implementation.
+The exploratory material in `docs/ideas/` remains product-design material.

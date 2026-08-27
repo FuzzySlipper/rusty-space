@@ -3,24 +3,12 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 engine_root="$repo_root/../rusty-engine"
-engine_host="$engine_root/render/artifacts/application-host/index.js"
-
 if [[ ! -d "$engine_root/.git" ]]; then
   printf '%s\n' "Expected an adjacent rusty-engine checkout at: $engine_root" >&2
   printf '%s\n' "Clone it beside this repository; bootstrap will not fetch or manage it." >&2
   exit 1
 fi
 
-if [[ ! -f "$engine_host" ]]; then
-  printf '%s\n' "Missing the public Engine application-host artifact: $engine_host" >&2
-  printf '%s\n' "Build it explicitly in the Engine checkout, then rerun bootstrap:" >&2
-  printf '%s\n' "  cd $engine_root/render && pnpm install && pnpm build:application-host-artifact" >&2
-  exit 1
-fi
-
 cd "$repo_root"
-pnpm install
-pnpm authoring:materialize
-printf '%s\n' "Bootstrap complete. Build the browser shell with: pnpm --dir apps/web build"
-printf '%s\n' "Then start the live product with: cargo run -p rusty-space-host --bin browser-host --locked"
-printf '%s\n' "Open: http://127.0.0.1:8787"
+dotnet restore src/Product.NativeProduct/Product.NativeProduct.csproj
+printf '%s\n' "Bootstrap complete. Run the C# product with: ./scripts/run-csharp.sh --port 8787"

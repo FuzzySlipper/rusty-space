@@ -1,6 +1,0 @@
-packages:
-  - gameplay/authoring
-  - apps/web
-
-allowBuilds:
-  esbuild: true

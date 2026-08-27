@@ -1,9 +1,9 @@
 {
   "project": "rusty-space",
   "serve": {
-    "command": "pnpm run authoring:check && pnpm --dir apps/web build && cargo build -p rusty-space-host --bin browser-host --locked && exec target/debug/browser-host --addr {host}:{port}",
-    "healthUrl": "/health",
-    "readyText": "rusty-space",
+    "command": "exec ./scripts/run-csharp.sh --port {port}",
+    "healthUrl": "/",
+    "readyText": "C# NativeAOT product host listening",
     "reusePolicy": "broker_owned",
     "startupTimeout": "60s",
     "healthInterval": "250ms"
