@@ -20,6 +20,9 @@ public sealed class SpaceProduct : IEngineProduct
     {
         ArgumentNullException.ThrowIfNull(context);
         composition = new SpaceProductComposition(context);
+        // Create-time projection: the Engine retains this initial snapshot
+        // alongside create outputs, before any update is admitted.
+        composition.Presentation.Publish(composition.Flight.Readout);
     }
 
     public SpaceProductStatus Status => new(
@@ -35,21 +38,47 @@ public sealed class SpaceProduct : IEngineProduct
     {
         RequireState(SpaceLifecycleState.Created, nameof(Start));
         composition.Presentation.Publish(composition.Flight.Readout);
+        FollowCamera();
         lifecycle = SpaceLifecycleState.Running;
     }
 
-    public void Update(ProductUpdate update)
+    public ProductUpdateResult Update(ProductUpdate update)
     {
         RequireState(SpaceLifecycleState.Running, nameof(Update));
         FlightAdmission admission = composition.Flight.Admit(update);
+        if (admission.FaultRequested)
+        {
+            // Operator abort (F): a product-owned terminal report; the turn
+            // publishes nothing further.
+            return ProductUpdateResult.ReportFault;
+        }
+
         if (!admission.Published)
         {
-            return;
+            return ProductUpdateResult.None;
         }
 
         composition.Presentation.Publish(composition.Flight.Readout);
+        FollowCamera();
         lastHostUpdate = HostUpdateEvidence.From(update);
         admittedUpdateCount = checked(admittedUpdateCount + 1UL);
+        return ProductUpdateResult.None;
+    }
+
+    // Space initiates no external timelines yet, so it accepts completions
+    // addressed to it; a zero ticket is not a valid Engine ticket id.
+    public bool CompleteTimeline(ProductTimelineCompletion completion)
+    {
+        RequireState(SpaceLifecycleState.Running, nameof(CompleteTimeline));
+        return completion.Ticket != 0UL;
+    }
+
+    public void Restart()
+    {
+        RequireState(SpaceLifecycleState.Running, nameof(Restart));
+        composition.Flight.ResetFlight();
+        composition.Presentation.Publish(composition.Flight.Readout);
+        FollowCamera();
     }
 
     public void Pause()
@@ -86,9 +115,14 @@ public sealed class SpaceProduct : IEngineProduct
             Shutdown();
         }
 
-        composition.Flight.Dispose();
+        composition.Dispose();
         lifecycle = SpaceLifecycleState.Disposed;
     }
+
+    private void FollowCamera() => composition.Camera.Follow(
+        composition.Flight.Readout,
+        composition.Flight.FixedStepCount,
+        composition.Flight.ResetCount);
 
     private void RequireState(SpaceLifecycleState expected, string operation)
     {

@@ -11,10 +11,11 @@ Run the current product from an adjacent `rusty-engine` checkout:
 ./scripts/run-csharp.sh --port 8787
 ```
 
-The script publishes the NativeAOT shared library and starts the Engine host
-with the static DOM-only bundle in `src/ui/host`. It is a development base for
-flight, field, input/control, and appearance experiments—not an interactive
-demo or parity claim.
+The script publishes the NativeAOT shared library, assembles the ignored browser
+bundle in `src/ui/generated/product-bundle`, and starts the Engine host. Product
+DOM UI comes from `src/ui/main.js`; the Engine supplies the host and canvas. It
+is a development base for flight, field, input/control, and appearance
+experiments—not an interactive demo or parity claim.
 
 The product decides; the Engine guarantees lifecycle, input admission,
 control epochs, output fencing, Dynamics, appearance resources, renderer, and

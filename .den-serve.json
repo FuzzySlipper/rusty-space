@@ -1,11 +1,11 @@
 {
   "project": "rusty-space",
   "serve": {
-    "command": "exec ./scripts/run-csharp.sh --port {port}",
-    "healthUrl": "/",
-    "readyText": "C# NativeAOT product host listening",
+    "command": "exec ./scripts/run-csharp.sh --bind-host {host} --port {port}",
+    "healthUrl": "/ui/main.js",
+    "readyText": "Rusty Space",
     "reusePolicy": "broker_owned",
-    "startupTimeout": "60s",
+    "startupTimeout": "120s",
     "healthInterval": "250ms"
   }
 }

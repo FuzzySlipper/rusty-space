@@ -9,10 +9,6 @@ namespace Rusty.Space.Product.Flight;
 /// </summary>
 internal sealed class FlightInputMapper
 {
-    private const uint PhysicalKeyInputKind = 1;
-    private const uint ClearInputKind = 7;
-    private const uint PressedInputEdge = 1;
-    private const uint ReleasedInputEdge = 2;
     private const double NeutralCommandIntent = 0.0;
     private const double FullCommandIntent = 1.0;
     private const double LeftTurnIntent = -1.0;
@@ -23,21 +19,22 @@ internal sealed class FlightInputMapper
     {
         FlightInputState stagedState = state;
         bool resetRequested = false;
+        bool faultRequested = false;
         foreach (ProductInputEvent inputEvent in input)
         {
-            if (inputEvent.Kind == ClearInputKind)
+            if (inputEvent.Kind == InputEventKind.Clear)
             {
                 stagedState = FlightInputState.Neutral;
                 continue;
             }
 
-            if (inputEvent.Kind != PhysicalKeyInputKind
-                || inputEvent.Edge is not (PressedInputEdge or ReleasedInputEdge))
+            if (inputEvent.Kind != InputEventKind.Key
+                || inputEvent.Edge is not (InputEdge.Pressed or InputEdge.Released))
             {
                 continue;
             }
 
-            bool pressed = inputEvent.Edge == PressedInputEdge;
+            bool pressed = inputEvent.Edge == InputEdge.Pressed;
             ReadOnlySpan<byte> label = inputEvent.Label.Span;
             if (label.SequenceEqual("KeyW"u8))
             {
@@ -60,9 +57,18 @@ internal sealed class FlightInputMapper
 
                 stagedState = stagedState with { ResetHeld = pressed };
             }
+            else if (label.SequenceEqual("KeyF"u8))
+            {
+                if (pressed && !stagedState.FaultHeld)
+                {
+                    faultRequested = true;
+                }
+
+                stagedState = stagedState with { FaultHeld = pressed };
+            }
         }
 
-        return new FlightInputPlan(stagedState, ToCommand(stagedState), resetRequested);
+        return new FlightInputPlan(stagedState, ToCommand(stagedState), resetRequested, faultRequested);
     }
 
     internal void Commit(FlightInputPlan plan) => state = plan.State;
@@ -84,12 +90,14 @@ internal readonly record struct FlightInputState(
     bool ThrustHeld,
     bool LeftHeld,
     bool RightHeld,
-    bool ResetHeld)
+    bool ResetHeld,
+    bool FaultHeld)
 {
-    internal static FlightInputState Neutral { get; } = new(false, false, false, false);
+    internal static FlightInputState Neutral { get; } = new(false, false, false, false, false);
 }
 
 internal readonly record struct FlightInputPlan(
     FlightInputState State,
     FlightCommand Command,
-    bool ResetRequested);
+    bool ResetRequested,
+    bool FaultRequested);

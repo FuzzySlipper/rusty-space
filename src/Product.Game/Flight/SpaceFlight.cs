@@ -10,10 +10,9 @@ namespace Rusty.Space.Product.Flight;
 /// </summary>
 internal sealed class SpaceFlight : IDisposable
 {
-    private const uint AxisUnlocked = 0;
-    private const uint AxisLocked = 1;
-    private const uint WakeBody = 1;
-    private const uint NoReservedValue = 0;
+    private const bool AxisFree = false;
+    private const bool AxisLocked = true;
+    private const uint NoSteps = 0;
     private const ulong SequenceIncrement = 1;
     private const double NeutralCommandIntent = 0.0;
     private const float FixedStepSeconds = 1.0f / 60.0f;
@@ -27,13 +26,13 @@ internal sealed class SpaceFlight : IDisposable
     private readonly StellarField field;
     private readonly FieldResponse fieldResponse;
     private readonly FlightBodyTuning bodyTuning;
-    private readonly FlightAccumulator accumulator = new();
     private readonly FlightInputMapper inputMapper = new();
     private DynamicsBody body = null!;
     private FlightCommand command = new(NeutralCommandIntent, NeutralCommandIntent);
     private FlightReadout readout;
     private ulong fixedStepCount;
     private ulong updateSequence;
+    private ulong resetCount;
     private bool disposed;
 
     internal SpaceFlight(
@@ -71,6 +70,8 @@ internal sealed class SpaceFlight : IDisposable
 
     internal ulong UpdateSequence => updateSequence;
 
+    internal ulong ResetCount => resetCount;
+
     internal FlightAdmission Admit(ProductUpdate update)
     {
         ThrowIfDisposed();
@@ -79,21 +80,23 @@ internal sealed class SpaceFlight : IDisposable
         if (input.ResetRequested)
         {
             ResetFlight();
-            return new FlightAdmission(true, fixedStepCount, updateSequence);
+            return new FlightAdmission(true, fixedStepCount, updateSequence, input.FaultRequested);
         }
 
-        FlightStepPlan plan = accumulator.Prepare(update.Kind, update.Observation);
-        if (plan.StepCount == NoReservedValue)
+        // The Engine owns update admission and fixed-step timing; its facts
+        // name the admitted steps for this turn. The product steps its own
+        // dynamics exactly that many times and publishes on admitted turns.
+        uint stepCount = update.Facts.AdmittedStepCount;
+        if (stepCount == NoSteps)
         {
             command = input.Command;
             inputMapper.Commit(input);
-            accumulator.Commit(plan);
-            return new FlightAdmission(false, fixedStepCount, updateSequence);
+            return new FlightAdmission(false, fixedStepCount, updateSequence, input.FaultRequested);
         }
 
-        ulong nextFixedStepCount = checked(fixedStepCount + plan.StepCount);
+        ulong nextFixedStepCount = checked(fixedStepCount + stepCount);
         ulong nextUpdateSequence = checked(updateSequence + SequenceIncrement);
-        FlightControlOutput output = PrepareControllerOutput(input.Command, plan.StepCount);
+        FlightControlOutput output = PrepareControllerOutput(input.Command, stepCount);
         FlightWrench fieldWrench = fieldResponse.Resolve(
             ToBodyState(readout),
             field.Sample(readout.Position));
@@ -103,24 +106,24 @@ internal sealed class SpaceFlight : IDisposable
         dynamics.Step(new DynamicsStepRequest(
             world,
             FixedStepSeconds,
-            plan.StepCount,
+            stepCount,
             new[] { action }));
         FlightReadout nextReadout = MapReadout(dynamics.Read(new DynamicsReadRequest(body)));
 
         controller.Commit(output);
         command = input.Command;
         inputMapper.Commit(input);
-        accumulator.Commit(plan);
         readout = nextReadout;
         fixedStepCount = nextFixedStepCount;
         updateSequence = nextUpdateSequence;
-        return new FlightAdmission(true, fixedStepCount, updateSequence);
+        return new FlightAdmission(true, fixedStepCount, updateSequence, input.FaultRequested);
     }
 
     internal void ResetFlight()
     {
         ThrowIfDisposed();
         ulong nextUpdateSequence = checked(updateSequence + SequenceIncrement);
+        ulong nextResetCount = checked(resetCount + SequenceIncrement);
         DynamicsBody? candidate = null;
         try
         {
@@ -134,8 +137,8 @@ internal sealed class SpaceFlight : IDisposable
             command = new FlightCommand(NeutralCommandIntent, NeutralCommandIntent);
             controller.Reset();
             inputMapper.Reset();
-            accumulator.Clear();
             updateSequence = nextUpdateSequence;
+            resetCount = nextResetCount;
             previous.Dispose();
         }
         finally
@@ -168,7 +171,7 @@ internal sealed class SpaceFlight : IDisposable
         double stagedThrottle = controller.ThrottleLevel;
         FlightBodyState bodyState = ToBodyState(readout);
         TimeSpan fixedStep = TimeSpan.FromSeconds(FixedStepDurationSeconds);
-        for (uint stepIndex = NoReservedValue; stepIndex < steps; stepIndex++)
+        for (uint stepIndex = 0; stepIndex < steps; stepIndex++)
         {
             output = controller.Prepare(
                 bodyState,
@@ -197,13 +200,16 @@ internal sealed class SpaceFlight : IDisposable
                 ToSingle(bodyTuning.HalfHeight),
                 ToSingle(bodyTuning.HalfExtents.Z)),
             ToSingle(bodyTuning.Mass),
+            new DynamicsMassPolicy(
+                DynamicsMassPolicyKind.DeriveFromShapeAndMass,
+                default),
             new AxisLocks(
-                AxisUnlocked,
-                AxisLocked,
-                AxisUnlocked,
-                AxisLocked,
-                AxisUnlocked,
-                AxisLocked),
+                TranslationX: AxisFree,
+                TranslationY: AxisLocked,
+                TranslationZ: AxisFree,
+                RotationX: AxisLocked,
+                RotationY: AxisFree,
+                RotationZ: AxisLocked),
             GravityScale: ToSingle(NeutralCommandIntent))));
 
     private DynamicsAction ToDynamicsAction(FlightWrench wrench) => new(
@@ -212,8 +218,7 @@ internal sealed class SpaceFlight : IDisposable
         new Vector3(ToSingle(NeutralCommandIntent), ToSingle(wrench.TorqueY), ToSingle(NeutralCommandIntent)),
         Vector3.Zero,
         Vector3.Zero,
-        WakeBody,
-        NoReservedValue);
+        Wake: true);
 
     private static FlightBodyState ToBodyState(FlightReadout value) => new(
         value.Position,
@@ -256,4 +261,5 @@ internal sealed class SpaceFlight : IDisposable
 internal readonly record struct FlightAdmission(
     bool Published,
     ulong FixedStepCount,
-    ulong UpdateSequence);
+    ulong UpdateSequence,
+    bool FaultRequested);

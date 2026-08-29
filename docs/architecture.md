@@ -11,7 +11,7 @@ Product.Game (safe C# product state and domain behavior)
 Product.NativeProduct (thin generated NativeAOT composition)
   -> Engine binding and product generators
 
-ui/host (static DOM-only host page)
+ui/main.js (product DOM UI copied into the generated browser bundle)
   -> no gameplay state, world renderer, canvas, or input authority
 ```
 

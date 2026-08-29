@@ -6,10 +6,10 @@ namespace Rusty.Space.Product.Lifecycle;
 /// Host-provided admission evidence. It is not a local simulation timestep.
 /// </summary>
 public readonly record struct HostUpdateEvidence(
-    uint Kind,
-    ulong Observation,
+    ProductUpdateMode Mode,
+    ulong ObservedHostTimeNanoseconds,
     int InputCount)
 {
     internal static HostUpdateEvidence From(ProductUpdate update) =>
-        new(update.Kind, update.Observation, update.Input.Length);
+        new(update.Facts.Mode, update.Facts.ObservedHostTimeNanoseconds, update.Input.Length);
 }

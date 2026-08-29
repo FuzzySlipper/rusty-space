@@ -4,6 +4,7 @@ using Rusty.Space.Product.Field;
 using Rusty.Space.Product.Flight;
 using Rusty.Space.Product.Presentation;
 using Rusty.Space.Product.Tuning;
+using Rusty.Space.Product.Viewing;
 
 namespace Rusty.Space.Product.Composition;
 
@@ -21,9 +22,16 @@ internal sealed class SpaceProductComposition
             Tuning.Field);
         try
         {
-            SpacePresentation presentation = new(Engine.Appearance, Tuning.Field, Tuning.Presentation);
+            SpacePresentation presentation = new(Engine.Appearance, Engine.Ui, Tuning.Field, Tuning.Presentation);
+            TrackingCamera camera = new(
+                Engine.CameraView,
+                Tuning.Camera,
+                flight.Readout,
+                flight.FixedStepCount,
+                flight.ResetCount);
             Flight = flight;
             Presentation = presentation;
+            Camera = camera;
         }
         catch
         {
@@ -41,4 +49,13 @@ internal sealed class SpaceProductComposition
     internal SpaceFlight Flight { get; }
 
     internal SpacePresentation Presentation { get; }
+
+    internal TrackingCamera Camera { get; }
+
+    internal void Dispose()
+    {
+        Camera.Dispose();
+        Presentation.Dispose();
+        Flight.Dispose();
+    }
 }

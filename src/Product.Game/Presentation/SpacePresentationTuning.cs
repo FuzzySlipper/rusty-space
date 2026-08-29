@@ -1,22 +1,12 @@
+using System;
 using System.Numerics;
 using Rusty.Engine;
 
 namespace Rusty.Space.Product.Presentation;
 
 internal sealed record SpacePresentationTuning(
-    Vector3 ShipScale,
     float ShipHeight,
     Color ShipColor,
-    float HeadingLength,
-    float HeadingThickness,
-    float HeadingHeight,
-    Color HeadingColor,
-    float VelocitySeconds,
-    float MinimumVelocityLength,
-    float MaximumVelocityLength,
-    float VelocityThickness,
-    float VelocityHeight,
-    Color VelocityColor,
     float PlanetDiameter,
     float PlanetHeight,
     Color PlanetColor,
@@ -31,26 +21,8 @@ internal sealed record SpacePresentationTuning(
 
     internal SpacePresentationTuning Validate()
     {
-        ValidatePositiveFinite(ShipScale.X, nameof(ShipScale));
-        ValidatePositiveFinite(ShipScale.Y, nameof(ShipScale));
-        ValidatePositiveFinite(ShipScale.Z, nameof(ShipScale));
         ValidateFinite(ShipHeight, nameof(ShipHeight));
         ValidateColor(ShipColor, nameof(ShipColor));
-        ValidatePositiveFinite(HeadingLength, nameof(HeadingLength));
-        ValidatePositiveFinite(HeadingThickness, nameof(HeadingThickness));
-        ValidateFinite(HeadingHeight, nameof(HeadingHeight));
-        ValidateColor(HeadingColor, nameof(HeadingColor));
-        ValidatePositiveFinite(VelocitySeconds, nameof(VelocitySeconds));
-        ValidatePositiveFinite(MinimumVelocityLength, nameof(MinimumVelocityLength));
-        ValidatePositiveFinite(MaximumVelocityLength, nameof(MaximumVelocityLength));
-        if (MinimumVelocityLength > MaximumVelocityLength)
-        {
-            throw new ArgumentOutOfRangeException(nameof(MinimumVelocityLength));
-        }
-
-        ValidatePositiveFinite(VelocityThickness, nameof(VelocityThickness));
-        ValidateFinite(VelocityHeight, nameof(VelocityHeight));
-        ValidateColor(VelocityColor, nameof(VelocityColor));
         ValidatePositiveFinite(PlanetDiameter, nameof(PlanetDiameter));
         ValidateFinite(PlanetHeight, nameof(PlanetHeight));
         ValidateColor(PlanetColor, nameof(PlanetColor));

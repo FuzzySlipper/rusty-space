@@ -1,9 +1,10 @@
-using System.Numerics;
+using System;
 using Rusty.Engine;
 using Rusty.Space.Product.Field;
 using Rusty.Space.Product.Flight;
 using Rusty.Space.Product.Navigation;
 using Rusty.Space.Product.Presentation;
+using Rusty.Space.Product.Viewing;
 
 namespace Rusty.Space.Product.Tuning;
 
@@ -11,7 +12,8 @@ internal sealed record SpaceTuning(
     FlightTuning Flight,
     FlightBodyTuning FlightBody,
     FieldTuning Field,
-    SpacePresentationTuning Presentation)
+    SpacePresentationTuning Presentation,
+    CameraTuning Camera)
 {
     internal static SpaceTuning Defaults { get; } = new(
         Flight: new(
@@ -51,26 +53,24 @@ internal sealed record SpaceTuning(
             LateralResponse: 1.8,
             TurbulenceResponse: 0.8),
         Presentation: new(
-            ShipScale: new Vector3(1.4f, 0.3f, 0.7f),
             ShipHeight: 0.10f,
             ShipColor: new Color(0.23f, 0.79f, 1.0f, 1.0f),
-            HeadingLength: 2.0f,
-            HeadingThickness: 0.05f,
-            HeadingHeight: 0.55f,
-            HeadingColor: new Color(0.85f, 1.0f, 1.0f, 1.0f),
-            VelocitySeconds: 0.60f,
-            MinimumVelocityLength: 0.15f,
-            MaximumVelocityLength: 12.0f,
-            VelocityThickness: 0.06f,
-            VelocityHeight: 0.25f,
-            VelocityColor: new Color(1.0f, 0.55f, 0.10f, 1.0f),
             PlanetDiameter: 1.4f,
             PlanetHeight: 0.0f,
             PlanetColor: new Color(0.96f, 0.72f, 0.25f, 1.0f),
             WakeLength: 7.0f,
             WakeThickness: 0.045f,
             WakeHeight: -0.30f,
-            WakeColor: new Color(0.92f, 0.35f, 0.88f, 1.0f)));
+            WakeColor: new Color(0.92f, 0.35f, 0.88f, 1.0f)),
+        Camera: new(
+            PitchDegrees: -55.0,
+            YawDegrees: 90.0,
+            HeightAboveShip: 15.0,
+            BackDistance: 10.5,
+            PositionSmoothing: TimeSpan.FromSeconds(0.35),
+            FovYDegrees: 55.0,
+            NearPlane: 0.1,
+            FarPlane: 500.0));
 
     internal SpaceTuning Validate() => this with
     {
@@ -78,5 +78,6 @@ internal sealed record SpaceTuning(
         FlightBody = FlightBody.Validate(),
         Field = Field.Validate(),
         Presentation = Presentation.Validate(),
+        Camera = Camera.Validate(),
     };
 }
