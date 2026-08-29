@@ -30,6 +30,7 @@ internal sealed class SpacePresentation
     private readonly Appearance wakeAppearance;
     private readonly UiStream hudStream;
     private ulong hudSequence;
+    private bool disposed;
 
     internal SpacePresentation(
         IAppearanceService appearance,
@@ -41,10 +42,34 @@ internal sealed class SpacePresentation
         this.ui = ui ?? throw new ArgumentNullException(nameof(ui));
         this.fieldTuning = fieldTuning.Validate();
         this.tuning = tuning.Validate();
-        shipAppearance = CreateShipMesh(this.tuning.ShipColor);
-        planetAppearance = CreateSphere(this.tuning.PlanetColor);
-        wakeAppearance = CreateCube(this.tuning.WakeColor);
-        hudStream = this.ui.OpenStream(new UiStreamRequest(HudStreamName, HudContract));
+
+        Appearance? acquiredShip = null;
+        Appearance? acquiredPlanet = null;
+        Appearance? acquiredWake = null;
+        UiStream? acquiredHud = null;
+        try
+        {
+            acquiredShip = CreateShipMesh(this.tuning.ShipColor);
+            acquiredPlanet = CreateSphere(this.tuning.PlanetColor);
+            acquiredWake = CreateCube(this.tuning.WakeColor);
+            acquiredHud = this.ui.OpenStream(new UiStreamRequest(HudStreamName, HudContract));
+
+            shipAppearance = acquiredShip;
+            planetAppearance = acquiredPlanet;
+            wakeAppearance = acquiredWake;
+            hudStream = acquiredHud;
+        }
+        catch (Exception constructionFailure)
+        {
+            List<Exception> failures = [constructionFailure];
+            failures.AddRange(DisposeAll([acquiredHud, acquiredWake, acquiredPlanet, acquiredShip]));
+            if (failures.Count == 1)
+            {
+                throw;
+            }
+
+            throw new AggregateException("Space presentation construction and lease cleanup failed.", failures);
+        }
     }
 
     internal void Publish(FlightReadout readout)
@@ -101,7 +126,40 @@ internal sealed class SpacePresentation
 
     internal void Dispose()
     {
-        hudStream.Dispose();
+        if (disposed)
+        {
+            return;
+        }
+
+        disposed = true;
+        List<Exception> failures = DisposeAll([hudStream, wakeAppearance, planetAppearance, shipAppearance]);
+        if (failures.Count > 0)
+        {
+            throw new AggregateException("Space presentation lease cleanup failed.", failures);
+        }
+    }
+
+    private static List<Exception> DisposeAll(IEnumerable<IDisposable?> values)
+    {
+        List<Exception> failures = [];
+        foreach (IDisposable? value in values)
+        {
+            if (value is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                value.Dispose();
+            }
+            catch (Exception failure)
+            {
+                failures.Add(failure);
+            }
+        }
+
+        return failures;
     }
 
     // The authored dart's nose runs along local +X, which matches the
