@@ -8,9 +8,44 @@
     <AnalysisLevel>latest</AnalysisLevel>
     <Deterministic>true</Deterministic>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <!-- The immutable SDK owns the generated CoreCLR and NativeAOT
+         composition below obj. Engine source use is an explicit contributor
+         override, never an adjacent-checkout default. -->
+    <RustyEngineSdkPackageVersion>0.1.0-dev.cabba0f</RustyEngineSdkPackageVersion>
+    <RustyEngineProductEntryType>Rusty.Space.Product.SpaceProduct</RustyEngineProductEntryType>
+    <RustyEngineProductId>rusty-space</RustyEngineProductId>
+    <RustyEngineProductTitle>Rusty Space</RustyEngineProductTitle>
+    <RustyEngineProductUiRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../ui'))</RustyEngineProductUiRoot>
+    <RustyEngineProductContentRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../content'))</RustyEngineProductContentRoot>
+    <RustyEngineProductUiEntry>main.js</RustyEngineProductUiEntry>
+    <RustyEngineProductUiProjectionStream>rusty-space</RustyEngineProductUiProjectionStream>
+    <RustyEngineProductUiProjectionContract>rusty.space.hud</RustyEngineProductUiProjectionContract>
+    <RustyEngineProductLifecycleMode>realtime</RustyEngineProductLifecycleMode>
+    <RustyEngineProductFixedStepHz>60</RustyEngineProductFixedStepHz>
+    <RustyEngineProductFixedStepMaxCatchUpSteps>4</RustyEngineProductFixedStepMaxCatchUpSteps>
+    <RustyEngineWatchPaths>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)'));$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../ui'));$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../content'))</RustyEngineWatchPaths>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../../rusty-engine/csharp/Rusty.Engine/Rusty.Engine.csproj" />
+    <PackageReference Include="Rusty.Engine" Version="$(RustyEngineSdkPackageVersion)">
+      <!-- An Engine contributor may explicitly supply a matching source
+           project. The package remains the ordinary product default. -->
+      <ExcludeAssets Condition="'$(RustyEngineUseSourceDevelopment)' == 'true'">compile;runtime</ExcludeAssets>
+    </PackageReference>
+    <RustyEngineProductInputIntent Include="space.flight.thrust" Value="digital" />
+    <RustyEngineProductInputIntent Include="space.flight.turn-left" Value="digital" />
+    <RustyEngineProductInputIntent Include="space.flight.turn-right" Value="digital" />
+    <RustyEngineProductInputIntent Include="space.flight.reset" Value="digital" />
+    <RustyEngineProductInputIntent Include="space.flight.abort" Value="digital" />
+    <RustyEngineProductInputIntent Include="space.camera.zoom" Value="axis" />
+    <RustyEngineProductInputMapping Include="space.flight.thrust-held" Intent="space.flight.thrust" Trigger="key:key-w:held" />
+    <RustyEngineProductInputMapping Include="space.flight.thrust-released" Intent="space.flight.thrust" Trigger="key:key-w:released" />
+    <RustyEngineProductInputMapping Include="space.flight.turn-left-held" Intent="space.flight.turn-left" Trigger="key:key-a:held" />
+    <RustyEngineProductInputMapping Include="space.flight.turn-left-released" Intent="space.flight.turn-left" Trigger="key:key-a:released" />
+    <RustyEngineProductInputMapping Include="space.flight.turn-right-held" Intent="space.flight.turn-right" Trigger="key:key-d:held" />
+    <RustyEngineProductInputMapping Include="space.flight.turn-right-released" Intent="space.flight.turn-right" Trigger="key:key-d:released" />
+    <RustyEngineProductInputMapping Include="space.flight.reset-pressed" Intent="space.flight.reset" Trigger="key:key-r:pressed" />
+    <RustyEngineProductInputMapping Include="space.flight.abort-pressed" Intent="space.flight.abort" Trigger="key:key-f:pressed" />
+    <RustyEngineProductInputMapping Include="space.camera.zoom-wheel" Intent="space.camera.zoom" Trigger="wheel:y" />
   </ItemGroup>
 </Project>

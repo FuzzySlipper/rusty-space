@@ -42,6 +42,13 @@ public sealed class SpaceProduct : IEngineProduct
         lifecycle = SpaceLifecycleState.Running;
     }
 
+    public void Attach()
+    {
+        // The Engine owns host attachment. Space retains its product state and
+        // presentation across a browser reconnect, so attachment does not
+        // start a second simulation or reset the flight model.
+    }
+
     public ProductUpdateResult Update(ProductUpdate update)
     {
         RequireState(SpaceLifecycleState.Running, nameof(Update));
