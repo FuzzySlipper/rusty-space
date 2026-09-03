@@ -38,7 +38,7 @@ public sealed class SpaceProduct : IEngineProduct
     {
         RequireState(SpaceLifecycleState.Created, nameof(Start));
         composition.Presentation.Publish(composition.Flight.Readout);
-        FollowCamera();
+        FollowCamera(ReadOnlySpan<ProductInputEvent>.Empty);
         lifecycle = SpaceLifecycleState.Running;
     }
 
@@ -53,13 +53,17 @@ public sealed class SpaceProduct : IEngineProduct
             return ProductUpdateResult.ReportFault;
         }
 
+        if (admission.Published)
+        {
+            composition.Presentation.Publish(composition.Flight.Readout);
+        }
+
+        FollowCamera(update.Input);
         if (!admission.Published)
         {
             return ProductUpdateResult.None;
         }
 
-        composition.Presentation.Publish(composition.Flight.Readout);
-        FollowCamera();
         lastHostUpdate = HostUpdateEvidence.From(update);
         admittedUpdateCount = checked(admittedUpdateCount + 1UL);
         return ProductUpdateResult.None;
@@ -78,7 +82,7 @@ public sealed class SpaceProduct : IEngineProduct
         RequireState(SpaceLifecycleState.Running, nameof(Restart));
         composition.Flight.ResetFlight();
         composition.Presentation.Publish(composition.Flight.Readout);
-        FollowCamera();
+        FollowCamera(ReadOnlySpan<ProductInputEvent>.Empty);
     }
 
     public void Pause()
@@ -95,11 +99,16 @@ public sealed class SpaceProduct : IEngineProduct
 
     public void Shutdown()
     {
-        if (lifecycle == SpaceLifecycleState.Disposed)
+        if (lifecycle is SpaceLifecycleState.Shutdown or SpaceLifecycleState.Disposed)
         {
-            throw new ObjectDisposedException(nameof(SpaceProduct));
+            return;
         }
 
+        // The Engine opens a staged service call around Shutdown. Retire the
+        // retained projection here, but leave the terminal runtime/context to
+        // reclaim its own lease-backed resources. The current safe C# surface
+        // has no post-commit acknowledgement for transactional lease release.
+        composition.Presentation.RetireRetainedSnapshot();
         lifecycle = SpaceLifecycleState.Shutdown;
     }
 
@@ -110,19 +119,17 @@ public sealed class SpaceProduct : IEngineProduct
             return;
         }
 
-        if (lifecycle != SpaceLifecycleState.Shutdown)
-        {
-            Shutdown();
-        }
-
-        composition.Dispose();
+        // NativeAOT Destroy is deliberately not a staged Engine call. The
+        // terminal Engine runtime/context reclaims its lease-backed resources,
+        // and a create-time destroy must likewise avoid calling its services.
         lifecycle = SpaceLifecycleState.Disposed;
     }
 
-    private void FollowCamera() => composition.Camera.Follow(
+    private void FollowCamera(ReadOnlySpan<ProductInputEvent> input) => composition.Camera.Follow(
         composition.Flight.Readout,
         composition.Flight.FixedStepCount,
-        composition.Flight.ResetCount);
+        composition.Flight.ResetCount,
+        input);
 
     private void RequireState(SpaceLifecycleState expected, string operation)
     {

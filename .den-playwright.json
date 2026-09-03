@@ -1,0 +1,20 @@
+{
+  "project": "rusty-space",
+  "serve": {
+    "command": "./scripts/run-csharp.sh --bind-host {host} --port {port}",
+    "preferredPort": 0,
+    "healthUrl": "/ui/main.js",
+    "readyText": "Rusty Space",
+    "reusePolicy": "broker_owned",
+    "startupTimeout": "180s"
+  },
+  "playtest": {
+    "startPath": "/",
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    },
+    "headed": false,
+    "recordVideo": false
+  }
+}

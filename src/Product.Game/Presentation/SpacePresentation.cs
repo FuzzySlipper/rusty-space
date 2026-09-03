@@ -20,6 +20,7 @@ internal sealed class SpacePresentation
     private const float NeutralHeadingRadians = 0.0f;
     private const float HalfLength = 0.5f;
     private const float UniformScale = 1.0f;
+    private const ulong FirstStarObjectId = 1_000UL;
 
     private readonly IAppearanceService appearance;
     private readonly IUiService ui;
@@ -28,9 +29,10 @@ internal sealed class SpacePresentation
     private readonly Appearance shipAppearance;
     private readonly Appearance planetAppearance;
     private readonly Appearance wakeAppearance;
+    private readonly Appearance starAppearance;
     private readonly UiStream hudStream;
     private ulong hudSequence;
-    private bool disposed;
+    private bool retainedSnapshotRetired;
 
     internal SpacePresentation(
         IAppearanceService appearance,
@@ -43,33 +45,15 @@ internal sealed class SpacePresentation
         this.fieldTuning = fieldTuning.Validate();
         this.tuning = tuning.Validate();
 
-        Appearance? acquiredShip = null;
-        Appearance? acquiredPlanet = null;
-        Appearance? acquiredWake = null;
-        UiStream? acquiredHud = null;
-        try
-        {
-            acquiredShip = CreateShipMesh(this.tuning.ShipColor);
-            acquiredPlanet = CreateSphere(this.tuning.PlanetColor);
-            acquiredWake = CreateCube(this.tuning.WakeColor);
-            acquiredHud = this.ui.OpenStream(new UiStreamRequest(HudStreamName, HudContract));
-
-            shipAppearance = acquiredShip;
-            planetAppearance = acquiredPlanet;
-            wakeAppearance = acquiredWake;
-            hudStream = acquiredHud;
-        }
-        catch (Exception constructionFailure)
-        {
-            List<Exception> failures = [constructionFailure];
-            failures.AddRange(DisposeAll([acquiredHud, acquiredWake, acquiredPlanet, acquiredShip]));
-            if (failures.Count == 1)
-            {
-                throw;
-            }
-
-            throw new AggregateException("Space presentation construction and lease cleanup failed.", failures);
-        }
+        // A failed create callback is discarded by the staged Engine call, so
+        // this constructor deliberately does not issue individual release
+        // calls that could desynchronize generated lease wrappers from a
+        // later transaction rollback.
+        shipAppearance = CreateShipMesh(this.tuning.ShipColor);
+        planetAppearance = CreateSphere(this.tuning.PlanetColor);
+        wakeAppearance = CreateCube(this.tuning.WakeColor);
+        starAppearance = CreateSphere(this.tuning.StarColor);
+        hudStream = this.ui.OpenStream(new UiStreamRequest(HudStreamName, HudContract));
     }
 
     internal void Publish(FlightReadout readout)
@@ -80,28 +64,66 @@ internal sealed class SpacePresentation
 
     private void PublishAppearance(FlightReadout readout)
     {
-        AppearanceFact[] facts =
-        [
-            new AppearanceFact(
+        int starWidth = checked((tuning.StarGridRadius * 2) + 1);
+        int starCount = checked(starWidth * starWidth);
+        AppearanceFact[] facts = new AppearanceFact[checked(starCount + 3)];
+        facts[0] = new AppearanceFact(
                 (ulong)SpaceAppearanceObject.Ship,
                 ShipTransform(readout),
                 shipAppearance,
                 Visible: true,
-                RenderLayer.Scene),
-            new AppearanceFact(
+                RenderLayer.Scene);
+        facts[1] = new AppearanceFact(
                 (ulong)SpaceAppearanceObject.Planet,
                 PlanetTransform(),
                 planetAppearance,
                 Visible: true,
-                RenderLayer.Scene),
-            new AppearanceFact(
+                RenderLayer.Scene);
+        facts[2] = new AppearanceFact(
                 (ulong)SpaceAppearanceObject.Wake,
                 WakeTransform(),
                 wakeAppearance,
                 Visible: true,
-                RenderLayer.Scene),
-        ];
+                RenderLayer.Scene);
+        PublishStars(facts.AsSpan(3));
         appearance.PublishSnapshot(facts);
+    }
+
+    private void PublishStars(Span<AppearanceFact> destination)
+    {
+        int index = 0;
+        for (int gridZ = -tuning.StarGridRadius; gridZ <= tuning.StarGridRadius; gridZ++)
+        {
+            for (int gridX = -tuning.StarGridRadius; gridX <= tuning.StarGridRadius; gridX++)
+            {
+                float diameter = tuning.StarDiameter * StarScale(gridX, gridZ);
+                destination[index] = new AppearanceFact(
+                    checked(FirstStarObjectId + (ulong)index),
+                    new Transform(
+                        new Vector3(
+                            (gridX * tuning.StarSpacing) + StarJitter(gridX, gridZ, 17),
+                            tuning.StarHeight,
+                            (gridZ * tuning.StarSpacing) + StarJitter(gridX, gridZ, 43)),
+                        Quaternion.Identity,
+                        new Vector3(diameter, diameter, diameter)),
+                    starAppearance,
+                    Visible: true,
+                    RenderLayer.Scene);
+                index++;
+            }
+        }
+    }
+
+    private static float StarJitter(int gridX, int gridZ, int salt)
+    {
+        int value = unchecked((gridX * 73_856_093) ^ (gridZ * 19_349_663) ^ salt);
+        return ((uint)value % 1_001U) / 1_000.0f * 3.0f - 1.5f;
+    }
+
+    private static float StarScale(int gridX, int gridZ)
+    {
+        int value = unchecked((gridX * 83_492_791) ^ (gridZ * 2_971_215) ^ 101);
+        return 0.70f + (((uint)value % 601U) / 1_000.0f);
     }
 
     // DOM-layer HUD facts: planar heading (radians) and planar speed. The
@@ -124,42 +146,18 @@ internal sealed class SpacePresentation
     private static double PlanarSpeed(PlanarVector velocity) => Math.Sqrt(
         velocity.X * velocity.X + velocity.Z * velocity.Z);
 
-    internal void Dispose()
+    internal void RetireRetainedSnapshot()
     {
-        if (disposed)
+        if (retainedSnapshotRetired)
         {
             return;
         }
 
-        disposed = true;
-        List<Exception> failures = DisposeAll([hudStream, wakeAppearance, planetAppearance, shipAppearance]);
-        if (failures.Count > 0)
-        {
-            throw new AggregateException("Space presentation lease cleanup failed.", failures);
-        }
-    }
-
-    private static List<Exception> DisposeAll(IEnumerable<IDisposable?> values)
-    {
-        List<Exception> failures = [];
-        foreach (IDisposable? value in values)
-        {
-            if (value is null)
-            {
-                continue;
-            }
-
-            try
-            {
-                value.Dispose();
-            }
-            catch (Exception failure)
-            {
-                failures.Add(failure);
-            }
-        }
-
-        return failures;
+        // This call has no generated lease-wrapper state to advance. Mark it
+        // complete only after the Engine accepts the staged empty snapshot so
+        // a failed Shutdown remains safely retryable.
+        appearance.PublishSnapshot(ReadOnlySpan<AppearanceFact>.Empty);
+        retainedSnapshotRetired = true;
     }
 
     // The authored dart's nose runs along local +X, which matches the

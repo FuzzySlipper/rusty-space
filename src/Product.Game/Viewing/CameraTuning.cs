@@ -8,7 +8,10 @@ internal sealed record CameraTuning(
     TimeSpan PositionSmoothing,
     double FovYDegrees,
     double NearPlane,
-    double FarPlane)
+    double FarPlane,
+    double MinimumZoomScale,
+    double MaximumZoomScale,
+    double WheelZoomSensitivity)
 {
     internal CameraTuning Validate()
     {
@@ -35,6 +38,14 @@ internal sealed record CameraTuning(
         {
             throw new ArgumentOutOfRangeException(nameof(FarPlane));
         }
+
+        ValidatePositive(MinimumZoomScale, nameof(MinimumZoomScale));
+        if (!double.IsFinite(MaximumZoomScale) || MaximumZoomScale < MinimumZoomScale)
+        {
+            throw new ArgumentOutOfRangeException(nameof(MaximumZoomScale));
+        }
+
+        ValidatePositive(WheelZoomSensitivity, nameof(WheelZoomSensitivity));
 
         return this;
     }

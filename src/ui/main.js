@@ -13,7 +13,7 @@ export function mountProductUi(root, context) {
   panel.append(title);
 
   const controls = document.createElement('p');
-  controls.textContent = 'W thrusts. A and D steer. R resets flight. F aborts.';
+  controls.textContent = 'W thrusts. A and D steer. Mouse wheel zooms. R resets flight. F aborts.';
   panel.append(controls);
 
   const hud = document.createElement('p');

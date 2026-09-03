@@ -14,6 +14,8 @@ namespace Rusty.Space.Product.Viewing;
 /// </summary>
 internal sealed class TrackingCamera : IDisposable
 {
+    private static ReadOnlySpan<byte> ZoomIntent => "space.camera.zoom"u8;
+
     // The simulated flight clock advances in fixed 1/60 s steps; camera
     // smoothing runs on that same clock so pauses and resets never invent
     // wall-clock time.
@@ -34,6 +36,7 @@ internal sealed class TrackingCamera : IDisposable
     private Vector3 chasePosition;
     private ulong lastFixedStepCount;
     private ulong lastResetCount;
+    private double zoomScale = 1.0;
     private bool positioned;
     private bool disposed;
 
@@ -54,28 +57,39 @@ internal sealed class TrackingCamera : IDisposable
         this.cameraView.SetActiveCamera(camera);
     }
 
-    internal void Follow(FlightReadout readout, ulong fixedStepCount, ulong resetCount)
+    internal void Follow(
+        FlightReadout readout,
+        ulong fixedStepCount,
+        ulong resetCount,
+        ReadOnlySpan<ProductInputEvent> input)
     {
         ThrowIfDisposed();
+        double nextZoomScale = ResolveZoomScale(input);
+        bool nextPositioned = positioned;
         if (resetCount != lastResetCount)
         {
-            lastResetCount = resetCount;
-            positioned = false;
+            nextPositioned = false;
         }
 
-        Vector3 target = AnchorPosition(readout.Position);
-        if (!positioned)
+        Vector3 target = AnchorPosition(readout.Position, nextZoomScale);
+        Vector3 nextChasePosition;
+        if (!nextPositioned)
         {
-            chasePosition = target;
-            positioned = true;
+            nextChasePosition = target;
+            nextPositioned = true;
         }
         else
         {
-            chasePosition += (target - chasePosition) * ToSingle(FollowFraction(fixedStepCount));
+            nextChasePosition = chasePosition
+                + ((target - chasePosition) * ToSingle(FollowFraction(fixedStepCount)));
         }
 
-        cameraView.UpdateCamera(new CameraUpdateRequest(camera, Descriptor(chasePosition)));
+        cameraView.UpdateCamera(new CameraUpdateRequest(camera, Descriptor(nextChasePosition)));
+        chasePosition = nextChasePosition;
+        positioned = nextPositioned;
+        zoomScale = nextZoomScale;
         lastFixedStepCount = fixedStepCount;
+        lastResetCount = resetCount;
     }
 
     public void Dispose()
@@ -89,15 +103,47 @@ internal sealed class TrackingCamera : IDisposable
         camera.Dispose();
     }
 
-    private Vector3 AnchorPosition(PlanarVector shipPosition)
+    private Vector3 AnchorPosition(PlanarVector shipPosition) => AnchorPosition(shipPosition, zoomScale);
+
+    private Vector3 AnchorPosition(PlanarVector shipPosition, double scale)
     {
         double yawRadians = tuning.YawDegrees * Math.PI / 180.0;
         double forwardX = Math.Sin(yawRadians);
         double forwardZ = YAxisForwardZ * Math.Cos(yawRadians);
         return new Vector3(
-            ToSingle(shipPosition.X - (forwardX * tuning.BackDistance)),
-            ToSingle(tuning.HeightAboveShip),
-            ToSingle(shipPosition.Z - (forwardZ * tuning.BackDistance)));
+            ToSingle(shipPosition.X - (forwardX * tuning.BackDistance * scale)),
+            ToSingle(tuning.HeightAboveShip * scale),
+            ToSingle(shipPosition.Z - (forwardZ * tuning.BackDistance * scale)));
+    }
+
+    private double ResolveZoomScale(ReadOnlySpan<ProductInputEvent> input)
+    {
+        double mappedDelta = 0.0;
+        bool hasMappedZoom = false;
+        foreach (ProductInputEvent inputEvent in input)
+        {
+            if (inputEvent.Kind == InputEventKind.MappedAxis
+                && inputEvent.Intent.Span.SequenceEqual(ZoomIntent))
+            {
+                hasMappedZoom = true;
+                mappedDelta += inputEvent.X;
+            }
+        }
+
+        double wheelDelta = mappedDelta;
+        if (!hasMappedZoom)
+        {
+            foreach (ProductInputEvent inputEvent in input)
+            {
+                if (inputEvent.Kind == InputEventKind.Wheel)
+                {
+                    wheelDelta += inputEvent.Y;
+                }
+            }
+        }
+
+        double requested = zoomScale * Math.Exp(wheelDelta * tuning.WheelZoomSensitivity);
+        return Math.Clamp(requested, tuning.MinimumZoomScale, tuning.MaximumZoomScale);
     }
 
     private CameraDescriptor Descriptor(Vector3 position) => new(

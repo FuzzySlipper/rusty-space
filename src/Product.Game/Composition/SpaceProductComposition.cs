@@ -52,10 +52,4 @@ internal sealed class SpaceProductComposition
 
     internal TrackingCamera Camera { get; }
 
-    internal void Dispose()
-    {
-        Camera.Dispose();
-        Presentation.Dispose();
-        Flight.Dispose();
-    }
 }

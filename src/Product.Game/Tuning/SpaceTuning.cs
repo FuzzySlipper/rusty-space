@@ -18,10 +18,10 @@ internal sealed record SpaceTuning(
     internal static SpaceTuning Defaults { get; } = new(
         Flight: new(
             MaximumSpeed: 12.0,
-            MaximumThrust: 18.0,
-            MaximumTurnRate: 3.0,
-            ThrottleResponse: TimeSpan.FromSeconds(0.08),
-            SteeringResponse: TimeSpan.FromSeconds(0.12)),
+            MaximumThrust: 6.0,
+            MaximumTurnRate: 2.1,
+            ThrottleResponse: TimeSpan.FromSeconds(0.20),
+            SteeringResponse: TimeSpan.FromSeconds(0.25)),
         FlightBody: new(
             SpawnPosition: PlanarVector.Zero,
             SpawnHeight: 0.0,
@@ -30,7 +30,7 @@ internal sealed record SpaceTuning(
             HalfHeight: 0.25,
             Mass: 2.0),
         Field: new(
-            Coupling: 0.55,
+            Coupling: 0.0,
             PlanetPosition: new PlanarVector(14.0, 0.0),
             StellarFlow: new PlanarVector(0.0, 1.75),
             StellarIntensity: 0.24,
@@ -61,16 +61,24 @@ internal sealed record SpaceTuning(
             WakeLength: 7.0f,
             WakeThickness: 0.045f,
             WakeHeight: -0.30f,
-            WakeColor: new Color(0.92f, 0.35f, 0.88f, 1.0f)),
+            WakeColor: new Color(0.92f, 0.35f, 0.88f, 1.0f),
+            StarGridRadius: 8,
+            StarSpacing: 12.0f,
+            StarHeight: -0.65f,
+            StarDiameter: 0.16f,
+            StarColor: new Color(0.82f, 0.90f, 1.0f, 1.0f)),
         Camera: new(
             PitchDegrees: -55.0,
             YawDegrees: 90.0,
-            HeightAboveShip: 15.0,
-            BackDistance: 10.5,
+            HeightAboveShip: 24.0,
+            BackDistance: 17.0,
             PositionSmoothing: TimeSpan.FromSeconds(0.35),
             FovYDegrees: 55.0,
             NearPlane: 0.1,
-            FarPlane: 500.0));
+            FarPlane: 500.0,
+            MinimumZoomScale: 0.65,
+            MaximumZoomScale: 2.5,
+            WheelZoomSensitivity: 0.003));
 
     internal SpaceTuning Validate() => this with
     {

@@ -34,10 +34,25 @@ fi
 
 node "$repo_root/scripts/generate-browser-bundle.mjs" "$browser_bundle"
 dotnet publish "$product_project" --configuration Release --runtime linux-x64 --self-contained true
-cargo run --manifest-path "$runtime_manifest" -p csharp-product-runtime -- \
+cargo run --manifest-path "$runtime_manifest" -p csharp-product-runtime --bin csharp-product-runtime -- \
   --library "$product_library" \
   --bundle-dir "$browser_bundle" \
   --content-dir "$content_root" \
   --mode realtime \
+  --direct-intent space.flight.thrust=digital \
+  --direct-intent space.flight.turn-left=digital \
+  --direct-intent space.flight.turn-right=digital \
+  --direct-intent space.flight.reset=digital \
+  --direct-intent space.flight.abort=digital \
+  --direct-intent space.camera.zoom=axis \
+  --physical-mapping space.flight.thrust-held=space.flight.thrust:key:key-w:held \
+  --physical-mapping space.flight.thrust-released=space.flight.thrust:key:key-w:released \
+  --physical-mapping space.flight.turn-left-held=space.flight.turn-left:key:key-a:held \
+  --physical-mapping space.flight.turn-left-released=space.flight.turn-left:key:key-a:released \
+  --physical-mapping space.flight.turn-right-held=space.flight.turn-right:key:key-d:held \
+  --physical-mapping space.flight.turn-right-released=space.flight.turn-right:key:key-d:released \
+  --physical-mapping space.flight.reset-pressed=space.flight.reset:key:key-r:pressed \
+  --physical-mapping space.flight.abort-pressed=space.flight.abort:key:key-f:pressed \
+  --physical-mapping space.camera.zoom-wheel=space.camera.zoom:wheel:y \
   --bind-host "$bind_host" \
   --port "$port"

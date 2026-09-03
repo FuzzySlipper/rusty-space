@@ -54,6 +54,14 @@ internal sealed class FlightController
 
     private double AdvanceThrottle(double throttleIntent, TimeSpan step, double currentThrottleLevel)
     {
+        // Classic inertial flight stops adding force as soon as thrust is
+        // released. Acceleration may spool up for feel, but coast begins with
+        // no lingering force and therefore preserves its velocity exactly.
+        if (throttleIntent == MinimumThrottleIntent)
+        {
+            return MinimumThrottleIntent;
+        }
+
         double desiredThrust = throttleIntent * tuning.MaximumThrust;
         double responseFactor = Math.Min(
             step.TotalSeconds / tuning.ThrottleResponse.TotalSeconds,
