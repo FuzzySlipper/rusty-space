@@ -16,8 +16,8 @@ src/ui/main.js (product-owned DOM UI)
   -> staged as product UI; no world renderer or gameplay authority
 ```
 
-The product package is pinned to `Rusty.Engine` `0.1.0-dev.cabba0f` and
-`.runtime/runtime-pack-cabba0f`. These artifacts carry a matching generated
+The product package is pinned to `Rusty.Engine` `0.1.0-dev.cbf35130d06c` and
+`.runtime/runtime-pack-cbf35130d06c`. These artifacts carry a matching generated
 ABI identity. Keep the pair together and let the host reject a mismatch;
 products do not add version negotiation, copied Engine assets, or handwritten
 interop.
@@ -42,8 +42,8 @@ or renderer.
 The standard launch path is:
 
 ```bash
-./.runtime/runtime-pack-cabba0f/bin/rusty dev \
-  --runtime ./.runtime/runtime-pack-cabba0f \
+./.runtime/runtime-pack-cbf35130d06c/bin/rusty dev \
+  --runtime ./.runtime/runtime-pack-cbf35130d06c \
   --project ./src/Product.Game/Product.Game.csproj \
   --live-debug --port 8787
 ```

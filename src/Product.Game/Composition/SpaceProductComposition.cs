@@ -22,7 +22,7 @@ internal sealed class SpaceProductComposition
             Tuning.Field);
         try
         {
-            SpacePresentation presentation = new(Engine.Appearance, Engine.Ui, Tuning.Field, Tuning.Presentation);
+            SpacePresentation presentation = new(Engine.Graphics, Engine.Ui, Tuning.Field, Tuning.Presentation);
             TrackingCamera camera = new(
                 Engine.CameraView,
                 Tuning.Camera,

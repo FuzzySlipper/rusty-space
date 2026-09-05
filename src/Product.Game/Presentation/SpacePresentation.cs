@@ -22,7 +22,7 @@ internal sealed class SpacePresentation
     private const float UniformScale = 1.0f;
     private const ulong FirstStarObjectId = 1_000UL;
 
-    private readonly IAppearanceService appearance;
+    private readonly IGraphicsService appearance;
     private readonly IUiService ui;
     private readonly FieldTuning fieldTuning;
     private readonly SpacePresentationTuning tuning;
@@ -35,7 +35,7 @@ internal sealed class SpacePresentation
     private bool retainedSnapshotRetired;
 
     internal SpacePresentation(
-        IAppearanceService appearance,
+        IGraphicsService appearance,
         IUiService ui,
         FieldTuning fieldTuning,
         SpacePresentationTuning tuning)
@@ -69,18 +69,24 @@ internal sealed class SpacePresentation
         AppearanceFact[] facts = new AppearanceFact[checked(starCount + 3)];
         facts[0] = new AppearanceFact(
                 (ulong)SpaceAppearanceObject.Ship,
+                false,
+                0,
                 ShipTransform(readout),
                 shipAppearance,
                 Visible: true,
                 RenderLayer.Scene);
         facts[1] = new AppearanceFact(
                 (ulong)SpaceAppearanceObject.Planet,
+                false,
+                0,
                 PlanetTransform(),
                 planetAppearance,
                 Visible: true,
                 RenderLayer.Scene);
         facts[2] = new AppearanceFact(
                 (ulong)SpaceAppearanceObject.Wake,
+                false,
+                0,
                 WakeTransform(),
                 wakeAppearance,
                 Visible: true,
@@ -99,6 +105,8 @@ internal sealed class SpacePresentation
                 float diameter = tuning.StarDiameter * StarScale(gridX, gridZ);
                 destination[index] = new AppearanceFact(
                     checked(FirstStarObjectId + (ulong)index),
+                    false,
+                    0,
                     new Transform(
                         new Vector3(
                             (gridX * tuning.StarSpacing) + StarJitter(gridX, gridZ, 17),

@@ -11,7 +11,7 @@
     <!-- The immutable SDK owns the generated CoreCLR and NativeAOT
          composition below obj. Engine source use is an explicit contributor
          override, never an adjacent-checkout default. -->
-    <RustyEngineSdkPackageVersion>0.1.0-dev.cabba0f</RustyEngineSdkPackageVersion>
+    <RustyEngineSdkPackageVersion>0.1.0-dev.cbf35130d06c</RustyEngineSdkPackageVersion>
     <RustyEngineProductEntryType>Rusty.Space.Product.SpaceProduct</RustyEngineProductEntryType>
     <RustyEngineProductId>rusty-space</RustyEngineProductId>
     <RustyEngineProductTitle>Rusty Space</RustyEngineProductTitle>

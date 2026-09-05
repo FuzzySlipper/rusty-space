@@ -49,7 +49,7 @@ infrastructure or fake proof.
   or packaging files are cleaned up.
 
 The root `NuGet.Config` points at the installed local SDK feed. The product is
-pinned to `Rusty.Engine` `0.1.0-dev.cabba0f`; `.runtime/runtime-pack-cabba0f`
+pinned to `Rusty.Engine` `0.1.0-dev.cbf35130d06c`; `.runtime/runtime-pack-cbf35130d06c`
 is its matching `rusty dev` host/runtime. Keep the pair together. Generated
 output, staging directories, and other build residue belong under ignored
 paths and are disposable when they are not owned by a live service.
@@ -57,8 +57,8 @@ paths and are disposable when they are not owned by a live service.
 Ordinary commands use the installed runtime pack directly:
 
 ```bash
-./.runtime/runtime-pack-cabba0f/bin/rusty dev \
-  --runtime ./.runtime/runtime-pack-cabba0f \
+./.runtime/runtime-pack-cbf35130d06c/bin/rusty dev \
+  --runtime ./.runtime/runtime-pack-cbf35130d06c \
   --project ./src/Product.Game/Product.Game.csproj \
   --live-debug --bind-host 127.0.0.1 --port 8787
 ```

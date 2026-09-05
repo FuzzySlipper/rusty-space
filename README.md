@@ -23,14 +23,14 @@ src/
   ui/               product-owned DOM UI only
 content/            canonical product content and authored assets
 .runtime/
-  runtime-pack-cabba0f/  matching `rusty dev` runtime pack (ignored)
+  runtime-pack-cbf35130d06c/  matching `rusty dev` runtime pack (ignored)
   sdk-feed/             matching Rusty.Engine package feed (ignored)
 docs/                current ownership and product design notes
 ```
 
-The installed pair is pinned to Engine revision `cabba0f`:
-`Rusty.Engine` `0.1.0-dev.cabba0f` and
-`.runtime/runtime-pack-cabba0f`. Keep the package and runtime pack matched;
+The installed pair is pinned to Engine revision `cbf35130d06c`:
+`Rusty.Engine` `0.1.0-dev.cbf35130d06c` and
+`.runtime/runtime-pack-cbf35130d06c`. Keep the package and runtime pack matched;
 do not replace one with an older backup. Product content and the exploratory
 design notes under `docs/ideas/` are intentional provenance and should not be
 removed as host cleanup.
@@ -40,8 +40,8 @@ removed as host cleanup.
 Use the installed runtime pack directly:
 
 ```bash
-./.runtime/runtime-pack-cabba0f/bin/rusty dev \
-  --runtime ./.runtime/runtime-pack-cabba0f \
+./.runtime/runtime-pack-cbf35130d06c/bin/rusty dev \
+  --runtime ./.runtime/runtime-pack-cbf35130d06c \
   --project ./src/Product.Game/Product.Game.csproj \
   --live-debug --bind-host 127.0.0.1 --port 8787
 ```
