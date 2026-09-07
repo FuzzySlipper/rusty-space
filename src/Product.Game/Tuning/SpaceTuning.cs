@@ -12,6 +12,9 @@ internal sealed record SpaceTuning(
     FlightTuning Flight,
     FlightBodyTuning FlightBody,
     FieldTuning Field,
+    OrbitalGravityTuning Orbital,
+    DriftCurrentTuning GentleCurrent,
+    DriftCurrentTuning SwiftCurrent,
     SpacePresentationTuning Presentation,
     CameraTuning Camera)
 {
@@ -52,16 +55,54 @@ internal sealed record SpaceTuning(
             ForwardResponse: 0.85,
             LateralResponse: 1.8,
             TurbulenceResponse: 0.8),
+        // The well stays centered on the visible planet so the ship bends
+        // around the body the player already sees. Near-planet pull rivals
+        // full thrust; at spawn range it is a faint crosswind.
+        Orbital: new(
+            Center: new PlanarVector(14.0, 0.0),
+            Strength: 3.0,
+            Swirl: 2.5,
+            Radius: 7.0,
+            MaximumForce: 9.0),
+        // Wide, slow, minor push flowing east far below the spawn line,
+        // clear of the planet well so each can be tested on its own.
+        GentleCurrent: new(
+            Center: new PlanarVector(0.0, -22.0),
+            Direction: PlanarVector.UnitX,
+            Width: 6.0,
+            Length: 64.0,
+            FlowSpeed: 2.2,
+            ResponseGain: 0.9,
+            WaveAmplitude: 0.15,
+            WaveFrequency: 0.25,
+            MaximumForce: 4.0),
+        // Narrow, fast, powerful push flowing east far above the spawn line.
+        SwiftCurrent: new(
+            Center: new PlanarVector(2.0, 22.0),
+            Direction: PlanarVector.UnitX,
+            Width: 2.2,
+            Length: 64.0,
+            FlowSpeed: 8.0,
+            ResponseGain: 2.2,
+            WaveAmplitude: 0.20,
+            WaveFrequency: 0.45,
+            MaximumForce: 14.0),
         Presentation: new(
             ShipHeight: 0.10f,
             ShipColor: new Color(0.23f, 0.79f, 1.0f, 1.0f),
-            PlanetDiameter: 1.4f,
+            PlanetDiameter: 4.0f,
             PlanetHeight: 0.0f,
             PlanetColor: new Color(0.96f, 0.72f, 0.25f, 1.0f),
             WakeLength: 7.0f,
             WakeThickness: 0.045f,
             WakeHeight: -0.30f,
             WakeColor: new Color(0.92f, 0.35f, 0.88f, 1.0f),
+            GentleCurrentDepth: 0.35f,
+            GentleCurrentHeight: -0.32f,
+            GentleCurrentColor: new Color(0.35f, 0.95f, 0.60f, 1.0f),
+            SwiftCurrentDepth: 0.12f,
+            SwiftCurrentHeight: -0.28f,
+            SwiftCurrentColor: new Color(1.0f, 0.38f, 0.18f, 1.0f),
             StarGridRadius: 8,
             StarSpacing: 12.0f,
             StarHeight: -0.65f,
@@ -85,6 +126,9 @@ internal sealed record SpaceTuning(
         Flight = Flight.Validate(),
         FlightBody = FlightBody.Validate(),
         Field = Field.Validate(),
+        Orbital = Orbital.Validate(),
+        GentleCurrent = GentleCurrent.Validate(),
+        SwiftCurrent = SwiftCurrent.Validate(),
         Presentation = Presentation.Validate(),
         Camera = Camera.Validate(),
     };

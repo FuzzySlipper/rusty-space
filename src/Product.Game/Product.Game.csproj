@@ -11,7 +11,7 @@
     <!-- The immutable SDK owns the generated CoreCLR and NativeAOT
          composition below obj. Engine source use is an explicit contributor
          override, never an adjacent-checkout default. -->
-    <RustyEngineSdkPackageVersion>0.1.0-dev.cbf35130d06c</RustyEngineSdkPackageVersion>
+    <RustyEngineSdkPackageVersion>0.1.0-dev.2574cc89fd30.gamepad1</RustyEngineSdkPackageVersion>
     <RustyEngineProductEntryType>Rusty.Space.Product.SpaceProduct</RustyEngineProductEntryType>
     <RustyEngineProductId>rusty-space</RustyEngineProductId>
     <RustyEngineProductTitle>Rusty Space</RustyEngineProductTitle>
@@ -35,8 +35,12 @@
     <RustyEngineProductInputIntent Include="space.flight.thrust" Value="digital" />
     <RustyEngineProductInputIntent Include="space.flight.turn-left" Value="digital" />
     <RustyEngineProductInputIntent Include="space.flight.turn-right" Value="digital" />
+    <RustyEngineProductInputIntent Include="space.flight.turn-left-controller" Value="digital" />
+    <RustyEngineProductInputIntent Include="space.flight.turn-right-controller" Value="digital" />
     <RustyEngineProductInputIntent Include="space.flight.reset" Value="digital" />
     <RustyEngineProductInputIntent Include="space.flight.abort" Value="digital" />
+    <RustyEngineProductInputIntent Include="space.flight.thrust-analog" Value="axis" />
+    <RustyEngineProductInputIntent Include="space.flight.turn-analog" Value="axis" />
     <RustyEngineProductInputIntent Include="space.camera.zoom" Value="axis" />
     <RustyEngineProductInputMapping Include="space.flight.thrust-held" Intent="space.flight.thrust" Trigger="key:key-w:held" />
     <RustyEngineProductInputMapping Include="space.flight.thrust-released" Intent="space.flight.thrust" Trigger="key:key-w:released" />
@@ -46,6 +50,13 @@
     <RustyEngineProductInputMapping Include="space.flight.turn-right-released" Intent="space.flight.turn-right" Trigger="key:key-d:released" />
     <RustyEngineProductInputMapping Include="space.flight.reset-pressed" Intent="space.flight.reset" Trigger="key:key-r:pressed" />
     <RustyEngineProductInputMapping Include="space.flight.abort-pressed" Intent="space.flight.abort" Trigger="key:key-f:pressed" />
+    <RustyEngineProductInputMapping Include="space.flight.turn-left-controller-held" Intent="space.flight.turn-left-controller" Trigger="controller-button:button-4:held" />
+    <RustyEngineProductInputMapping Include="space.flight.turn-left-controller-released" Intent="space.flight.turn-left-controller" Trigger="controller-button:button-4:released" />
+    <RustyEngineProductInputMapping Include="space.flight.turn-right-controller-held" Intent="space.flight.turn-right-controller" Trigger="controller-button:button-5:held" />
+    <RustyEngineProductInputMapping Include="space.flight.turn-right-controller-released" Intent="space.flight.turn-right-controller" Trigger="controller-button:button-5:released" />
+    <RustyEngineProductInputMapping Include="space.flight.reset-controller-pressed" Intent="space.flight.reset" Trigger="controller-button:button-8:pressed" />
+    <RustyEngineProductInputMapping Include="space.flight.thrust-controller-value" Intent="space.flight.thrust-analog" Trigger="controller-button-value:button-7" />
+    <RustyEngineProductInputMapping Include="space.flight.turn-controller-axis" Intent="space.flight.turn-analog" Trigger="controller-axis:axis-0" />
     <RustyEngineProductInputMapping Include="space.camera.zoom-wheel" Intent="space.camera.zoom" Trigger="wheel:y" />
   </ItemGroup>
 </Project>

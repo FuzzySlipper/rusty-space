@@ -25,10 +25,14 @@ internal sealed class SpacePresentation
     private readonly IGraphicsService appearance;
     private readonly IUiService ui;
     private readonly FieldTuning fieldTuning;
+    private readonly DriftCurrentTuning gentleCurrent;
+    private readonly DriftCurrentTuning swiftCurrent;
     private readonly SpacePresentationTuning tuning;
     private readonly Appearance shipAppearance;
     private readonly Appearance planetAppearance;
     private readonly Appearance wakeAppearance;
+    private readonly Appearance gentleAppearance;
+    private readonly Appearance swiftAppearance;
     private readonly Appearance starAppearance;
     private readonly UiStream hudStream;
     private ulong hudSequence;
@@ -38,11 +42,15 @@ internal sealed class SpacePresentation
         IGraphicsService appearance,
         IUiService ui,
         FieldTuning fieldTuning,
+        DriftCurrentTuning gentleCurrent,
+        DriftCurrentTuning swiftCurrent,
         SpacePresentationTuning tuning)
     {
         this.appearance = appearance ?? throw new ArgumentNullException(nameof(appearance));
         this.ui = ui ?? throw new ArgumentNullException(nameof(ui));
         this.fieldTuning = fieldTuning.Validate();
+        this.gentleCurrent = gentleCurrent.Validate();
+        this.swiftCurrent = swiftCurrent.Validate();
         this.tuning = tuning.Validate();
 
         // A failed create callback is discarded by the staged Engine call, so
@@ -52,6 +60,8 @@ internal sealed class SpacePresentation
         shipAppearance = CreateShipMesh(this.tuning.ShipColor);
         planetAppearance = CreateSphere(this.tuning.PlanetColor);
         wakeAppearance = CreateCube(this.tuning.WakeColor);
+        gentleAppearance = CreateCube(this.tuning.GentleCurrentColor);
+        swiftAppearance = CreateCube(this.tuning.SwiftCurrentColor);
         starAppearance = CreateSphere(this.tuning.StarColor);
         hudStream = this.ui.OpenStream(new UiStreamRequest(HudStreamName, HudContract));
     }
@@ -66,7 +76,7 @@ internal sealed class SpacePresentation
     {
         int starWidth = checked((tuning.StarGridRadius * 2) + 1);
         int starCount = checked(starWidth * starWidth);
-        AppearanceFact[] facts = new AppearanceFact[checked(starCount + 3)];
+        AppearanceFact[] facts = new AppearanceFact[checked(starCount + 5)];
         facts[0] = new AppearanceFact(
                 (ulong)SpaceAppearanceObject.Ship,
                 false,
@@ -91,7 +101,29 @@ internal sealed class SpacePresentation
                 wakeAppearance,
                 Visible: true,
                 RenderLayer.Scene);
-        PublishStars(facts.AsSpan(3));
+        facts[3] = new AppearanceFact(
+                (ulong)SpaceAppearanceObject.GentleCurrent,
+                false,
+                0,
+                CurrentTransform(
+                    gentleCurrent,
+                    tuning.GentleCurrentDepth,
+                    tuning.GentleCurrentHeight),
+                gentleAppearance,
+                Visible: true,
+                RenderLayer.Scene);
+        facts[4] = new AppearanceFact(
+                (ulong)SpaceAppearanceObject.SwiftCurrent,
+                false,
+                0,
+                CurrentTransform(
+                    swiftCurrent,
+                    tuning.SwiftCurrentDepth,
+                    tuning.SwiftCurrentHeight),
+                swiftAppearance,
+                Visible: true,
+                RenderLayer.Scene);
+        PublishStars(facts.AsSpan(5));
         appearance.PublishSnapshot(facts);
     }
 
@@ -202,6 +234,23 @@ internal sealed class SpacePresentation
             tuning.WakeHeight);
     }
 
+    // Each drift band draws one procedural slab along its flow so the push
+    // the player feels has a visible river to match. The slab's lateral
+    // extent is the band's own Width, so the visual tracks the push zone if
+    // tuning moves it; depth stays a thin vertical extent, and color carries
+    // the gentle-vs-swift reading.
+    private static Transform CurrentTransform(
+        DriftCurrentTuning band,
+        float depth,
+        float height)
+    {
+        PlanarVector direction = band.Direction.Scale(1.0 / band.Direction.Magnitude);
+        return new Transform(
+            PositionAtHeight(band.Center, height),
+            RotationFromHeading(Math.Atan2(direction.Z, direction.X)),
+            new Vector3(ToSingle(band.Length), depth, ToSingle(band.Width)));
+    }
+
     private static Transform RodTransform(
         PlanarVector origin,
         PlanarVector direction,
@@ -237,4 +286,6 @@ internal enum SpaceAppearanceObject : ulong
     Ship = 1,
     Planet = 2,
     Wake = 3,
+    GentleCurrent = 4,
+    SwiftCurrent = 5,
 }

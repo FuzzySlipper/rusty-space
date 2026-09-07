@@ -14,6 +14,14 @@ internal sealed record SpacePresentationTuning(
     float WakeThickness,
     float WakeHeight,
     Color WakeColor,
+    // Vertical slab extent only. Each band's lateral extent follows its
+    // DriftCurrentTuning Width so the visual matches the push zone.
+    float GentleCurrentDepth,
+    float GentleCurrentHeight,
+    Color GentleCurrentColor,
+    float SwiftCurrentDepth,
+    float SwiftCurrentHeight,
+    Color SwiftCurrentColor,
     int StarGridRadius,
     float StarSpacing,
     float StarHeight,
@@ -36,6 +44,12 @@ internal sealed record SpacePresentationTuning(
         ValidatePositiveFinite(WakeThickness, nameof(WakeThickness));
         ValidateFinite(WakeHeight, nameof(WakeHeight));
         ValidateColor(WakeColor, nameof(WakeColor));
+        ValidatePositiveFinite(GentleCurrentDepth, nameof(GentleCurrentDepth));
+        ValidateFinite(GentleCurrentHeight, nameof(GentleCurrentHeight));
+        ValidateColor(GentleCurrentColor, nameof(GentleCurrentColor));
+        ValidatePositiveFinite(SwiftCurrentDepth, nameof(SwiftCurrentDepth));
+        ValidateFinite(SwiftCurrentHeight, nameof(SwiftCurrentHeight));
+        ValidateColor(SwiftCurrentColor, nameof(SwiftCurrentColor));
         if (StarGridRadius < MinimumStarGridRadius)
         {
             throw new ArgumentOutOfRangeException(nameof(StarGridRadius));

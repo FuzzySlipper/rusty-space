@@ -25,6 +25,9 @@ internal sealed class SpaceFlight : IDisposable
     private readonly FlightController controller;
     private readonly StellarField field;
     private readonly FieldResponse fieldResponse;
+    private readonly OrbitalGravity gravity;
+    private readonly DriftCurrent gentleCurrent;
+    private readonly DriftCurrent swiftCurrent;
     private readonly FlightBodyTuning bodyTuning;
     private readonly FlightInputMapper inputMapper = new();
     private DynamicsBody body = null!;
@@ -39,13 +42,19 @@ internal sealed class SpaceFlight : IDisposable
         IDynamicsService dynamics,
         FlightTuning flightTuning,
         FlightBodyTuning bodyTuning,
-        FieldTuning fieldTuning)
+        FieldTuning fieldTuning,
+        OrbitalGravityTuning orbitalTuning,
+        DriftCurrentTuning gentleCurrentTuning,
+        DriftCurrentTuning swiftCurrentTuning)
     {
         this.dynamics = dynamics ?? throw new ArgumentNullException(nameof(dynamics));
         this.bodyTuning = bodyTuning.Validate();
         controller = new FlightController(flightTuning);
         field = new StellarField(fieldTuning);
         fieldResponse = new FieldResponse(fieldTuning);
+        gravity = new OrbitalGravity(orbitalTuning);
+        gentleCurrent = new DriftCurrent(gentleCurrentTuning);
+        swiftCurrent = new DriftCurrent(swiftCurrentTuning);
         world = this.dynamics.CreateWorld(new DynamicsWorldConfig(Vector3.Zero));
 
         DynamicsBody? initialBody = null;
@@ -97,10 +106,26 @@ internal sealed class SpaceFlight : IDisposable
         ulong nextFixedStepCount = checked(fixedStepCount + stepCount);
         ulong nextUpdateSequence = checked(updateSequence + SequenceIncrement);
         FlightControlOutput output = PrepareControllerOutput(input.Command, stepCount);
+        // Every environmental push is product-meaning resolved here but
+        // Engine-integrated: each wrench joins the single DynamicsAction
+        // force below, so Rapier stays the integrator and the product never
+        // edits pose or velocity directly.
+        FlightBodyState bodyState = ToBodyState(readout);
         FlightWrench fieldWrench = fieldResponse.Resolve(
-            ToBodyState(readout),
+            bodyState,
             field.Sample(readout.Position));
-        FlightWrench totalWrench = Add(output.Wrench, fieldWrench);
+        FlightWrench gravityWrench = gravity.Resolve(bodyState.Position, readout.Mass);
+        FlightWrench gentleWrench = gentleCurrent.Resolve(
+            bodyState.Position,
+            bodyState.LinearVelocity,
+            readout.Mass);
+        FlightWrench swiftWrench = swiftCurrent.Resolve(
+            bodyState.Position,
+            bodyState.LinearVelocity,
+            readout.Mass);
+        FlightWrench totalWrench = Add(
+            output.Wrench,
+            Add(fieldWrench, Add(gravityWrench, Add(gentleWrench, swiftWrench))));
         DynamicsAction action = ToDynamicsAction(totalWrench);
 
         dynamics.Step(new DynamicsStepRequest(

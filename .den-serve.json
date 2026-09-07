@@ -1,11 +1,12 @@
 {
   "project": "rusty-space",
   "serve": {
-    "command": "exec ./.runtime/runtime-pack-cbf35130d06c/bin/rusty dev --project ./src/Product.Game/Product.Game.csproj --runtime ./.runtime/runtime-pack-cbf35130d06c --live-debug --bind-host {host} --port {port}",
+    "command": "exec ./.runtime/runtime-pack-2574cc89fd30-gamepad2/bin/rusty dev --project ./src/Product.Game/Product.Game.csproj --runtime ./.runtime/runtime-pack-2574cc89fd30-gamepad2 --live-debug --bind-host {host} --port {port}",
     "healthUrl": "/product-ui/main.js",
     "readyText": "Rusty Space",
     "reusePolicy": "broker_owned",
     "startupTimeout": "120s",
-    "healthInterval": "250ms"
+    "healthInterval": "250ms",
+    "preferredPort": 37301
   }
 }

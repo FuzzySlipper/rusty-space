@@ -23,14 +23,14 @@ src/
   ui/               product-owned DOM UI only
 content/            canonical product content and authored assets
 .runtime/
-  runtime-pack-cbf35130d06c/  matching `rusty dev` runtime pack (ignored)
+  runtime-pack-2574cc89fd30-gamepad2/  matching `rusty dev` runtime pack (ignored)
   sdk-feed/             matching Rusty.Engine package feed (ignored)
 docs/                current ownership and product design notes
 ```
 
-The installed pair is pinned to Engine revision `cbf35130d06c`:
-`Rusty.Engine` `0.1.0-dev.cbf35130d06c` and
-`.runtime/runtime-pack-cbf35130d06c`. Keep the package and runtime pack matched;
+The installed pair is pinned to the Engine controller development build based on `2574cc89fd30`:
+`Rusty.Engine` `0.1.0-dev.2574cc89fd30.gamepad1` and
+`.runtime/runtime-pack-2574cc89fd30-gamepad2`. Keep the package and runtime pack matched;
 do not replace one with an older backup. Product content and the exploratory
 design notes under `docs/ideas/` are intentional provenance and should not be
 removed as host cleanup.
@@ -40,8 +40,8 @@ removed as host cleanup.
 Use the installed runtime pack directly:
 
 ```bash
-./.runtime/runtime-pack-cbf35130d06c/bin/rusty dev \
-  --runtime ./.runtime/runtime-pack-cbf35130d06c \
+./.runtime/runtime-pack-2574cc89fd30-gamepad2/bin/rusty dev \
+  --runtime ./.runtime/runtime-pack-2574cc89fd30-gamepad2 \
   --project ./src/Product.Game/Product.Game.csproj \
   --live-debug --bind-host 127.0.0.1 --port 8787
 ```
@@ -62,13 +62,22 @@ checkouts or invoke Cargo.
 The current product is deliberately a small flight and presentation base:
 
 - `Flight` owns the inertial planar command model and Dynamics actions.
-- `Field` owns the authored stellar flow and wake response.
+- `Field` owns the authored space-weather pushes — stellar flow and wake
+  response, one gamey orbital well around the planet, and wide gentle plus
+  narrow swift drift currents — all applied as Engine Dynamics forces.
 - `Viewing` owns product camera framing and zoom policy around Engine Camera.
-- `Presentation` publishes the ship, planet, wake, stars, and HUD facts through
-  Engine Appearance and UI services.
+- `Presentation` publishes the ship, planet, wake, current indicators, stars,
+  and HUD facts through Engine Appearance and UI services.
 - `Lifecycle` and `Composition` keep the product callback and dependency
   ordering explicit.
 
 This is an experimentation base, not a claim of complete gameplay or broad
 interactive certification. See [architecture](docs/architecture.md) and
 [code style](docs/code-style.md) before changing the product/Engine boundary.
+
+## Controls
+
+- Keyboard: W thrusts, A/D steer, mouse wheel zooms, R resets flight, and F
+  aborts.
+- Xbox: RT provides proportional thrust, the left stick provides proportional
+  steering, LB/RB provide digital steering, and Back resets flight.

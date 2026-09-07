@@ -12,12 +12,20 @@ internal sealed class FlightInputMapper
     private const double NeutralCommandIntent = 0.0;
     private const double FullCommandIntent = 1.0;
     private const double LeftTurnIntent = -1.0;
+    // Product policy: re-center a small stick wobble, then preserve the full
+    // range outside the deadzone so full deflection still means full steering.
+    private const double AnalogSteeringDeadzone = 0.15;
+    private const double AnalogSteeringRange = FullCommandIntent - AnalogSteeringDeadzone;
 
     // These are semantic, product-owned input identities. The Engine maps
     // physical controls to them before an admitted update reaches Space.
     private static ReadOnlySpan<byte> ThrustIntent => "space.flight.thrust"u8;
     private static ReadOnlySpan<byte> LeftTurnIntentId => "space.flight.turn-left"u8;
     private static ReadOnlySpan<byte> RightTurnIntentId => "space.flight.turn-right"u8;
+    private static ReadOnlySpan<byte> ControllerLeftTurnIntent => "space.flight.turn-left-controller"u8;
+    private static ReadOnlySpan<byte> ControllerRightTurnIntent => "space.flight.turn-right-controller"u8;
+    private static ReadOnlySpan<byte> AnalogThrustIntent => "space.flight.thrust-analog"u8;
+    private static ReadOnlySpan<byte> AnalogTurnIntent => "space.flight.turn-analog"u8;
     private static ReadOnlySpan<byte> ResetIntent => "space.flight.reset"u8;
     private static ReadOnlySpan<byte> AbortIntent => "space.flight.abort"u8;
 
@@ -42,6 +50,23 @@ internal sealed class FlightInputMapper
                 continue;
             }
 
+            if (inputEvent.Kind == InputEventKind.MappedAxis)
+            {
+                ReadOnlySpan<byte> axisIntent = inputEvent.Intent.Span;
+                if (axisIntent.SequenceEqual(AnalogThrustIntent))
+                {
+                    hasSemanticFlightInput = true;
+                    stagedState = stagedState with { AnalogThrust = NormalizeAnalogThrust(inputEvent.X) };
+                }
+                else if (axisIntent.SequenceEqual(AnalogTurnIntent))
+                {
+                    hasSemanticFlightInput = true;
+                    stagedState = stagedState with { AnalogTurn = NormalizeAnalogTurn(inputEvent.X) };
+                }
+
+                continue;
+            }
+
             if (inputEvent.Kind != InputEventKind.MappedDigital)
             {
                 continue;
@@ -51,17 +76,27 @@ internal sealed class FlightInputMapper
             if (intent.SequenceEqual(ThrustIntent))
             {
                 hasSemanticFlightInput = true;
-                stagedState = stagedState with { ThrustHeld = IsDigitalActive(inputEvent) };
+                stagedState = stagedState with { KeyboardThrustHeld = IsDigitalActive(inputEvent) };
             }
             else if (intent.SequenceEqual(LeftTurnIntentId))
             {
                 hasSemanticFlightInput = true;
-                stagedState = stagedState with { LeftHeld = IsDigitalActive(inputEvent) };
+                stagedState = stagedState with { KeyboardLeftHeld = IsDigitalActive(inputEvent) };
             }
             else if (intent.SequenceEqual(RightTurnIntentId))
             {
                 hasSemanticFlightInput = true;
-                stagedState = stagedState with { RightHeld = IsDigitalActive(inputEvent) };
+                stagedState = stagedState with { KeyboardRightHeld = IsDigitalActive(inputEvent) };
+            }
+            else if (intent.SequenceEqual(ControllerLeftTurnIntent))
+            {
+                hasSemanticFlightInput = true;
+                stagedState = stagedState with { ControllerLeftHeld = IsDigitalActive(inputEvent) };
+            }
+            else if (intent.SequenceEqual(ControllerRightTurnIntent))
+            {
+                hasSemanticFlightInput = true;
+                stagedState = stagedState with { ControllerRightHeld = IsDigitalActive(inputEvent) };
             }
             else if (intent.SequenceEqual(ResetIntent))
             {
@@ -105,15 +140,15 @@ internal sealed class FlightInputMapper
                 ReadOnlySpan<byte> label = inputEvent.Label.Span;
                 if (label.SequenceEqual("KeyW"u8))
                 {
-                    stagedState = stagedState with { ThrustHeld = pressed };
+                    stagedState = stagedState with { KeyboardThrustHeld = pressed };
                 }
                 else if (label.SequenceEqual("KeyA"u8))
                 {
-                    stagedState = stagedState with { LeftHeld = pressed };
+                    stagedState = stagedState with { KeyboardLeftHeld = pressed };
                 }
                 else if (label.SequenceEqual("KeyD"u8))
                 {
-                    stagedState = stagedState with { RightHeld = pressed };
+                    stagedState = stagedState with { KeyboardRightHeld = pressed };
                 }
                 else if (label.SequenceEqual("KeyR"u8))
                 {
@@ -145,28 +180,74 @@ internal sealed class FlightInputMapper
 
     private static bool IsDigitalActive(ProductInputEvent inputEvent) => inputEvent.X > 0.0f;
 
+    private static double NormalizeAnalogThrust(float value) => Math.Clamp(
+        (double)value,
+        NeutralCommandIntent,
+        FullCommandIntent);
+
+    private static double NormalizeAnalogTurn(float value)
+    {
+        double clamped = Math.Clamp((double)value, LeftTurnIntent, FullCommandIntent);
+        double magnitude = Math.Abs(clamped);
+        if (magnitude <= AnalogSteeringDeadzone)
+        {
+            return NeutralCommandIntent;
+        }
+
+        double remappedMagnitude = (magnitude - AnalogSteeringDeadzone) / AnalogSteeringRange;
+        return Math.CopySign(Math.Clamp(remappedMagnitude, NeutralCommandIntent, FullCommandIntent), clamped);
+    }
+
     private static bool IsPressed(ProductInputEvent inputEvent) => inputEvent.Phase == InputPhase.Pressed
         && IsDigitalActive(inputEvent);
 
     private static FlightCommand ToCommand(FlightInputState value)
     {
-        double turn = value.LeftHeld == value.RightHeld
-            ? NeutralCommandIntent
-            : value.LeftHeld ? LeftTurnIntent : FullCommandIntent;
+        // Keyboard thrust combines with the trigger and therefore reaches full
+        // output while W is held. Keyboard steering is exclusive while A/D is
+        // held; otherwise bumpers take priority over the analog stick.
+        double throttle = Math.Clamp(
+            value.AnalogThrust + (value.KeyboardThrustHeld ? FullCommandIntent : NeutralCommandIntent),
+            NeutralCommandIntent,
+            FullCommandIntent);
+        bool keyboardSteeringHeld = value.KeyboardLeftHeld || value.KeyboardRightHeld;
+        bool controllerSteeringHeld = value.ControllerLeftHeld || value.ControllerRightHeld;
+        double turn = keyboardSteeringHeld
+            ? DigitalTurn(value.KeyboardLeftHeld, value.KeyboardRightHeld)
+            : controllerSteeringHeld
+                ? DigitalTurn(value.ControllerLeftHeld, value.ControllerRightHeld)
+                : value.AnalogTurn;
         return new FlightCommand(
-            value.ThrustHeld ? FullCommandIntent : NeutralCommandIntent,
+            throttle,
             turn);
     }
+
+    private static double DigitalTurn(bool leftHeld, bool rightHeld) => leftHeld == rightHeld
+        ? NeutralCommandIntent
+        : leftHeld ? LeftTurnIntent : FullCommandIntent;
 }
 
 internal readonly record struct FlightInputState(
-    bool ThrustHeld,
-    bool LeftHeld,
-    bool RightHeld,
+    double AnalogThrust,
+    double AnalogTurn,
+    bool KeyboardThrustHeld,
+    bool KeyboardLeftHeld,
+    bool KeyboardRightHeld,
+    bool ControllerLeftHeld,
+    bool ControllerRightHeld,
     bool ResetHeld,
     bool FaultHeld)
 {
-    internal static FlightInputState Neutral { get; } = new(false, false, false, false, false);
+    internal static FlightInputState Neutral { get; } = new(
+        0.0,
+        0.0,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false);
 }
 
 internal readonly record struct FlightInputPlan(

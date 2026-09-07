@@ -19,10 +19,19 @@ internal sealed class SpaceProductComposition
             Engine.Dynamics,
             Tuning.Flight,
             Tuning.FlightBody,
-            Tuning.Field);
+            Tuning.Field,
+            Tuning.Orbital,
+            Tuning.GentleCurrent,
+            Tuning.SwiftCurrent);
         try
         {
-            SpacePresentation presentation = new(Engine.Graphics, Engine.Ui, Tuning.Field, Tuning.Presentation);
+            SpacePresentation presentation = new(
+                Engine.Graphics,
+                Engine.Ui,
+                Tuning.Field,
+                Tuning.GentleCurrent,
+                Tuning.SwiftCurrent,
+                Tuning.Presentation);
             TrackingCamera camera = new(
                 Engine.CameraView,
                 Tuning.Camera,
