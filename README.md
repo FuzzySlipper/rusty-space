@@ -75,6 +75,12 @@ This is an experimentation base, not a claim of complete gameplay or broad
 interactive certification. See [architecture](docs/architecture.md) and
 [code style](docs/code-style.md) before changing the product/Engine boundary.
 
+The next handling work is framed by
+[space sailing campaign](docs/space-sailing-campaign.md): the canonical state
+split, the invariants that keep inertial flight, authored ship systems, and
+presentation from drifting into one another, and the known hazards. Sequencing
+and status for that work live in Den project tasks, never in the repository.
+
 ## Controls
 
 - Keyboard: W thrusts, A/D steer, mouse wheel zooms, R resets flight, and F

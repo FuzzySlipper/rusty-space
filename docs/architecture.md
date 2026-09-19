@@ -37,6 +37,11 @@ Engine Appearance and UI facts; `TrackingCamera` owns product framing policy
 around the Engine camera service. None of these classes is a second host loop
 or renderer.
 
+The canonical split between physical state, authored ship-system state,
+disposable telemetry, and downstream presentation, plus the invariants that keep
+them from drifting into one another, is stated in
+[space sailing campaign](space-sailing-campaign.md).
+
 ## Runtime lanes
 
 The standard launch path is:
