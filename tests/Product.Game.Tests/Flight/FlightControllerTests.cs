@@ -12,6 +12,7 @@ namespace Rusty.Space.Product.Flight.Tests;
 public class FlightControllerTests
 {
     private const double Tolerance = 1e-9;
+    private const int CatchUpSubsteps = 4;
     private static readonly TimeSpan FixedStep = TimeSpan.FromSeconds(1.0 / 60.0);
 
     private readonly FlightTuning tuning = SpaceTuning.Defaults.Flight;
@@ -180,6 +181,55 @@ public class FlightControllerTests
             momentOfInertia: 2.0,
             TimeSpan.Zero,
             currentThrottleLevel: 0.0));
+    }
+
+    [Fact]
+    public void ACatchUpTurnAdvancesTheSpoolOncePerFixedStep()
+    {
+        // Every admitted step is one fixed step of simulated time, so four
+        // substeps inside one turn travel four times and land where four
+        // separate turns would land.
+        FlightController controller = new(tuning);
+        double level = controller.ThrottleLevel;
+        for (int substep = 0; substep < CatchUpSubsteps; substep++)
+        {
+            level = controller.Prepare(
+                Coast(headingRadians: 0.0),
+                new FlightCommand(Throttle: 1.0, Turn: 0.0),
+                momentOfInertia: 2.0,
+                FixedStep,
+                currentThrottleLevel: level).ThrottleLevel;
+        }
+
+        double response = FixedStep.TotalSeconds / tuning.ThrottleResponse.TotalSeconds;
+        double expected = 0.0;
+        for (int substep = 0; substep < CatchUpSubsteps; substep++)
+        {
+            expected += (tuning.MaximumThrust - expected) * response;
+        }
+
+        Assert.Equal(expected, level, Tolerance);
+    }
+
+    [Fact]
+    public void OnlyCommitPublishesTheSpoolSoOneSubstepCannotBeCountedTwice()
+    {
+        FlightController controller = new(tuning);
+
+        FlightControlOutput output = controller.Prepare(
+            Coast(headingRadians: 0.0),
+            new FlightCommand(Throttle: 1.0, Turn: 0.0),
+            momentOfInertia: 2.0,
+            FixedStep,
+            currentThrottleLevel: 0.0);
+
+        // Preparing is pure about the spool; the level moves only when the turn
+        // commits, and committing the same output again cannot advance it.
+        Assert.Equal(0.0, controller.ThrottleLevel, Tolerance);
+
+        controller.Commit(output);
+        controller.Commit(output);
+        Assert.Equal(output.ThrottleLevel, controller.ThrottleLevel, Tolerance);
     }
 
     private static FlightBodyState Coast(double headingRadians) => new(

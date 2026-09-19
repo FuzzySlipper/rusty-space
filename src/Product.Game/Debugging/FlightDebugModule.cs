@@ -76,4 +76,29 @@ public sealed class FlightDebugModule : IDebugCommandModule
             impulse     ({telemetry.CollisionImpulse.X:F3}, {telemetry.CollisionImpulse.Z:F3})
             """);
     }
+
+    [DebugCommand("space.substeps", Description = "Shows how each push source changed across the substeps of the last admitted turn.")]
+    public string Substeps()
+    {
+        FlightForces first = flight.FirstSubstepContributions;
+        FlightForces last = flight.Contributions;
+        return FormattableString.Invariant(
+            $"""
+            substeps    {flight.Telemetry.AdmittedSteps} in the last admitted turn
+            turns       {flight.UpdateSequence} admitted, {flight.FixedStepCount} fixed steps simulated
+            source      first substep              last substep
+            main drive  {Row(first.MainDrive)}  {Row(last.MainDrive)}
+            steering    {Row(first.Steering)}  {Row(last.Steering)}
+            field       {Row(first.Field)}  {Row(last.Field)}
+            gentle      {Row(first.GentleCurrent)}  {Row(last.GentleCurrent)}
+            swift       {Row(first.SwiftCurrent)}  {Row(last.SwiftCurrent)}
+            orbital     {Row(first.OrbitalPull)}  {Row(last.OrbitalPull)}
+            damage      {Row(first.DamageBias)}  {Row(last.DamageBias)}
+            total       {Row(first.Total)}  {Row(last.Total)}
+            """);
+    }
+
+    private static string Row(FlightWrench wrench) =>
+        FormattableString.Invariant(
+            $"({wrench.Force.X:F3}, {wrench.Force.Z:F3}) {wrench.TorqueY:F3}");
 }

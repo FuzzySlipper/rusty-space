@@ -13,6 +13,8 @@ internal sealed class SpaceFlight : IDisposable
     private const bool AxisFree = false;
     private const bool AxisLocked = true;
     private const uint NoSteps = 0;
+    private const uint SingleSubstep = 1;
+    private const uint FirstSubstep = 0;
     private const ulong SequenceIncrement = 1;
     private const double NeutralCommandIntent = 0.0;
     private const float FixedStepSeconds = 1.0f / 60.0f;
@@ -35,6 +37,7 @@ internal sealed class SpaceFlight : IDisposable
     private FlightCommand command = new(NeutralCommandIntent, NeutralCommandIntent);
     private FlightReadout readout;
     private FlightForces contributions = FlightForces.Zero;
+    private FlightForces firstSubstepContributions = FlightForces.Zero;
     private FieldSample lastFieldSample;
     private ulong fixedStepCount;
     private ulong updateSequence;
@@ -81,10 +84,17 @@ internal sealed class SpaceFlight : IDisposable
     internal FlightCommand LastCommand => command;
 
     /// <summary>
-    /// The per-source push of the most recent admitted turn, kept intact so the
-    /// sum is never the only thing the product can report.
+    /// The per-source push of the most recent admitted turn's last substep, kept
+    /// intact so the sum is never the only thing the product can report.
     /// </summary>
     internal FlightForces Contributions => contributions;
+
+    /// <summary>
+    /// The per-source push of the most recent admitted turn's first substep.
+    /// Read against <see cref="Contributions"/> to see how far the sources moved
+    /// while a catch-up turn was running.
+    /// </summary>
+    internal FlightForces FirstSubstepContributions => firstSubstepContributions;
 
     internal FieldSample LastFieldSample => lastFieldSample;
 
@@ -108,8 +118,12 @@ internal sealed class SpaceFlight : IDisposable
         }
 
         // The Engine owns update admission and fixed-step timing; its facts
-        // name the admitted steps for this turn. The product steps its own
-        // dynamics exactly that many times and publishes on admitted turns.
+        // name the admitted steps for this turn. Every admitted step is one
+        // fixed step of simulated time, so the product resolves its push and
+        // steps once per fixed step rather than once per turn. A catch-up turn
+        // therefore re-decides steering, field, drift, and the well against the
+        // state each substep actually acts on, instead of applying the pre-turn
+        // answer four times. The Engine stays the only integrator.
         uint stepCount = update.Facts.AdmittedStepCount;
         if (stepCount == NoSteps)
         {
@@ -120,52 +134,67 @@ internal sealed class SpaceFlight : IDisposable
 
         ulong nextFixedStepCount = checked(fixedStepCount + stepCount);
         ulong nextUpdateSequence = checked(updateSequence + SequenceIncrement);
-        FlightControlOutput output = PrepareControllerOutput(input.Command, stepCount);
-        FlightBodyState bodyState = ToBodyState(readout);
-        FieldSample fieldSample = field.Sample(bodyState.Position);
-        FlightForces forces = new(
-            MainDrive: output.Drive,
-            Steering: output.Steering,
-            Field: fieldResponse.Resolve(bodyState, fieldSample),
-            GentleCurrent: gentleCurrent.Resolve(
-                bodyState.Position,
-                bodyState.LinearVelocity,
-                readout.Mass),
-            SwiftCurrent: swiftCurrent.Resolve(
-                bodyState.Position,
-                bodyState.LinearVelocity,
-                readout.Mass),
-            OrbitalPull: gravity.Resolve(bodyState.Position, readout.Mass),
-            // No fault has biased the handling yet; the channel exists so a
-            // damage response joins the table instead of replacing it.
-            DamageBias: FlightWrench.Zero);
+        FlightBodyState turnStart = ToBodyState(readout);
+        FlightReadout currentReadout = readout;
+        FlightForces turnStartForces = FlightForces.Zero;
+        FlightForces forces = FlightForces.Zero;
+        FlightControlOutput output = default;
+        FieldSample fieldSample = field.Sample(turnStart.Position);
+        double stagedThrottle = controller.ThrottleLevel;
 
-        // Every product-meaning push joins once, here, into the single
-        // DynamicsAction force. Rapier stays the integrator and the product
-        // never edits pose or velocity directly.
-        DynamicsAction action = ToDynamicsAction(forces.Total);
+        for (uint stepIndex = 0; stepIndex < stepCount; stepIndex++)
+        {
+            FlightBodyState bodyState = ToBodyState(currentReadout);
+            fieldSample = field.Sample(bodyState.Position);
+            // The actuator spool advances once per fixed substep, not once per
+            // admitted turn: an admitted step is one fixed step of simulated
+            // time, so a turn that catches up four steps has had four steps of
+            // throttle travel. Commit below publishes one final level per turn,
+            // so no interval is counted twice.
+            FlightControlOutput substepOutput = controller.Prepare(
+                bodyState,
+                input.Command,
+                currentReadout.YawInertia,
+                FixedStep,
+                stagedThrottle);
+            stagedThrottle = substepOutput.ThrottleLevel;
+            FlightForces substepForces = ResolveForces(
+                bodyState,
+                fieldSample,
+                substepOutput,
+                currentReadout.Mass);
+            if (stepIndex == FirstSubstep)
+            {
+                turnStartForces = substepForces;
+            }
 
-        dynamics.Step(new DynamicsStepRequest(
-            world,
-            FixedStepSeconds,
-            stepCount,
-            new[] { action }));
-        FlightReadout nextReadout = MapReadout(dynamics.Read(new DynamicsReadRequest(body)));
+            // Every product-meaning push joins once, per substep, into the
+            // single DynamicsAction force for that substep.
+            dynamics.Step(new DynamicsStepRequest(
+                world,
+                FixedStepSeconds,
+                SingleSubstep,
+                new[] { ToDynamicsAction(substepForces.Total) }));
+            currentReadout = MapReadout(dynamics.Read(new DynamicsReadRequest(body)));
+            output = substepOutput;
+            forces = substepForces;
+        }
 
         controller.Commit(output);
         telemetry.Capture(
-            bodyState,
-            nextReadout,
+            turnStart,
+            currentReadout,
             forces,
             output,
             nextFixedStepCount,
             stepCount,
             FixedStep);
         contributions = forces;
+        firstSubstepContributions = turnStartForces;
         lastFieldSample = fieldSample;
         command = input.Command;
         inputMapper.Commit(input);
-        readout = nextReadout;
+        readout = currentReadout;
         fixedStepCount = nextFixedStepCount;
         updateSequence = nextUpdateSequence;
         return new FlightAdmission(true, fixedStepCount, updateSequence, input.FaultRequested);
@@ -188,6 +217,7 @@ internal sealed class SpaceFlight : IDisposable
             readout = candidateReadout;
             command = new FlightCommand(NeutralCommandIntent, NeutralCommandIntent);
             contributions = FlightForces.Zero;
+            firstSubstepContributions = FlightForces.Zero;
             lastFieldSample = field.Sample(readout.Position);
             controller.Reset();
             telemetry.Reset();
@@ -220,24 +250,32 @@ internal sealed class SpaceFlight : IDisposable
         }
     }
 
-    private FlightControlOutput PrepareControllerOutput(FlightCommand stagedCommand, uint steps)
-    {
-        FlightControlOutput output = default;
-        double stagedThrottle = controller.ThrottleLevel;
-        FlightBodyState bodyState = ToBodyState(readout);
-        for (uint stepIndex = 0; stepIndex < steps; stepIndex++)
-        {
-            output = controller.Prepare(
-                bodyState,
-                stagedCommand,
-                readout.YawInertia,
-                FixedStep,
-                stagedThrottle);
-            stagedThrottle = output.ThrottleLevel;
-        }
-
-        return output;
-    }
+    /// <summary>
+    /// Resolves every environmental source against the body state a single
+    /// substep is about to act on. Control push comes from the controller output
+    /// for that same substep, so no source is ever evaluated against a state
+    /// from an earlier one.
+    /// </summary>
+    private FlightForces ResolveForces(
+        FlightBodyState bodyState,
+        FieldSample fieldSample,
+        FlightControlOutput output,
+        double mass) => new(
+            MainDrive: output.Drive,
+            Steering: output.Steering,
+            Field: fieldResponse.Resolve(bodyState, fieldSample),
+            GentleCurrent: gentleCurrent.Resolve(
+                bodyState.Position,
+                bodyState.LinearVelocity,
+                mass),
+            SwiftCurrent: swiftCurrent.Resolve(
+                bodyState.Position,
+                bodyState.LinearVelocity,
+                mass),
+            OrbitalPull: gravity.Resolve(bodyState.Position, mass),
+            // No fault has biased the handling yet; the channel exists so a
+            // damage response joins the table instead of replacing it.
+            DamageBias: FlightWrench.Zero);
 
     private DynamicsBody CreateSpawnBody() => dynamics.CreateBody(new DynamicsCreateBodyRequest(
         world,
