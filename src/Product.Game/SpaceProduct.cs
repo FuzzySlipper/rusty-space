@@ -1,4 +1,5 @@
 using Rusty.Engine;
+using Rusty.Engine.Debugging;
 using Rusty.Space.Product.Composition;
 using Rusty.Space.Product.Flight;
 using Rusty.Space.Product.Lifecycle;
@@ -9,7 +10,7 @@ namespace Rusty.Space.Product;
 /// Product-owned lifecycle and admitted-update state around Engine Dynamics and Appearance facts.
 /// The standard Engine host owns transport, control fencing, and output delivery.
 /// </summary>
-public sealed class SpaceProduct : IEngineProduct
+public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
 {
     private readonly SpaceProductComposition composition;
     private SpaceLifecycleState lifecycle = SpaceLifecycleState.Created;
@@ -22,7 +23,7 @@ public sealed class SpaceProduct : IEngineProduct
         composition = new SpaceProductComposition(context);
         // Create-time projection: the Engine retains this initial snapshot
         // alongside create outputs, before any update is admitted.
-        composition.Presentation.Publish(composition.Flight.Readout);
+        PublishFlight();
     }
 
     public SpaceProductStatus Status => new(
@@ -34,10 +35,18 @@ public sealed class SpaceProduct : IEngineProduct
         composition.Flight.FixedStepCount,
         composition.Flight.UpdateSequence);
 
+    // The Engine generates the catalog and its dispatch; Space only names the
+    // live owners worth reading. Commands report state and never write it.
+    public void RegisterDebugCommands(IDebugCommandModuleRegistrar registrar)
+    {
+        ArgumentNullException.ThrowIfNull(registrar);
+        registrar.Register(composition.Debug);
+    }
+
     public void Start()
     {
         RequireState(SpaceLifecycleState.Created, nameof(Start));
-        composition.Presentation.Publish(composition.Flight.Readout);
+        PublishFlight();
         FollowCamera(ReadOnlySpan<ProductInputEvent>.Empty);
         lifecycle = SpaceLifecycleState.Running;
     }
@@ -62,7 +71,7 @@ public sealed class SpaceProduct : IEngineProduct
 
         if (admission.Published)
         {
-            composition.Presentation.Publish(composition.Flight.Readout);
+            PublishFlight();
         }
 
         FollowCamera(update.Input);
@@ -88,7 +97,7 @@ public sealed class SpaceProduct : IEngineProduct
     {
         RequireState(SpaceLifecycleState.Running, nameof(Restart));
         composition.Flight.ResetFlight();
-        composition.Presentation.Publish(composition.Flight.Readout);
+        PublishFlight();
         FollowCamera(ReadOnlySpan<ProductInputEvent>.Empty);
     }
 
@@ -131,6 +140,10 @@ public sealed class SpaceProduct : IEngineProduct
         // and a create-time destroy must likewise avoid calling its services.
         lifecycle = SpaceLifecycleState.Disposed;
     }
+
+    private void PublishFlight() => composition.Presentation.Publish(
+        composition.Flight.Readout,
+        composition.Flight.Telemetry);
 
     private void FollowCamera(ReadOnlySpan<ProductInputEvent> input) => composition.Camera.Follow(
         composition.Flight.Readout,

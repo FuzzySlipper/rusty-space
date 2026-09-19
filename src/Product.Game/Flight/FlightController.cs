@@ -13,6 +13,7 @@ internal sealed class FlightController
     private const double NoForwardAcceleration = 0.0;
     private const double MinimumValidMomentOfInertia = 0.0;
     private const double NoYawTorque = 0.0;
+    private const double NoPlanarForce = 0.0;
 
     private readonly FlightTuning tuning;
     private double throttleLevel;
@@ -40,12 +41,20 @@ internal sealed class FlightController
         double turnIntent = Math.Clamp(command.Turn, MinimumTurnIntent, MaximumTurnIntent);
         double nextThrottleLevel = AdvanceThrottle(throttleIntent, step, currentThrottleLevel);
 
-        PlanarVector force = Forward(body.HeadingRadians).Scale(nextThrottleLevel);
-        force = RemoveForwardAccelerationAtMaximumSpeed(force, body.LinearVelocity);
+        PlanarVector commandedForce = body.Forward.Scale(nextThrottleLevel);
+        PlanarVector driveForce = RemoveForwardAccelerationAtMaximumSpeed(
+            commandedForce,
+            body.LinearVelocity);
+        Steering steering = ResolveSteering(body.AngularVelocity, turnIntent, momentOfInertia);
 
         return new FlightControlOutput(
-            new FlightWrench(force, ResolveYawTorque(body.AngularVelocity, turnIntent, momentOfInertia)),
-            nextThrottleLevel);
+            new FlightWrench(driveForce, NoYawTorque),
+            new FlightWrench(new PlanarVector(NoPlanarForce, NoPlanarForce), steering.Torque),
+            nextThrottleLevel,
+            nextThrottleLevel / tuning.MaximumThrust,
+            steering.Effort,
+            DriveSaturated: driveForce != commandedForce,
+            steering.Saturated);
     }
 
     internal void Commit(FlightControlOutput output) => throttleLevel = output.ThrottleLevel;
@@ -70,39 +79,44 @@ internal sealed class FlightController
     }
 
     private PlanarVector RemoveForwardAccelerationAtMaximumSpeed(
-        PlanarVector requestedForce,
+        PlanarVector commandedForce,
         PlanarVector velocity)
     {
         double speed = velocity.Magnitude;
         if (speed < tuning.MaximumSpeed)
         {
-            return requestedForce;
+            return commandedForce;
         }
 
         PlanarVector velocityDirection = velocity.Scale(UnitVectorMagnitude / speed);
-        double alongVelocity = requestedForce.Dot(velocityDirection);
+        double alongVelocity = commandedForce.Dot(velocityDirection);
         return alongVelocity > NoForwardAcceleration
-            ? requestedForce - velocityDirection.Scale(alongVelocity)
-            : requestedForce;
+            ? commandedForce - velocityDirection.Scale(alongVelocity)
+            : commandedForce;
     }
 
-    private double ResolveYawTorque(double angularVelocity, double turnIntent, double momentOfInertia)
+    private Steering ResolveSteering(double angularVelocity, double turnIntent, double momentOfInertia)
     {
         if (!double.IsFinite(momentOfInertia)
             || momentOfInertia <= MinimumValidMomentOfInertia)
         {
-            return NoYawTorque;
+            return new Steering(NoYawTorque, NoPlanarForce, Saturated: false);
         }
 
         double desiredAngularVelocity = turnIntent * tuning.MaximumTurnRate;
         double angularVelocityError = desiredAngularVelocity - angularVelocity;
-        double torqueAuthority = momentOfInertia * tuning.MaximumTurnRate / tuning.SteeringResponse.TotalSeconds;
-        double requestedTorque = momentOfInertia * angularVelocityError / tuning.SteeringResponse.TotalSeconds;
-        return Math.Clamp(requestedTorque, -torqueAuthority, torqueAuthority);
+        double torqueAuthority = momentOfInertia
+            * tuning.MaximumTurnRate
+            / tuning.SteeringResponse.TotalSeconds;
+        double requestedTorque = momentOfInertia
+            * angularVelocityError
+            / tuning.SteeringResponse.TotalSeconds;
+        double appliedTorque = Math.Clamp(requestedTorque, -torqueAuthority, torqueAuthority);
+        return new Steering(
+            appliedTorque,
+            Math.Abs(appliedTorque) / torqueAuthority,
+            appliedTorque != requestedTorque);
     }
-
-    private static PlanarVector Forward(double headingRadians) =>
-        new(Math.Cos(headingRadians), Math.Sin(headingRadians));
 
     private static void ValidateStep(TimeSpan step)
     {
@@ -111,4 +125,10 @@ internal sealed class FlightController
             throw new ArgumentOutOfRangeException(nameof(step));
         }
     }
+
+    /// <summary>
+    /// Steering demand for one turn: applied yaw torque, how close that is to
+    /// the actuator's authority, and whether the clamp took hold.
+    /// </summary>
+    private readonly record struct Steering(double Torque, double Effort, bool Saturated);
 }

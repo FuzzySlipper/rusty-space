@@ -1,5 +1,6 @@
 using Rusty.Engine;
 using Rusty.Space.Product.Content;
+using Rusty.Space.Product.Debugging;
 using Rusty.Space.Product.Field;
 using Rusty.Space.Product.Flight;
 using Rusty.Space.Product.Presentation;
@@ -41,6 +42,7 @@ internal sealed class SpaceProductComposition
             Flight = flight;
             Presentation = presentation;
             Camera = camera;
+            Debug = new FlightDebugModule(flight);
         }
         catch
         {
@@ -61,4 +63,5 @@ internal sealed class SpaceProductComposition
 
     internal TrackingCamera Camera { get; }
 
+    internal FlightDebugModule Debug { get; }
 }

@@ -20,9 +20,12 @@ internal sealed class SpaceFlight : IDisposable
     private const double QuaternionDoubleFactor = 2.0;
     private const double QuaternionUnitMagnitude = 1.0;
 
+    private static readonly TimeSpan FixedStep = TimeSpan.FromSeconds(FixedStepDurationSeconds);
+
     private readonly IDynamicsService dynamics;
     private readonly DynamicsWorld world;
     private readonly FlightController controller;
+    private readonly FlightTelemetry telemetry = new();
     private readonly StellarField field;
     private readonly FieldResponse fieldResponse;
     private readonly OrbitalGravity gravity;
@@ -33,6 +36,8 @@ internal sealed class SpaceFlight : IDisposable
     private DynamicsBody body = null!;
     private FlightCommand command = new(NeutralCommandIntent, NeutralCommandIntent);
     private FlightReadout readout;
+    private FlightForces contributions = FlightForces.Zero;
+    private FieldSample lastFieldSample;
     private ulong fixedStepCount;
     private ulong updateSequence;
     private ulong resetCount;
@@ -75,6 +80,18 @@ internal sealed class SpaceFlight : IDisposable
 
     internal FlightReadout Readout => readout;
 
+    internal FlightCommand LastCommand => command;
+
+    /// <summary>
+    /// The per-source push of the most recent admitted turn, kept intact so the
+    /// sum is never the only thing the product can report.
+    /// </summary>
+    internal FlightForces Contributions => contributions;
+
+    internal FieldSample LastFieldSample => lastFieldSample;
+
+    internal FlightTelemetrySnapshot Telemetry => telemetry.Current;
+
     internal ulong FixedStepCount => fixedStepCount;
 
     internal ulong UpdateSequence => updateSequence;
@@ -106,27 +123,29 @@ internal sealed class SpaceFlight : IDisposable
         ulong nextFixedStepCount = checked(fixedStepCount + stepCount);
         ulong nextUpdateSequence = checked(updateSequence + SequenceIncrement);
         FlightControlOutput output = PrepareControllerOutput(input.Command, stepCount);
-        // Every environmental push is product-meaning resolved here but
-        // Engine-integrated: each wrench joins the single DynamicsAction
-        // force below, so Rapier stays the integrator and the product never
-        // edits pose or velocity directly.
         FlightBodyState bodyState = ToBodyState(readout);
-        FlightWrench fieldWrench = fieldResponse.Resolve(
-            bodyState,
-            field.Sample(readout.Position));
-        FlightWrench gravityWrench = gravity.Resolve(bodyState.Position, readout.Mass);
-        FlightWrench gentleWrench = gentleCurrent.Resolve(
-            bodyState.Position,
-            bodyState.LinearVelocity,
-            readout.Mass);
-        FlightWrench swiftWrench = swiftCurrent.Resolve(
-            bodyState.Position,
-            bodyState.LinearVelocity,
-            readout.Mass);
-        FlightWrench totalWrench = Add(
-            output.Wrench,
-            Add(fieldWrench, Add(gravityWrench, Add(gentleWrench, swiftWrench))));
-        DynamicsAction action = ToDynamicsAction(totalWrench);
+        FieldSample fieldSample = field.Sample(bodyState.Position);
+        FlightForces forces = new(
+            MainDrive: output.Drive,
+            Steering: output.Steering,
+            Field: fieldResponse.Resolve(bodyState, fieldSample),
+            GentleCurrent: gentleCurrent.Resolve(
+                bodyState.Position,
+                bodyState.LinearVelocity,
+                readout.Mass),
+            SwiftCurrent: swiftCurrent.Resolve(
+                bodyState.Position,
+                bodyState.LinearVelocity,
+                readout.Mass),
+            OrbitalPull: gravity.Resolve(bodyState.Position, readout.Mass),
+            // No fault has biased the handling yet; the channel exists so a
+            // damage response joins the table instead of replacing it.
+            DamageBias: FlightWrench.Zero);
+
+        // Every product-meaning push joins once, here, into the single
+        // DynamicsAction force. Rapier stays the integrator and the product
+        // never edits pose or velocity directly.
+        DynamicsAction action = ToDynamicsAction(forces.Total);
 
         dynamics.Step(new DynamicsStepRequest(
             world,
@@ -136,6 +155,16 @@ internal sealed class SpaceFlight : IDisposable
         FlightReadout nextReadout = MapReadout(dynamics.Read(new DynamicsReadRequest(body)));
 
         controller.Commit(output);
+        telemetry.Capture(
+            bodyState,
+            nextReadout,
+            forces,
+            output,
+            nextFixedStepCount,
+            stepCount,
+            FixedStep);
+        contributions = forces;
+        lastFieldSample = fieldSample;
         command = input.Command;
         inputMapper.Commit(input);
         readout = nextReadout;
@@ -160,7 +189,10 @@ internal sealed class SpaceFlight : IDisposable
             candidate = null;
             readout = candidateReadout;
             command = new FlightCommand(NeutralCommandIntent, NeutralCommandIntent);
+            contributions = FlightForces.Zero;
+            lastFieldSample = field.Sample(readout.Position);
             controller.Reset();
+            telemetry.Reset();
             inputMapper.Reset();
             updateSequence = nextUpdateSequence;
             resetCount = nextResetCount;
@@ -195,14 +227,13 @@ internal sealed class SpaceFlight : IDisposable
         FlightControlOutput output = default;
         double stagedThrottle = controller.ThrottleLevel;
         FlightBodyState bodyState = ToBodyState(readout);
-        TimeSpan fixedStep = TimeSpan.FromSeconds(FixedStepDurationSeconds);
         for (uint stepIndex = 0; stepIndex < steps; stepIndex++)
         {
             output = controller.Prepare(
                 bodyState,
                 stagedCommand,
                 readout.YawInertia,
-                fixedStep,
+                FixedStep,
                 stagedThrottle);
             stagedThrottle = output.ThrottleLevel;
         }
@@ -250,10 +281,6 @@ internal sealed class SpaceFlight : IDisposable
         value.HeadingRadians,
         value.LinearVelocity,
         value.AngularVelocity);
-
-    private static FlightWrench Add(FlightWrench left, FlightWrench right) => new(
-        left.Force + right.Force,
-        left.TorqueY + right.TorqueY);
 
     private static FlightReadout MapReadout(DynamicsReadout native) => new(
         new PlanarVector(native.Transform.Translation.X, native.Transform.Translation.Z),

@@ -26,6 +26,12 @@
     <RustyEngineWatchPaths>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)'));$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../ui'));$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../content'))</RustyEngineWatchPaths>
   </PropertyGroup>
 
+  <!-- Product owners stay internal to the assembly; the test project exercises
+       the same pure math the product runs, not a widened public API. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Product.Game.Tests" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Rusty.Engine" Version="$(RustyEngineSdkPackageVersion)">
       <!-- An Engine contributor may explicitly supply a matching source

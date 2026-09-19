@@ -2,7 +2,8 @@
  * Mounts the small product-owned DOM layer beside the Engine-owned canvas.
  * It owns no world facts or input delivery; HUD numbers arrive only through
  * the Engine-admitted UI projection the product publishes from its flight
- * readout (contract `rusty.space.hud`: heading radians, planar speed).
+ * readout and telemetry (contract `rusty.space.hud`: heading radians, planar
+ * speed, thrust share, felt acceleration, turn rate).
  */
 export function mountProductUi(root, context) {
   const panel = document.createElement('aside');
@@ -17,7 +18,7 @@ export function mountProductUi(root, context) {
   panel.append(controls);
 
   const hud = document.createElement('p');
-  hud.textContent = 'heading — speed —';
+  hud.textContent = 'heading — speed — thrust — accel — turn —';
   panel.append(hud);
 
   root.append(panel);
@@ -29,13 +30,13 @@ export function mountProductUi(root, context) {
       if (envelope === null || typeof envelope.value !== 'object' || envelope.value === null) {
         return;
       }
-      const { heading, speed } = envelope.value;
+      const { heading, speed, thrust, accel, turn } = envelope.value;
       const headingDegrees = Number.isFinite(heading)
         ? Math.round(((heading % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) * (180 / Math.PI))
         : null;
-      hud.textContent = `heading ${headingDegrees ?? '—'}° speed ${
-        Number.isFinite(speed) ? Number(speed).toFixed(1) : '—'
-      }`;
+      const number = (value, places) => (Number.isFinite(value) ? Number(value).toFixed(places) : '—');
+      hud.textContent = `heading ${headingDegrees ?? '—'}° speed ${number(speed, 1)
+        } thrust ${number(thrust, 2)} accel ${number(accel, 2)} turn ${number(turn, 2)}`;
     });
   }
 

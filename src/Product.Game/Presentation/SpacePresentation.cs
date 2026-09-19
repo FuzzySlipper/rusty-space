@@ -66,10 +66,10 @@ internal sealed class SpacePresentation
         hudStream = this.ui.OpenStream(new UiStreamRequest(HudStreamName, HudContract));
     }
 
-    internal void Publish(FlightReadout readout)
+    internal void Publish(FlightReadout readout, FlightTelemetrySnapshot telemetry)
     {
         PublishAppearance(readout);
-        PublishHud(readout);
+        PublishHud(readout, telemetry);
     }
 
     private void PublishAppearance(FlightReadout readout)
@@ -166,21 +166,28 @@ internal sealed class SpacePresentation
         return 0.70f + (((uint)value % 601U) / 1_000.0f);
     }
 
-    // DOM-layer HUD facts: planar heading (radians) and planar speed. The
-    // Engine injects the runtime identity envelope around this value.
-    private void PublishHud(FlightReadout readout)
+    // DOM-layer HUD facts: where the ship points and how fast it goes, plus the
+    // handling values a tuning pass needs — commanded thrust as a share of what
+    // the drive can give, the acceleration actually felt, and the current turn
+    // rate. The Engine injects the runtime identity envelope around this value.
+    private void PublishHud(FlightReadout readout, FlightTelemetrySnapshot telemetry)
     {
-        double speed = PlanarSpeed(readout.LinearVelocity);
+        double acceleration = Math.Sqrt(
+            (telemetry.ForwardAcceleration * telemetry.ForwardAcceleration)
+            + (telemetry.LateralAcceleration * telemetry.LateralAcceleration));
         StructuredValueNode[] nodes =
         [
-            new(StructuredValueKind.Object, 0, 0, 0, 0, 0, 0, 0, 2),
+            new(StructuredValueKind.Object, 0, 0, 0, 0, 0, 0, 0, 5),
             new(StructuredValueKind.Number, 0, readout.HeadingRadians, 0, 7, 0, 0, 0, 0),
-            new(StructuredValueKind.Number, 0, speed, 7, 5, 0, 0, 0, 0),
+            new(StructuredValueKind.Number, 0, PlanarSpeed(readout.LinearVelocity), 7, 5, 0, 0, 0, 0),
+            new(StructuredValueKind.Number, 0, telemetry.DriveEffort, 12, 6, 0, 0, 0, 0),
+            new(StructuredValueKind.Number, 0, acceleration, 18, 5, 0, 0, 0, 0),
+            new(StructuredValueKind.Number, 0, readout.AngularVelocity, 23, 4, 0, 0, 0, 0),
         ];
         ui.PublishProjection(new UiProjection(
             hudStream,
             checked(++hudSequence),
-            new UiValue(nodes, (uint[])[1, 2], 0, "headingspeed"u8.ToArray())));
+            new UiValue(nodes, (uint[])[1, 2, 3, 4, 5], 0, "headingspeedthrustaccelturn"u8.ToArray())));
     }
 
     private static double PlanarSpeed(PlanarVector velocity) => Math.Sqrt(
