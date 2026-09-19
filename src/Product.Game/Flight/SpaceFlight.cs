@@ -17,8 +17,6 @@ internal sealed class SpaceFlight : IDisposable
     private const double NeutralCommandIntent = 0.0;
     private const float FixedStepSeconds = 1.0f / 60.0f;
     private const double FixedStepDurationSeconds = 1.0 / 60.0;
-    private const double QuaternionDoubleFactor = 2.0;
-    private const double QuaternionUnitMagnitude = 1.0;
 
     private static readonly TimeSpan FixedStep = TimeSpan.FromSeconds(FixedStepDurationSeconds);
 
@@ -249,7 +247,7 @@ internal sealed class SpaceFlight : IDisposable
                     ToSingle(bodyTuning.SpawnPosition.X),
                     ToSingle(bodyTuning.SpawnHeight),
                     ToSingle(bodyTuning.SpawnPosition.Z)),
-                Quaternion.CreateFromAxisAngle(Vector3.UnitY, ToSingle(bodyTuning.SpawnHeadingRadians)),
+                PlanarFrame.ToEngineAttitude(bodyTuning.SpawnHeadingRadians),
                 Vector3.One),
             new Vector3(
                 ToSingle(bodyTuning.HalfExtents.X),
@@ -284,20 +282,11 @@ internal sealed class SpaceFlight : IDisposable
 
     private static FlightReadout MapReadout(DynamicsReadout native) => new(
         new PlanarVector(native.Transform.Translation.X, native.Transform.Translation.Z),
-        HeadingRadians(native.Transform.Rotation),
+        PlanarFrame.EngineYawOf(native.Transform.Rotation),
         new PlanarVector(native.LinearVelocity.X, native.LinearVelocity.Z),
         native.AngularVelocity.Y,
         native.MassProperties.Mass,
         native.MassProperties.PrincipalInertia.Y);
-
-    private static double HeadingRadians(Quaternion rotation)
-    {
-        double yawNumerator = QuaternionDoubleFactor
-            * ((rotation.W * rotation.Y) + (rotation.X * rotation.Z));
-        double yawDenominator = QuaternionUnitMagnitude - (QuaternionDoubleFactor
-            * ((rotation.Y * rotation.Y) + (rotation.Z * rotation.Z)));
-        return Math.Atan2(yawNumerator, yawDenominator);
-    }
 
     private static float ToSingle(double value) => checked((float)value);
 

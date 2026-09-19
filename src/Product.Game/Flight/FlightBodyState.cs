@@ -9,14 +9,12 @@ internal readonly record struct FlightBodyState(
     double AngularVelocity)
 {
     /// <summary>
-    /// Unit vector along the ship's heading in the product planar frame. Every
-    /// heading-derived vector comes from here so the convention has one home.
+    /// Unit vector along the ship's heading, from the one planar frame owner.
     /// </summary>
-    internal PlanarVector Forward => new(Math.Cos(HeadingRadians), Math.Sin(HeadingRadians));
+    internal PlanarVector Forward => PlanarFrame.Forward(HeadingRadians);
 
     /// <summary>
-    /// Unit lateral vector a quarter turn from <see cref="Forward"/>, used for
-    /// slip and off-center lever arms.
+    /// Unit vector toward the ship's right, for slip and off-center lever arms.
     /// </summary>
-    internal PlanarVector Lateral => new(-Forward.Z, Forward.X);
+    internal PlanarVector Right => PlanarFrame.Right(HeadingRadians);
 }

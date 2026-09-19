@@ -220,12 +220,12 @@ internal sealed class SpacePresentation
 
     private Transform ShipTransform(FlightReadout readout) => new(
         PositionAtHeight(readout.Position, tuning.ShipHeight),
-        RotationFromHeading(readout.HeadingRadians),
+        PlanarFrame.ToEngineAttitude(readout.HeadingRadians),
         new Vector3(UniformScale, UniformScale, UniformScale));
 
     private Transform PlanetTransform() => new(
         PositionAtHeight(fieldTuning.PlanetPosition, tuning.PlanetHeight),
-        RotationFromHeading(NeutralHeadingRadians),
+        PlanarFrame.ToEngineAttitude(NeutralHeadingRadians),
         new Vector3(tuning.PlanetDiameter, tuning.PlanetDiameter, tuning.PlanetDiameter));
 
     private Transform WakeTransform()
@@ -254,7 +254,7 @@ internal sealed class SpacePresentation
         PlanarVector direction = band.Direction.Scale(1.0 / band.Direction.Magnitude);
         return new Transform(
             PositionAtHeight(band.Center, height),
-            RotationFromHeading(Math.Atan2(direction.Z, direction.X)),
+            PlanarFrame.ToEngineAttitude(PlanarFrame.HeadingOf(direction)),
             new Vector3(ToSingle(band.Length), depth, ToSingle(band.Width)));
     }
 
@@ -268,7 +268,7 @@ internal sealed class SpacePresentation
         PlanarVector center = origin + direction.Scale(length * HalfLength);
         return new Transform(
             PositionAtHeight(center, height),
-            RotationFromHeading(Math.Atan2(direction.Z, direction.X)),
+            PlanarFrame.ToEngineAttitude(PlanarFrame.HeadingOf(direction)),
             new Vector3(length, thickness, thickness));
     }
 
@@ -276,14 +276,6 @@ internal sealed class SpacePresentation
         ToSingle(position.X),
         height,
         ToSingle(position.Z));
-
-    // Planar headings run (cos h, sin h) in (X, Z), but the Engine's
-    // right-handed Y-up quaternions rotate +h about +Y so a body's local +X
-    // points along (cos h, 0, -sin h). Negating h makes +X-nosed shapes face
-    // the direction the planar flight model actually moves.
-    private static Quaternion RotationFromHeading(double headingRadians) => Quaternion.CreateFromAxisAngle(
-        Vector3.UnitY,
-        -ToSingle(headingRadians));
 
     private static float ToSingle(double value) => checked((float)value);
 }

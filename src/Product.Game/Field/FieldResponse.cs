@@ -26,29 +26,29 @@ internal sealed class FieldResponse
         }
 
         PlanarVector forward = body.Forward;
-        PlanarVector lateral = body.Lateral;
+        PlanarVector right = body.Right;
         PlanarVector relativeVelocity = body.LinearVelocity - sample.FlowVelocity;
         double forwardSlip = relativeVelocity.Dot(forward);
-        double lateralSlip = relativeVelocity.Dot(lateral);
+        double rightSlip = relativeVelocity.Dot(right);
         double gradientResponse = BaselineGradientResponse + (tuning.GradientResponseFactor
             * Math.Min(sample.Gradient.AbsoluteMagnitude, tuning.MaximumGradientResponseMagnitude));
         double responseScale = tuning.Coupling
             * Math.Clamp(sample.Intensity, MinimumIntensity, MaximumIntensity)
             * gradientResponse;
         double turbulenceForward = sample.Turbulence.Dot(forward);
-        double turbulenceLateral = sample.Turbulence.Dot(lateral);
+        double turbulenceRight = sample.Turbulence.Dot(right);
         PlanarVector localForce = new(
             ((-forwardSlip * tuning.ForwardResponse)
                 + (turbulenceForward * tuning.TurbulenceResponse))
             * responseScale
             * tuning.ResponseMass,
-            ((-lateralSlip * tuning.LateralResponse)
-                + (turbulenceLateral * tuning.TurbulenceResponse))
+            ((-rightSlip * tuning.LateralResponse)
+                + (turbulenceRight * tuning.TurbulenceResponse))
             * responseScale
             * tuning.ResponseMass);
 
         return new FlightWrench(
-            forward.Scale(localForce.X) + lateral.Scale(localForce.Z),
+            forward.Scale(localForce.X) + right.Scale(localForce.Z),
             NoYawTorque);
     }
 }

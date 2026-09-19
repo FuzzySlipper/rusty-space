@@ -44,22 +44,22 @@ public class HeadingFrameTests
     [InlineData(Math.PI / 6.0)]
     [InlineData(Math.PI / 2.0)]
     [InlineData(-2.0)]
-    public void LateralStaysPerpendicularToForward(double headingRadians)
+    public void RightStaysPerpendicularToForward(double headingRadians)
     {
         FlightBodyState body = Body(headingRadians);
 
-        Assert.Equal(0.0, body.Forward.Dot(body.Lateral), 12);
-        Assert.Equal(1.0, body.Lateral.Magnitude, 12);
+        Assert.Equal(0.0, body.Forward.Dot(body.Right), 12);
+        Assert.Equal(1.0, body.Right.Magnitude, 12);
     }
 
     [Fact]
-    public void ForwardAndLateralAreMirrorImagesAcrossTheHeading()
+    public void RightIsMirroredAcrossTheHeading()
     {
         // A quarter turn either way from a heading must land on opposite
         // laterals; if these ever agree, the frame has collapsed.
         Assert.Equal(
-            -Body(Math.PI / 2.0).Lateral.X,
-            Body(-Math.PI / 2.0).Lateral.X,
+            -Body(Math.PI / 2.0).Right.X,
+            Body(-Math.PI / 2.0).Right.X,
             12);
     }
 

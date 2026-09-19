@@ -33,7 +33,7 @@ internal sealed class FlightTelemetry
             fixedStepCount,
             admittedSteps,
             velocityChange.Dot(frame.Forward) / elapsed,
-            velocityChange.Dot(frame.Lateral) / elapsed,
+            velocityChange.Dot(frame.Right) / elapsed,
             (after.AngularVelocity - frame.AngularVelocity) / elapsed,
             control.DriveEffort,
             control.SteeringEffort,
