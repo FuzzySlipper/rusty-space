@@ -90,30 +90,35 @@ These hold for every change in this campaign and are what a review checks.
 
 ### Planar sign convention
 
-`SpaceFlight.HeadingRadians` extracts heading as the raw Engine yaw `θ`. In
-the Engine's right-handed Y-up world that yaw points a body's local `+X`
-along `(cos θ, -sin θ)` in `(X, Z)`, while the planar consumers treat forward
-as `(cos θ, +sin θ)`. The two frames differ by a Z mirror, and only
-`SpacePresentation.RotationFromHeading` compensates, at the presentation
-boundary alone.
+The product planar frame is authoritative for ship attitude. `PlanarFrame`
+in `Navigation` owns every expression of it: forward and right for a
+heading, the heading of a direction, the yaw an Engine attitude carries, the
+single heading to-attitude conversion, and the Engine-`Y` sign of a torque
+built from an in-plane offset and force. Positions, velocities, and forces
+cross into Dynamics with the plane's coordinates taken identically as `(X,
+Z)`; no planar vector is mirrored on the way across.
 
-At Engine yaw 30 degrees the body's real nose is `(0.866, -0.500)` and the
-product's forward is `(0.866, 0.500)`. Nothing breaks today because the ship
-is the only body and nothing else consumes its attitude. Two things end that.
+The Engine is right-handed Y-up while a planar `(X, Z)` pair is left-handed
+about `+Y`, so a heading `h` needs an Engine rotation of `-h` to face `(cos
+h, sin h)`. At Engine yaw 30 degrees a body's local `+X` is `(0.866,
+-0.500)` where a heading of the same angle faces `(0.866, 0.500)`: a body
+stands at `+h` and anything drawn for it stands at `-h`.
 
-Hand-computed torque from an off-center force inherits the same question.
+The mirror is the part still open.
+
+Hand-computed torque from an off-center force inherits the question. Call
+`PlanarFrame.YawTorque` rather than a cross product already in hand: it
+returns the Engine-`Y` sign that agrees with the authoritative frame, which
+is the negation of the world-space cross product of the same two vectors.
 Get it wrong and the ship weathercocks, trims, and asymmetry-corrects in the
 mirrored direction, silently, with perfectly stable numbers.
 
 Asymmetric collision silhouettes start mattering once local geometry exists.
 The tuned ship half-extents are already unequal in X and Z, so a mirrored
-attitude presents the wrong cross-section to the thing it hits.
-
-Exactly one named Navigation owner defines heading vectors, the planar cross
-product with the Engine-Y sign conversion, and the heading-to-quaternion
-conversion. No caller hand-rolls a `(cos, sin)` or negates a heading, and one
-side is documented as authoritative for body attitude rather than two
-conventions coexisting.
+attitude presents the wrong cross-section to the thing it hits. Settling
+that means either authoring silhouettes in the body's mirrored frame or
+making body attitude agree with the planar heading, which takes the steering
+and input signs with it.
 
 ### Force staleness under catch-up
 
