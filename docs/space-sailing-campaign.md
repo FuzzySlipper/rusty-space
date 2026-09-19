@@ -167,6 +167,20 @@ field sampling — is covered by focused unit tests. This campaign does not
 revive the retired Rust or TypeScript gates, browser bundles, packaging
 frameworks, or interactive-parity claims.
 
+Handling is a felt property, so a phase that changes feel also wants the ship
+driven by real input while these values are read. The `playtest` service
+documented in the separate `crew-services` repository provides that: `den-serve`
+publishes the product on a LAN origin, `playtest start rusty-space` opens a
+browser with a native Xbox controller on the GPU host, and key, stick, and
+trigger holds arrive as ordinary Engine input. The live-debug commands are then
+read from the same running product. This is an evidence lane, not a gate, and it
+adds no product infrastructure.
+
+One trap there: a `playtest` session can enter a degraded phase and refuse
+further input while the product keeps running normally. A zero in the
+contribution table after that says nothing about flight, so confirm the session
+phase before reading a null result as a finding.
+
 ## Phase map
 
 Scope and acceptance for each phase live in Den under campaign task
