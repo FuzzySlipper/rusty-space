@@ -21,6 +21,7 @@ internal sealed class FlightTelemetry
         FlightReadout after,
         FlightForces forces,
         FlightControlOutput control,
+        double coupling,
         ulong fixedStepCount,
         uint admittedSteps,
         TimeSpan fixedStep)
@@ -39,6 +40,7 @@ internal sealed class FlightTelemetry
             control.SteeringEffort,
             control.DriveSaturated,
             control.SteeringSaturated,
+            coupling,
             forces.Field.Force.Magnitude,
             // Impacts report through this same value once local geometry exists.
             PlanarVector.Zero);

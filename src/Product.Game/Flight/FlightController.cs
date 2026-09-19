@@ -11,6 +11,7 @@ internal sealed class FlightController
     private const double FullResponseFactor = 1.0;
     private const double UnitVectorMagnitude = 1.0;
     private const double NoForwardAcceleration = 0.0;
+    private const double NoTurnIntent = 0.0;
     private const double MinimumValidMomentOfInertia = 0.0;
     private const double NoYawTorque = 0.0;
     private const double NoPlanarForce = 0.0;
@@ -45,7 +46,11 @@ internal sealed class FlightController
         PlanarVector driveForce = RemoveForwardAccelerationAtMaximumSpeed(
             commandedForce,
             body.LinearVelocity);
-        Steering steering = ResolveSteering(body.AngularVelocity, turnIntent, momentOfInertia);
+        Steering steering = ResolveSteering(
+            body.AngularVelocity,
+            turnIntent,
+            momentOfInertia,
+            command.StabilizerEnabled);
 
         return new FlightControlOutput(
             new FlightWrench(driveForce, NoYawTorque),
@@ -95,7 +100,11 @@ internal sealed class FlightController
             : commandedForce;
     }
 
-    private Steering ResolveSteering(double angularVelocity, double turnIntent, double momentOfInertia)
+    private Steering ResolveSteering(
+        double angularVelocity,
+        double turnIntent,
+        double momentOfInertia,
+        bool stabilizerEnabled)
     {
         if (!double.IsFinite(momentOfInertia)
             || momentOfInertia <= MinimumValidMomentOfInertia)
@@ -104,6 +113,14 @@ internal sealed class FlightController
         }
 
         double desiredAngularVelocity = turnIntent * tuning.MaximumTurnRate;
+        if (!stabilizerEnabled && desiredAngularVelocity == NoTurnIntent)
+        {
+            // With the attitude hold disengaged the steering effectors answer a
+            // demand and nothing else. A released control asks for nothing, so
+            // whatever rotation the ship already has carries on untouched.
+            return new Steering(NoYawTorque, NoPlanarForce, Saturated: false);
+        }
+
         double angularVelocityError = desiredAngularVelocity - angularVelocity;
         double torqueAuthority = momentOfInertia
             * tuning.MaximumTurnRate

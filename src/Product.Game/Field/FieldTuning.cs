@@ -3,7 +3,6 @@ using Rusty.Space.Product.Navigation;
 namespace Rusty.Space.Product.Field;
 
 internal sealed record FieldTuning(
-    double Coupling,
     PlanarVector PlanetPosition,
     PlanarVector StellarFlow,
     double StellarIntensity,
@@ -21,25 +20,15 @@ internal sealed record FieldTuning(
     double TurbulenceZPositionZFrequency,
     double GradientResponseFactor,
     double MaximumGradientResponseMagnitude,
-    double ResponseMass,
     double ForwardResponse,
     double LateralResponse,
     double TurbulenceResponse)
 {
-    private const double MinimumCoupling = 0.0;
-    private const double MaximumCoupling = 1.0;
     private const double MinimumNonNegativeMagnitude = 0.0;
     private const double MinimumPositiveMagnitude = 0.0;
 
     internal FieldTuning Validate()
     {
-        if (!double.IsFinite(Coupling)
-            || Coupling < MinimumCoupling
-            || Coupling > MaximumCoupling)
-        {
-            throw new ArgumentOutOfRangeException(nameof(Coupling));
-        }
-
         ValidateFinite(PlanetPosition, nameof(PlanetPosition));
         ValidateFinite(StellarFlow, nameof(StellarFlow));
         ValidateFinite(WakeFlow, nameof(WakeFlow));
@@ -57,7 +46,6 @@ internal sealed record FieldTuning(
         ValidateFinite(TurbulenceZPositionZFrequency, nameof(TurbulenceZPositionZFrequency));
         ValidateNonNegativeFinite(GradientResponseFactor, nameof(GradientResponseFactor));
         ValidatePositiveFinite(MaximumGradientResponseMagnitude, nameof(MaximumGradientResponseMagnitude));
-        ValidatePositiveFinite(ResponseMass, nameof(ResponseMass));
         ValidateNonNegativeFinite(ForwardResponse, nameof(ForwardResponse));
         ValidateNonNegativeFinite(LateralResponse, nameof(LateralResponse));
         ValidateNonNegativeFinite(TurbulenceResponse, nameof(TurbulenceResponse));

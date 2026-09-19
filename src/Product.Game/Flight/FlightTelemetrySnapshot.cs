@@ -17,6 +17,7 @@ internal readonly record struct FlightTelemetrySnapshot(
     double SteeringEffort,
     bool DriveSaturated,
     bool SteeringSaturated,
+    double Coupling,
     double FieldLoad,
     PlanarVector CollisionImpulse)
 {
@@ -30,6 +31,8 @@ internal readonly record struct FlightTelemetrySnapshot(
         0.0,
         DriveSaturated: false,
         SteeringSaturated: false,
-        0.0,
-        PlanarVector.Zero);
+        // No turn has been captured yet, so no coupling was in effect.
+        Coupling: 0.0,
+        FieldLoad: 0.0,
+        CollisionImpulse: PlanarVector.Zero);
 }

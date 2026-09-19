@@ -25,6 +25,7 @@ internal sealed class SpaceFlight : IDisposable
     private readonly IDynamicsService dynamics;
     private readonly DynamicsWorld world;
     private readonly FlightController controller;
+    private readonly FieldCoupling coupling;
     private readonly FlightTelemetry telemetry = new();
     private readonly StellarField field;
     private readonly FieldResponse fieldResponse;
@@ -34,7 +35,7 @@ internal sealed class SpaceFlight : IDisposable
     private readonly FlightBodyTuning bodyTuning;
     private readonly FlightInputMapper inputMapper = new();
     private DynamicsBody body = null!;
-    private FlightCommand command = new(NeutralCommandIntent, NeutralCommandIntent);
+    private FlightCommand command = FlightCommand.Neutral;
     private FlightReadout readout;
     private FlightForces contributions = FlightForces.Zero;
     private FlightForces firstSubstepContributions = FlightForces.Zero;
@@ -47,6 +48,7 @@ internal sealed class SpaceFlight : IDisposable
     internal SpaceFlight(
         IDynamicsService dynamics,
         FlightTuning flightTuning,
+        CouplingTuning couplingTuning,
         FlightBodyTuning bodyTuning,
         FieldTuning fieldTuning,
         OrbitalGravityTuning orbitalTuning,
@@ -56,6 +58,7 @@ internal sealed class SpaceFlight : IDisposable
         this.dynamics = dynamics ?? throw new ArgumentNullException(nameof(dynamics));
         this.bodyTuning = bodyTuning.Validate();
         controller = new FlightController(flightTuning);
+        coupling = new FieldCoupling(couplingTuning);
         field = new StellarField(fieldTuning);
         fieldResponse = new FieldResponse(fieldTuning);
         gravity = new OrbitalGravity(orbitalTuning);
@@ -95,6 +98,12 @@ internal sealed class SpaceFlight : IDisposable
     /// while a catch-up turn was running.
     /// </summary>
     internal FlightForces FirstSubstepContributions => firstSubstepContributions;
+
+    /// <summary>
+    /// How much of the field and of every drift band the hull currently feels,
+    /// as the coupling actuator last left it.
+    /// </summary>
+    internal double Coupling => coupling.Level;
 
     internal FieldSample LastFieldSample => lastFieldSample;
 
@@ -141,6 +150,7 @@ internal sealed class SpaceFlight : IDisposable
         FlightControlOutput output = default;
         FieldSample fieldSample = field.Sample(turnStart.Position);
         double stagedThrottle = controller.ThrottleLevel;
+        double stagedCoupling = coupling.Level;
 
         for (uint stepIndex = 0; stepIndex < stepCount; stepIndex++)
         {
@@ -158,11 +168,15 @@ internal sealed class SpaceFlight : IDisposable
                 FixedStep,
                 stagedThrottle);
             stagedThrottle = substepOutput.ThrottleLevel;
+            // The coupling actuator travels on the same per-substep clock for
+            // the same reason.
+            stagedCoupling = coupling.Prepare(input.Command, FixedStep, stagedCoupling);
             FlightForces substepForces = ResolveForces(
                 bodyState,
                 fieldSample,
                 substepOutput,
-                currentReadout.Mass);
+                currentReadout.Mass,
+                stagedCoupling);
             if (stepIndex == FirstSubstep)
             {
                 turnStartForces = substepForces;
@@ -181,11 +195,13 @@ internal sealed class SpaceFlight : IDisposable
         }
 
         controller.Commit(output);
+        coupling.Commit(stagedCoupling);
         telemetry.Capture(
             turnStart,
             currentReadout,
             forces,
             output,
+            stagedCoupling,
             nextFixedStepCount,
             stepCount,
             FixedStep);
@@ -215,11 +231,12 @@ internal sealed class SpaceFlight : IDisposable
             body = candidate;
             candidate = null;
             readout = candidateReadout;
-            command = new FlightCommand(NeutralCommandIntent, NeutralCommandIntent);
+            command = FlightCommand.Neutral;
             contributions = FlightForces.Zero;
             firstSubstepContributions = FlightForces.Zero;
             lastFieldSample = field.Sample(readout.Position);
             controller.Reset();
+            coupling.Reset();
             telemetry.Reset();
             inputMapper.Reset();
             updateSequence = nextUpdateSequence;
@@ -260,18 +277,23 @@ internal sealed class SpaceFlight : IDisposable
         FlightBodyState bodyState,
         FieldSample fieldSample,
         FlightControlOutput output,
-        double mass) => new(
+        double mass,
+        double couplingLevel) => new(
             MainDrive: output.Drive,
             Steering: output.Steering,
-            Field: fieldResponse.Resolve(bodyState, fieldSample),
+            Field: fieldResponse.Resolve(bodyState, fieldSample, couplingLevel, mass),
             GentleCurrent: gentleCurrent.Resolve(
                 bodyState.Position,
                 bodyState.LinearVelocity,
-                mass),
+                mass,
+                couplingLevel),
             SwiftCurrent: swiftCurrent.Resolve(
                 bodyState.Position,
                 bodyState.LinearVelocity,
-                mass),
+                mass,
+                couplingLevel),
+            // The well is a mass well rather than a flow-coupled drive, so it is
+            // the one source the coupling actuator does not reach.
             OrbitalPull: gravity.Resolve(bodyState.Position, mass),
             // No fault has biased the handling yet; the channel exists so a
             // damage response joins the table instead of replacing it.

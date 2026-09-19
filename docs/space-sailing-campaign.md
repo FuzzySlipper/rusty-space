@@ -138,6 +138,29 @@ four steps has had four steps of throttle travel.
 `FlightController.Prepare` stays pure about the spool and only `Commit`
 publishes it, so a turn commits once and no interval is counted twice.
 
+### Coupling is the ship's, the well is the planet's
+
+Field coupling is a ship-owned actuator, not a constant on the field. The
+hull carries a live level that trim winds up and down at a bounded rate,
+and every flow-coupled source — the stellar field and the drift bands —
+scales by it. At zero the environment is declined exactly: the ship keeps
+the velocity it arrived with and no authored river can bend it. The tuning
+record therefore holds the cradle setting and the travel time, never the
+level itself, and the `trim_response(relative_flow, coupling_trim)` term
+in the notes' force sketch is realized as this actuator's travel rather
+than as a separate push, so one handle keeps one meaning.
+
+The orbital well stays outside that gate on purpose. A gravity well is a
+mass relation, not a flow the hull can decline to catch, so a ship that
+has wound itself off still falls toward the planet while holding a
+straight line through a river. Gating the well as well would make zero
+coupling mean "nowhere to fall", which is a different fiction and a worse
+one.
+
+The emergency release dumps the actuator to zero and leaves it there until
+the player winds it back in. What bailing out costs is the travel time
+back to the cradle, never a stolen velocity.
+
 ### Mass consistency
 
 Environmental sources that scale by mass must scale by the same real body

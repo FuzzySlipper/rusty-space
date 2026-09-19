@@ -10,6 +10,7 @@ namespace Rusty.Space.Product.Tuning;
 
 internal sealed record SpaceTuning(
     FlightTuning Flight,
+    CouplingTuning Coupling,
     FlightBodyTuning FlightBody,
     FieldTuning Field,
     OrbitalGravityTuning Orbital,
@@ -25,6 +26,12 @@ internal sealed record SpaceTuning(
             MaximumTurnRate: 2.1,
             ThrottleResponse: TimeSpan.FromSeconds(0.20),
             SteeringResponse: TimeSpan.FromSeconds(0.25)),
+        // A hull leaves the cradle engaged enough that a wake or a band bends
+        // its line, and a full trim sweep takes long enough to read as a
+        // setting being wound rather than a switch being thrown.
+        Coupling: new(
+            DefaultLevel: 0.6,
+            TrimResponse: TimeSpan.FromSeconds(1.5)),
         FlightBody: new(
             SpawnPosition: PlanarVector.Zero,
             SpawnHeight: 0.0,
@@ -33,7 +40,6 @@ internal sealed record SpaceTuning(
             HalfHeight: 0.25,
             Mass: 2.0),
         Field: new(
-            Coupling: 0.0,
             PlanetPosition: new PlanarVector(14.0, 0.0),
             StellarFlow: new PlanarVector(0.0, 1.75),
             StellarIntensity: 0.24,
@@ -51,7 +57,6 @@ internal sealed record SpaceTuning(
             TurbulenceZPositionZFrequency: 0.11,
             GradientResponseFactor: 0.12,
             MaximumGradientResponseMagnitude: 4.0,
-            ResponseMass: 2.0,
             ForwardResponse: 0.85,
             LateralResponse: 1.8,
             TurbulenceResponse: 0.8),
@@ -124,6 +129,7 @@ internal sealed record SpaceTuning(
     internal SpaceTuning Validate() => this with
     {
         Flight = Flight.Validate(),
+        Coupling = Coupling.Validate(),
         FlightBody = FlightBody.Validate(),
         Field = Field.Validate(),
         Orbital = Orbital.Validate(),

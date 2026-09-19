@@ -24,7 +24,7 @@ public class FlightControllerTests
 
         FlightControlOutput output = controller.Prepare(
             Coast(headingRadians: 0.0),
-            new FlightCommand(Throttle: 1.0, Turn: 0.0),
+            Command(1.0, 0.0),
             momentOfInertia: 2.0,
             FixedStep,
             currentThrottleLevel: 0.0);
@@ -41,7 +41,7 @@ public class FlightControllerTests
 
         FlightControlOutput output = controller.Prepare(
             Coast(headingRadians: 0.0),
-            new FlightCommand(Throttle: 0.0, Turn: 0.0),
+            Command(0.0, 0.0),
             momentOfInertia: 2.0,
             FixedStep,
             currentThrottleLevel: tuning.MaximumThrust);
@@ -58,7 +58,7 @@ public class FlightControllerTests
 
         FlightControlOutput north = controller.Prepare(
             Coast(headingRadians: Math.PI / 2.0),
-            new FlightCommand(Throttle: 1.0, Turn: 0.0),
+            Command(1.0, 0.0),
             momentOfInertia: 2.0,
             FixedStep,
             currentThrottleLevel: tuning.MaximumThrust);
@@ -79,7 +79,7 @@ public class FlightControllerTests
 
         FlightControlOutput output = controller.Prepare(
             atCeiling,
-            new FlightCommand(Throttle: 1.0, Turn: 0.0),
+            Command(1.0, 0.0),
             momentOfInertia: 2.0,
             FixedStep,
             currentThrottleLevel: tuning.MaximumThrust);
@@ -99,7 +99,7 @@ public class FlightControllerTests
 
         FlightControlOutput output = controller.Prepare(
             atCeiling,
-            new FlightCommand(Throttle: 1.0, Turn: 0.0),
+            Command(1.0, 0.0),
             momentOfInertia: 2.0,
             FixedStep,
             currentThrottleLevel: tuning.MaximumThrust);
@@ -120,7 +120,7 @@ public class FlightControllerTests
 
         FlightControlOutput output = controller.Prepare(
             Coast(headingRadians: 0.0) with { AngularVelocity = -tuning.MaximumTurnRate },
-            new FlightCommand(Throttle: 0.0, Turn: 1.0),
+            Command(0.0, 1.0),
             inertia,
             FixedStep,
             currentThrottleLevel: 0.0);
@@ -138,13 +138,13 @@ public class FlightControllerTests
 
         FlightControlOutput starboard = controller.Prepare(
             Coast(headingRadians: 0.0),
-            new FlightCommand(Throttle: 0.0, Turn: 0.5),
+            Command(0.0, 0.5),
             momentOfInertia: 2.0,
             FixedStep,
             currentThrottleLevel: 0.0);
         FlightControlOutput port = controller.Prepare(
             Coast(headingRadians: 0.0),
-            new FlightCommand(Throttle: 0.0, Turn: -0.5),
+            Command(0.0, -0.5),
             momentOfInertia: 2.0,
             FixedStep,
             currentThrottleLevel: 0.0);
@@ -160,7 +160,7 @@ public class FlightControllerTests
 
         FlightControlOutput output = controller.Prepare(
             Coast(headingRadians: 0.0),
-            new FlightCommand(Throttle: 0.0, Turn: 1.0),
+            Command(0.0, 1.0),
             momentOfInertia: 0.0,
             FixedStep,
             currentThrottleLevel: 0.0);
@@ -177,7 +177,7 @@ public class FlightControllerTests
 
         Assert.Throws<ArgumentOutOfRangeException>(() => controller.Prepare(
             Coast(headingRadians: 0.0),
-            new FlightCommand(Throttle: 1.0, Turn: 0.0),
+            Command(1.0, 0.0),
             momentOfInertia: 2.0,
             TimeSpan.Zero,
             currentThrottleLevel: 0.0));
@@ -195,7 +195,7 @@ public class FlightControllerTests
         {
             level = controller.Prepare(
                 Coast(headingRadians: 0.0),
-                new FlightCommand(Throttle: 1.0, Turn: 0.0),
+                Command(1.0, 0.0),
                 momentOfInertia: 2.0,
                 FixedStep,
                 currentThrottleLevel: level).ThrottleLevel;
@@ -218,7 +218,7 @@ public class FlightControllerTests
 
         FlightControlOutput output = controller.Prepare(
             Coast(headingRadians: 0.0),
-            new FlightCommand(Throttle: 1.0, Turn: 0.0),
+            Command(1.0, 0.0),
             momentOfInertia: 2.0,
             FixedStep,
             currentThrottleLevel: 0.0);
@@ -232,9 +232,81 @@ public class FlightControllerTests
         Assert.Equal(output.ThrottleLevel, controller.ThrottleLevel, Tolerance);
     }
 
+    [Fact]
+    public void ADisengagedStabilizerLetsReleasedRotationCarryOn()
+    {
+        FlightController controller = new(tuning);
+
+        FlightControlOutput coasting = controller.Prepare(
+            Spinning(headingRadians: 0.0, angularVelocity: 1.4),
+            new FlightCommand(
+                Throttle: 0.0,
+                Turn: 0.0,
+                CouplingTrim: 0.0,
+                StabilizerEnabled: false,
+                EmergencyUncouple: false),
+            momentOfInertia: 2.0,
+            FixedStep,
+            currentThrottleLevel: 0.0);
+
+        Assert.Equal(0.0, coasting.Steering.TorqueY, 12);
+        Assert.Equal(0.0, coasting.SteeringEffort, 12);
+    }
+
+    [Fact]
+    public void AnEngagedStabilizerHoldsAttitudeAgainstExistingRotation()
+    {
+        FlightController controller = new(tuning);
+
+        FlightControlOutput holding = controller.Prepare(
+            Spinning(headingRadians: 0.0, angularVelocity: 1.4),
+            Command(0.0, 0.0),
+            momentOfInertia: 2.0,
+            FixedStep,
+            currentThrottleLevel: 0.0);
+
+        Assert.True(holding.Steering.TorqueY < 0.0);
+        Assert.True(holding.SteeringEffort > 0.0);
+    }
+
+    [Fact]
+    public void SteeringStillAnswersADemandWithTheStabilizerDisengaged()
+    {
+        FlightController controller = new(tuning);
+
+        FlightControlOutput turning = controller.Prepare(
+            Spinning(headingRadians: 0.0, angularVelocity: 0.0),
+            new FlightCommand(
+                Throttle: 0.0,
+                Turn: 1.0,
+                CouplingTrim: 0.0,
+                StabilizerEnabled: false,
+                EmergencyUncouple: false),
+            momentOfInertia: 2.0,
+            FixedStep,
+            currentThrottleLevel: 0.0);
+
+        Assert.True(turning.Steering.TorqueY > 0.0);
+    }
+
     private static FlightBodyState Coast(double headingRadians) => new(
         PlanarVector.Zero,
         headingRadians,
         PlanarVector.Zero,
         0.0);
+
+    private static FlightBodyState Spinning(
+        double headingRadians,
+        double angularVelocity) => new(
+            PlanarVector.Zero,
+            headingRadians,
+            PlanarVector.Zero,
+            angularVelocity);
+
+    private static FlightCommand Command(double throttle, double turn) => new(
+        throttle,
+        turn,
+        CouplingTrim: 0.0,
+        StabilizerEnabled: true,
+        EmergencyUncouple: false);
 }

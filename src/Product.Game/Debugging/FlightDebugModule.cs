@@ -72,8 +72,22 @@ public sealed class FlightDebugModule : IDebugCommandModule
             $"""
             fixed step  {telemetry.FixedStepCount} over {telemetry.AdmittedSteps} admitted step(s)
             accel       forward {telemetry.ForwardAcceleration:F3}  lateral {telemetry.LateralAcceleration:F3}  yaw {telemetry.YawAcceleration:F3}
+            coupling    {telemetry.Coupling:F3}
             field load  {telemetry.FieldLoad:F3}
             impulse     ({telemetry.CollisionImpulse.X:F3}, {telemetry.CollisionImpulse.Z:F3})
+            """);
+    }
+
+    [DebugCommand("space.coupling", Description = "Shows the coupling actuator, the trim demand driving it, and the attitude hold switch.")]
+    public string Coupling()
+    {
+        FlightCommand command = flight.LastCommand;
+        return FormattableString.Invariant(
+            $"""
+            coupling    {flight.Coupling:F3}
+            trim        demand {command.CouplingTrim:F2}  (Q winds out, E winds in)
+            attitude    {(command.StabilizerEnabled ? "hold engaged" : "hold disengaged")}
+            emergency   {(command.EmergencyUncouple ? "uncouple held" : "clear")}
             """);
     }
 

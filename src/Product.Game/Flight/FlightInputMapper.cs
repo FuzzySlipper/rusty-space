@@ -12,10 +12,13 @@ internal sealed class FlightInputMapper
     private const double NeutralCommandIntent = 0.0;
     private const double FullCommandIntent = 1.0;
     private const double LeftTurnIntent = -1.0;
+    private const double FullUncoupleTrimIntent = -1.0;
     // Product policy: re-center a small stick wobble, then preserve the full
-    // range outside the deadzone so full deflection still means full steering.
-    private const double AnalogSteeringDeadzone = 0.15;
-    private const double AnalogSteeringRange = FullCommandIntent - AnalogSteeringDeadzone;
+    // range outside the deadzone so full deflection still means full travel.
+    // Steering and coupling trim are both analog sticks and share the policy;
+    // without it a resting stick would creep the coupling off its setting.
+    private const double AnalogAxisDeadzone = 0.15;
+    private const double AnalogAxisRange = FullCommandIntent - AnalogAxisDeadzone;
 
     // These are semantic, product-owned input identities. The Engine maps
     // physical controls to them before an admitted update reaches Space.
@@ -26,6 +29,11 @@ internal sealed class FlightInputMapper
     private static ReadOnlySpan<byte> ControllerRightTurnIntent => "space.flight.turn-right-controller"u8;
     private static ReadOnlySpan<byte> AnalogThrustIntent => "space.flight.thrust-analog"u8;
     private static ReadOnlySpan<byte> AnalogTurnIntent => "space.flight.turn-analog"u8;
+    private static ReadOnlySpan<byte> AnalogCouplingTrimIntent => "space.flight.coupling-trim"u8;
+    private static ReadOnlySpan<byte> CoupleIntent => "space.flight.couple"u8;
+    private static ReadOnlySpan<byte> UncoupleIntent => "space.flight.uncouple"u8;
+    private static ReadOnlySpan<byte> EmergencyUncoupleIntent => "space.flight.emergency-uncouple"u8;
+    private static ReadOnlySpan<byte> StabilizerIntent => "space.flight.stabilizer"u8;
     private static ReadOnlySpan<byte> ResetIntent => "space.flight.reset"u8;
     private static ReadOnlySpan<byte> AbortIntent => "space.flight.abort"u8;
 
@@ -61,7 +69,12 @@ internal sealed class FlightInputMapper
                 else if (axisIntent.SequenceEqual(AnalogTurnIntent))
                 {
                     hasSemanticFlightInput = true;
-                    stagedState = stagedState with { AnalogTurn = NormalizeAnalogTurn(inputEvent.X) };
+                    stagedState = stagedState with { AnalogTurn = NormalizeAnalogAxis(inputEvent.X) };
+                }
+                else if (axisIntent.SequenceEqual(AnalogCouplingTrimIntent))
+                {
+                    hasSemanticFlightInput = true;
+                    stagedState = stagedState with { AnalogCouplingTrim = NormalizeAnalogAxis(inputEvent.X) };
                 }
 
                 continue;
@@ -97,6 +110,35 @@ internal sealed class FlightInputMapper
             {
                 hasSemanticFlightInput = true;
                 stagedState = stagedState with { ControllerRightHeld = IsDigitalActive(inputEvent) };
+            }
+            else if (intent.SequenceEqual(CoupleIntent))
+            {
+                hasSemanticFlightInput = true;
+                stagedState = stagedState with { CoupleHeld = IsDigitalActive(inputEvent) };
+            }
+            else if (intent.SequenceEqual(UncoupleIntent))
+            {
+                hasSemanticFlightInput = true;
+                stagedState = stagedState with { UncoupleHeld = IsDigitalActive(inputEvent) };
+            }
+            else if (intent.SequenceEqual(EmergencyUncoupleIntent))
+            {
+                hasSemanticFlightInput = true;
+                stagedState = stagedState with { EmergencyUncoupleHeld = IsDigitalActive(inputEvent) };
+            }
+            else if (intent.SequenceEqual(StabilizerIntent))
+            {
+                hasSemanticFlightInput = true;
+                // The stabilizer is a switch, not a held key: each press flips
+                // the attitude hold. Engine press phases are one-shot, so no
+                // release mapping is needed to stop a repeated flip.
+                if (IsPressed(inputEvent))
+                {
+                    stagedState = stagedState with
+                    {
+                        StabilizerEnabled = !stagedState.StabilizerEnabled,
+                    };
+                }
             }
             else if (intent.SequenceEqual(ResetIntent))
             {
@@ -150,6 +192,33 @@ internal sealed class FlightInputMapper
                 {
                     stagedState = stagedState with { KeyboardRightHeld = pressed };
                 }
+                else if (label.SequenceEqual("KeyQ"u8))
+                {
+                    stagedState = stagedState with { UncoupleHeld = pressed };
+                }
+                else if (label.SequenceEqual("KeyE"u8))
+                {
+                    stagedState = stagedState with { CoupleHeld = pressed };
+                }
+                else if (label.SequenceEqual("KeyX"u8))
+                {
+                    stagedState = stagedState with { EmergencyUncoupleHeld = pressed };
+                }
+                else if (label.SequenceEqual("KeyT"u8))
+                {
+                    // Raw physical edges repeat while a key goes down, so the
+                    // flip is guarded by the held flag the semantic path gets
+                    // for free from its press phase.
+                    if (pressed && !stagedState.StabilizerKeyHeld)
+                    {
+                        stagedState = stagedState with
+                        {
+                            StabilizerEnabled = !stagedState.StabilizerEnabled,
+                        };
+                    }
+
+                    stagedState = stagedState with { StabilizerKeyHeld = pressed };
+                }
                 else if (label.SequenceEqual("KeyR"u8))
                 {
                     if (pressed && !stagedState.ResetHeld)
@@ -185,16 +254,16 @@ internal sealed class FlightInputMapper
         NeutralCommandIntent,
         FullCommandIntent);
 
-    private static double NormalizeAnalogTurn(float value)
+    private static double NormalizeAnalogAxis(float value)
     {
         double clamped = Math.Clamp((double)value, LeftTurnIntent, FullCommandIntent);
         double magnitude = Math.Abs(clamped);
-        if (magnitude <= AnalogSteeringDeadzone)
+        if (magnitude <= AnalogAxisDeadzone)
         {
             return NeutralCommandIntent;
         }
 
-        double remappedMagnitude = (magnitude - AnalogSteeringDeadzone) / AnalogSteeringRange;
+        double remappedMagnitude = (magnitude - AnalogAxisDeadzone) / AnalogAxisRange;
         return Math.CopySign(Math.Clamp(remappedMagnitude, NeutralCommandIntent, FullCommandIntent), clamped);
     }
 
@@ -217,9 +286,17 @@ internal sealed class FlightInputMapper
             : controllerSteeringHeld
                 ? DigitalTurn(value.ControllerLeftHeld, value.ControllerRightHeld)
                 : value.AnalogTurn;
+        // Q and E wind the coupling actuator at full rate; the controller stick
+        // does the same whenever neither key is held. Both are intents: the
+        // actuator decides how fast the level actually follows.
+        double digitalTrim = (value.CoupleHeld ? FullCommandIntent : NeutralCommandIntent)
+            + (value.UncoupleHeld ? FullUncoupleTrimIntent : NeutralCommandIntent);
         return new FlightCommand(
             throttle,
-            turn);
+            turn,
+            digitalTrim != NeutralCommandIntent ? digitalTrim : value.AnalogCouplingTrim,
+            value.StabilizerEnabled,
+            value.EmergencyUncoupleHeld);
     }
 
     private static double DigitalTurn(bool leftHeld, bool rightHeld) => leftHeld == rightHeld
@@ -230,24 +307,41 @@ internal sealed class FlightInputMapper
 internal readonly record struct FlightInputState(
     double AnalogThrust,
     double AnalogTurn,
+    double AnalogCouplingTrim,
     bool KeyboardThrustHeld,
     bool KeyboardLeftHeld,
     bool KeyboardRightHeld,
     bool ControllerLeftHeld,
     bool ControllerRightHeld,
+    bool CoupleHeld,
+    bool UncoupleHeld,
+    bool EmergencyUncoupleHeld,
+    bool StabilizerEnabled,
+    bool StabilizerKeyHeld,
     bool ResetHeld,
     bool FaultHeld)
 {
+    /// <summary>
+    /// What the controls read before anything is touched. The attitude hold is
+    /// something a stock hull does for itself rather than something the pilot
+    /// must remember to switch on, so it starts engaged.
+    /// </summary>
     internal static FlightInputState Neutral { get; } = new(
-        0.0,
-        0.0,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false);
+        AnalogThrust: 0.0,
+        AnalogTurn: 0.0,
+        AnalogCouplingTrim: 0.0,
+        KeyboardThrustHeld: false,
+        KeyboardLeftHeld: false,
+        KeyboardRightHeld: false,
+        ControllerLeftHeld: false,
+        ControllerRightHeld: false,
+        CoupleHeld: false,
+        UncoupleHeld: false,
+        EmergencyUncoupleHeld: false,
+        StabilizerEnabled: true,
+        StabilizerKeyHeld: false,
+        ResetHeld: false,
+        FaultHeld: false);
 }
 
 internal readonly record struct FlightInputPlan(

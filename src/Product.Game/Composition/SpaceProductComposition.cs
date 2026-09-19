@@ -19,6 +19,7 @@ internal sealed class SpaceProductComposition
         SpaceFlight flight = new(
             Engine.Dynamics,
             Tuning.Flight,
+            Tuning.Coupling,
             Tuning.FlightBody,
             Tuning.Field,
             Tuning.Orbital,

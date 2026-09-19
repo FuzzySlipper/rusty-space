@@ -11,11 +11,35 @@ namespace Rusty.Space.Product.Flight.Tests;
 /// </summary>
 public class FlightTelemetryTests
 {
+    [Fact]
+    public void TheSnapshotReportsTheCouplingInEffectAlongsideTheFieldLoad()
+    {
+        FlightTelemetry telemetry = new();
+        FlightForces forces = FlightForces.Zero with
+        {
+            Field = new FlightWrench(new PlanarVector(0.0, 2.5), 0.0),
+        };
+
+        telemetry.Capture(
+            Frame(0.0, PlanarVector.Zero, 0.0),
+            Readout(0.0, PlanarVector.Zero, 0.0),
+            forces,
+            Control(),
+            SampledCoupling,
+            3UL,
+            1U,
+            FixedStep);
+
+        Assert.Equal(SampledCoupling, telemetry.Current.Coupling, 12);
+        Assert.Equal(2.5, telemetry.Current.FieldLoad, 12);
+    }
+
     private static readonly TimeSpan FixedStep = TimeSpan.FromSeconds(1.0 / 60.0);
 
     // A fixed step is carried as a TimeSpan, so it lands on a whole number of
     // 100ns ticks; derived rates can only be compared to that resolution.
     private const double RateTolerance = 0.01;
+    private const double SampledCoupling = 0.6;
 
     [Fact]
     public void AccelerationIsReportedInTheShipsOwnFrame()
@@ -27,6 +51,7 @@ public class FlightTelemetryTests
             Readout(headingRadians: Math.PI / 2.0, new PlanarVector(3.0, 0.0), 0.0),
             FlightForces.Zero,
             Control(),
+            SampledCoupling,
             7UL,
             1U,
             FixedStep);
@@ -48,6 +73,7 @@ public class FlightTelemetryTests
             Readout(0.0, drift, 0.0),
             FlightForces.Zero,
             Control(),
+            SampledCoupling,
             1UL,
             1U,
             FixedStep);
@@ -68,6 +94,7 @@ public class FlightTelemetryTests
             Readout(0.0, velocityChange, 0.0),
             FlightForces.Zero,
             Control(),
+            SampledCoupling,
             2UL,
             2U,
             FixedStep);
@@ -88,6 +115,7 @@ public class FlightTelemetryTests
             Readout(0.0, PlanarVector.Zero, 0.0),
             FlightForces.Zero,
             Control(driveEffort: 0.75, steeringEffort: 1.0, driveSaturated: false, steeringSaturated: true),
+            SampledCoupling,
             3UL,
             1U,
             FixedStep);
@@ -108,6 +136,7 @@ public class FlightTelemetryTests
             Readout(0.0, PlanarVector.Zero, 0.0),
             FlightForces.Zero with { Field = new FlightWrench(new PlanarVector(0.0, -4.0), 0.0) },
             Control(),
+            SampledCoupling,
             1UL,
             1U,
             FixedStep);
@@ -124,6 +153,7 @@ public class FlightTelemetryTests
             Readout(0.0, new PlanarVector(0.0, 9.0), 0.0),
             FlightForces.Zero,
             Control(driveEffort: 1.0, steeringEffort: 1.0, driveSaturated: true, steeringSaturated: true),
+            SampledCoupling,
             9UL,
             1U,
             FixedStep);
@@ -146,6 +176,7 @@ public class FlightTelemetryTests
             Readout(0.0, PlanarVector.Zero, 0.0),
             FlightForces.Zero,
             Control(),
+            SampledCoupling,
             1UL,
             1U,
             TimeSpan.Zero));
