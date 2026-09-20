@@ -5,10 +5,11 @@ using Xunit;
 namespace Rusty.Space.Product.Flight.Tests;
 
 /// <summary>
-/// The mapper turns Engine-admitted physical input into the closed flight
-/// command vocabulary. These pin the coupling handles and the two rules every
-/// control depends on: an analog stick is re-centered inside its deadzone, and
-/// raw physical keys only speak when no semantic input arrived.
+/// The mapper turns Engine-admitted mapped input into the closed flight command
+/// vocabulary. These pin the coupling handles and the rules every control
+/// depends on: an analog stick is re-centered inside its deadzone, devices
+/// compose rather than compete, and the declared named intents are the only
+/// vocabulary a flight command can come from.
 /// </summary>
 public class FlightInputMapperTests
 {
@@ -92,31 +93,37 @@ public class FlightInputMapperTests
     }
 
     [Fact]
-    public void RawKeysStillFlyTheShipWhenNoSemanticInputArrives()
+    public void APhysicalKeyWithNoMappedIntentDoesNotFlyTheShip()
     {
+        // Space's controls are declared in the product manifest and the Engine
+        // maps physical controls onto them before an admitted turn. A raw key
+        // fact is not a second vocabulary this mapper speaks, so a host that
+        // sends one changes nothing.
         FlightInputMapper mapper = new();
 
-        FlightCommand thrusting = mapper.Apply(new[] { RawKey("KeyW", pressed: true) }).Command;
-        FlightCommand trimmedOut = mapper.Apply(new[] { RawKey("KeyQ", pressed: true) }).Command;
+        FlightCommand command = mapper.Apply(new[] { RawKey("KeyW", pressed: true) }).Command;
 
-        Assert.Equal(1.0, thrusting.Throttle, 9);
-        Assert.Equal(-1.0, trimmedOut.CouplingTrim, 9);
+        Assert.Equal(0.0, command.Throttle, 9);
+        Assert.Equal(0.0, command.CouplingTrim, 9);
     }
 
     [Fact]
-    public void ASemanticTurnDoesNotAlsoFireTheRawKeyFallback()
+    public void AKeyboardAndAGamepadSpeakInTheSameTurn()
     {
-        // The raw path exists for hosts that have not declared Space's
-        // mappings. Where the mappings exist it must not add a second voice.
+        // Devices compose into one command rather than one winning over the
+        // other: the trigger drives while the stick steers, and a stray raw key
+        // fact adds nothing to either.
         FlightInputMapper mapper = new();
 
         FlightCommand command = mapper.Apply(new[]
         {
             Digital("space.flight.thrust", active: true),
+            Axis("space.flight.turn-analog", -1.0f),
             RawKey("KeyQ", pressed: true),
         }).Command;
 
         Assert.Equal(1.0, command.Throttle, 9);
+        Assert.Equal(-1.0, command.Turn, 9);
         Assert.Equal(0.0, command.CouplingTrim, 9);
     }
 

@@ -43,8 +43,8 @@ Product owners, one mutable state family each:
   attitude hold is a switch the player can throw, not an assumption.
 - `Flight/FieldCoupling` — the coupling actuator: trim travel rate, clamps,
   emergency dump, cradle setting.
-- `Flight/FlightInputMapper` — admitted physical input in, one closed
-  `FlightCommand` out.
+- `Flight/FlightInputMapper` — admitted named intents in, one closed
+  `FlightCommand` out. Held control state lives here and nowhere else.
 - `Field/StellarField` — the authored environment sample at a position:
   local flow, intensity, gradient, turbulence.
 - `Field/FieldResponse` — how the hull converts slip against that sample into
@@ -78,6 +78,28 @@ derives turn duration for telemetry and camera from the same facts. Step
 counts and sequences stay because they carry meaning for diagnostics and
 reset; a count multiplied by a separately written constant is a second clock
 and is not how a turn is measured.
+
+## Controls arrive as named intents
+
+The product manifest declares what the pilot can touch: every intent and every
+mapping from a physical control to it. Keyboard covers thrust, left and right
+turn, couple, uncouple, and emergency uncouple as held-or-released, and reset,
+abort, and the attitude-hold switch as presses. The controller contributes the
+bumper turns, the trigger's analog thrust, the stick's turn and trim axes, and
+the reset press. The wheel arrives as `space.camera.zoom`.
+
+The Engine maps physical controls onto those names and admits the result. Space
+reads names and holds no vocabulary of physical labels: there is no second path
+that interprets raw keys when a mapped turn looks unrecognized, and the camera
+does not listen for a raw wheel behind the declared intent. One gesture cannot
+act twice, and re-binding a control is a manifest edit rather than a code
+change. An admitted `Clear` is what empties held state; that is the Engine's
+contract and the product's only reset of it.
+
+Two handles are keyboard-only today: the attitude-hold switch, the emergency
+uncouple, and abort have no controller button, and coupling trim has no digital
+controller fallback. Those are open control decisions, tracked with the
+readout and legibility work in #8311.
 
 ## State changes directly
 

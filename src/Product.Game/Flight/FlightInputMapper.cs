@@ -50,11 +50,10 @@ internal sealed class FlightInputMapper
         bool resetRequested = false;
         bool faultRequested = false;
 
-        // A mapped event is the authoritative Engine input path. Raw physical
-        // key facts remain a compatibility fallback for hosts that have not
-        // yet declared Space's mappings; they never override semantic input
-        // from the same admitted turn.
-        bool hasSemanticFlightInput = false;
+        // Space's controls are declared named intents (Product.Game.csproj),
+        // and the Engine maps physical controls to them before an admitted
+        // turn reaches the product. Physical labels are not a second
+        // vocabulary this owner speaks.
         foreach (ProductInputEvent inputEvent in input)
         {
             if (inputEvent.Kind == InputEventKind.Clear)
@@ -68,18 +67,15 @@ internal sealed class FlightInputMapper
                 ReadOnlySpan<byte> axisIntent = inputEvent.Intent.Span;
                 if (axisIntent.SequenceEqual(AnalogThrustIntent))
                 {
-                    hasSemanticFlightInput = true;
-                    state = state with { AnalogThrust = NormalizeAnalogThrust(inputEvent.X) };
+                        state = state with { AnalogThrust = NormalizeAnalogThrust(inputEvent.X) };
                 }
                 else if (axisIntent.SequenceEqual(AnalogTurnIntent))
                 {
-                    hasSemanticFlightInput = true;
-                    state = state with { AnalogTurn = NormalizeAnalogAxis(inputEvent.X) };
+                        state = state with { AnalogTurn = NormalizeAnalogAxis(inputEvent.X) };
                 }
                 else if (axisIntent.SequenceEqual(AnalogCouplingTrimIntent))
                 {
-                    hasSemanticFlightInput = true;
-                    state = state with { AnalogCouplingTrim = NormalizeAnalogAxis(inputEvent.X) };
+                        state = state with { AnalogCouplingTrim = NormalizeAnalogAxis(inputEvent.X) };
                 }
 
                 continue;
@@ -93,47 +89,38 @@ internal sealed class FlightInputMapper
             ReadOnlySpan<byte> intent = inputEvent.Intent.Span;
             if (intent.SequenceEqual(ThrustIntent))
             {
-                hasSemanticFlightInput = true;
                 state = state with { KeyboardThrustHeld = IsDigitalActive(inputEvent) };
             }
             else if (intent.SequenceEqual(LeftTurnIntentId))
             {
-                hasSemanticFlightInput = true;
                 state = state with { KeyboardLeftHeld = IsDigitalActive(inputEvent) };
             }
             else if (intent.SequenceEqual(RightTurnIntentId))
             {
-                hasSemanticFlightInput = true;
                 state = state with { KeyboardRightHeld = IsDigitalActive(inputEvent) };
             }
             else if (intent.SequenceEqual(ControllerLeftTurnIntent))
             {
-                hasSemanticFlightInput = true;
                 state = state with { ControllerLeftHeld = IsDigitalActive(inputEvent) };
             }
             else if (intent.SequenceEqual(ControllerRightTurnIntent))
             {
-                hasSemanticFlightInput = true;
                 state = state with { ControllerRightHeld = IsDigitalActive(inputEvent) };
             }
             else if (intent.SequenceEqual(CoupleIntent))
             {
-                hasSemanticFlightInput = true;
                 state = state with { CoupleHeld = IsDigitalActive(inputEvent) };
             }
             else if (intent.SequenceEqual(UncoupleIntent))
             {
-                hasSemanticFlightInput = true;
                 state = state with { UncoupleHeld = IsDigitalActive(inputEvent) };
             }
             else if (intent.SequenceEqual(EmergencyUncoupleIntent))
             {
-                hasSemanticFlightInput = true;
                 state = state with { EmergencyUncoupleHeld = IsDigitalActive(inputEvent) };
             }
             else if (intent.SequenceEqual(StabilizerIntent))
             {
-                hasSemanticFlightInput = true;
                 // The stabilizer is a switch, not a held key: each press flips
                 // the attitude hold. Engine press phases are one-shot, so no
                 // release mapping is needed to stop a repeated flip.
@@ -147,11 +134,9 @@ internal sealed class FlightInputMapper
             }
             else if (intent.SequenceEqual(ResetIntent))
             {
-                hasSemanticFlightInput = true;
-                // Press mappings are one-shot Engine facts, unlike the raw
-                // fallback's physical key edges. Do not retain a semantic
-                // reset as held: the launcher intentionally has no release
-                // mapping for this action.
+                // A press mapping is a one-shot Engine fact: the launcher
+                // intentionally declares no release for this action, so the
+                // reset is reported for the turn it arrives in and not held.
                 if (IsPressed(inputEvent))
                 {
                     resetRequested = true;
@@ -159,88 +144,9 @@ internal sealed class FlightInputMapper
             }
             else if (intent.SequenceEqual(AbortIntent))
             {
-                hasSemanticFlightInput = true;
                 if (IsPressed(inputEvent))
                 {
                     faultRequested = true;
-                }
-            }
-        }
-
-        if (!hasSemanticFlightInput)
-        {
-            foreach (ProductInputEvent inputEvent in input)
-            {
-                if (inputEvent.Kind == InputEventKind.Clear)
-                {
-                    state = FlightInputState.Neutral;
-                    continue;
-                }
-
-                if (inputEvent.Kind != InputEventKind.Key
-                    || inputEvent.Edge is not (InputEdge.Pressed or InputEdge.Released))
-                {
-                    continue;
-                }
-
-                bool pressed = inputEvent.Edge == InputEdge.Pressed;
-                ReadOnlySpan<byte> label = inputEvent.Label.Span;
-                if (label.SequenceEqual("KeyW"u8))
-                {
-                    state = state with { KeyboardThrustHeld = pressed };
-                }
-                else if (label.SequenceEqual("KeyA"u8))
-                {
-                    state = state with { KeyboardLeftHeld = pressed };
-                }
-                else if (label.SequenceEqual("KeyD"u8))
-                {
-                    state = state with { KeyboardRightHeld = pressed };
-                }
-                else if (label.SequenceEqual("KeyQ"u8))
-                {
-                    state = state with { UncoupleHeld = pressed };
-                }
-                else if (label.SequenceEqual("KeyE"u8))
-                {
-                    state = state with { CoupleHeld = pressed };
-                }
-                else if (label.SequenceEqual("KeyX"u8))
-                {
-                    state = state with { EmergencyUncoupleHeld = pressed };
-                }
-                else if (label.SequenceEqual("KeyT"u8))
-                {
-                    // Raw physical edges repeat while a key goes down, so the
-                    // flip is guarded by the held flag the semantic path gets
-                    // for free from its press phase.
-                    if (pressed && !state.StabilizerKeyHeld)
-                    {
-                        state = state with
-                        {
-                            StabilizerEnabled = !state.StabilizerEnabled,
-                        };
-                    }
-
-                    state = state with { StabilizerKeyHeld = pressed };
-                }
-                else if (label.SequenceEqual("KeyR"u8))
-                {
-                    if (pressed && !state.ResetHeld)
-                    {
-                        resetRequested = true;
-                    }
-
-                    state = state with { ResetHeld = pressed };
-                }
-                else if (label.SequenceEqual("KeyF"u8))
-                {
-                    if (pressed && !state.FaultHeld)
-                    {
-                        faultRequested = true;
-                    }
-
-                    state = state with { FaultHeld = pressed };
                 }
             }
         }
@@ -319,10 +225,7 @@ internal readonly record struct FlightInputState(
     bool CoupleHeld,
     bool UncoupleHeld,
     bool EmergencyUncoupleHeld,
-    bool StabilizerEnabled,
-    bool StabilizerKeyHeld,
-    bool ResetHeld,
-    bool FaultHeld)
+    bool StabilizerEnabled)
 {
     /// <summary>
     /// What the controls read before anything is touched. The attitude hold is
@@ -341,10 +244,7 @@ internal readonly record struct FlightInputState(
         CoupleHeld: false,
         UncoupleHeld: false,
         EmergencyUncoupleHeld: false,
-        StabilizerEnabled: true,
-        StabilizerKeyHeld: false,
-        ResetHeld: false,
-        FaultHeld: false);
+        StabilizerEnabled: true);
 }
 
 /// <summary>

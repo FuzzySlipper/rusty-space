@@ -112,34 +112,38 @@ internal sealed class TrackingCamera : IDisposable
             ToSingle(shipPosition.Z - (forwardZ * tuning.BackDistance * scale)));
     }
 
+    /// <summary>
+    /// The zoom an admitted turn asks for. The wheel reaches the camera through
+    /// the same declared intent everything else does, so a physical wheel event
+    /// is not a second voice this owner listens to.
+    /// </summary>
     private double ResolveZoomScale(ReadOnlySpan<ProductInputEvent> input)
+        => ApplyZoom(zoomScale, MappedZoomDelta(input), tuning);
+
+    /// <summary>
+    /// Zoom is multiplicative, so one notch moves the view by the same
+    /// proportion wherever it currently sits, and the range is bounded so the
+    /// anchor never collapses onto the hull or loses it entirely.
+    /// </summary>
+    internal static double ApplyZoom(double currentScale, double zoomDelta, CameraTuning tuning)
     {
-        double mappedDelta = 0.0;
-        bool hasMappedZoom = false;
+        double requested = currentScale * Math.Exp(zoomDelta * tuning.WheelZoomSensitivity);
+        return Math.Clamp(requested, tuning.MinimumZoomScale, tuning.MaximumZoomScale);
+    }
+
+    internal static double MappedZoomDelta(ReadOnlySpan<ProductInputEvent> input)
+    {
+        double delta = 0.0;
         foreach (ProductInputEvent inputEvent in input)
         {
             if (inputEvent.Kind == InputEventKind.MappedAxis
                 && inputEvent.Intent.Span.SequenceEqual(ZoomIntent))
             {
-                hasMappedZoom = true;
-                mappedDelta += inputEvent.X;
+                delta += inputEvent.X;
             }
         }
 
-        double wheelDelta = mappedDelta;
-        if (!hasMappedZoom)
-        {
-            foreach (ProductInputEvent inputEvent in input)
-            {
-                if (inputEvent.Kind == InputEventKind.Wheel)
-                {
-                    wheelDelta += inputEvent.Y;
-                }
-            }
-        }
-
-        double requested = zoomScale * Math.Exp(wheelDelta * tuning.WheelZoomSensitivity);
-        return Math.Clamp(requested, tuning.MinimumZoomScale, tuning.MaximumZoomScale);
+        return delta;
     }
 
     private CameraDescriptor Descriptor(Vector3 position) => new(
