@@ -171,16 +171,29 @@ public class FlightControllerTests
     }
 
     [Fact]
-    public void ANonPositiveStepIsRejectedRatherThanSilentlySpoolingWrong()
+    public void TheSpoolTravelsOverTheAdmittedDurationRatherThanATurnCount()
     {
+        // A host admitted at a coarser fixed rate hands the spool more time per
+        // turn, so it travels further, and no admitted rate overshoots the
+        // commanded thrust.
         FlightController controller = new(tuning);
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => controller.Prepare(
+        double fine = controller.Prepare(
             Coast(headingRadians: 0.0),
             Command(1.0, 0.0),
             momentOfInertia: 2.0,
-            TimeSpan.Zero,
-            currentThrottleLevel: 0.0));
+            TimeSpan.FromSeconds(1.0 / 60.0),
+            currentThrottleLevel: 0.0).ThrottleLevel;
+        double coarse = controller.Prepare(
+            Coast(headingRadians: 0.0),
+            Command(1.0, 0.0),
+            momentOfInertia: 2.0,
+            TimeSpan.FromSeconds(1.0 / 30.0),
+            currentThrottleLevel: 0.0).ThrottleLevel;
+
+        Assert.True(fine > 0.0);
+        Assert.True(coarse > fine);
+        Assert.True(coarse <= tuning.MaximumThrust);
     }
 
     [Fact]

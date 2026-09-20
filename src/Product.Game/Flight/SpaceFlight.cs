@@ -17,10 +17,6 @@ internal sealed class SpaceFlight : IDisposable
     private const uint FirstSubstep = 0;
     private const ulong SequenceIncrement = 1;
     private const double NeutralCommandIntent = 0.0;
-    private const float FixedStepSeconds = 1.0f / 60.0f;
-    private const double FixedStepDurationSeconds = 1.0 / 60.0;
-
-    private static readonly TimeSpan FixedStep = TimeSpan.FromSeconds(FixedStepDurationSeconds);
 
     private readonly IDynamicsService dynamics;
     private readonly DynamicsWorld world;
@@ -123,7 +119,8 @@ internal sealed class SpaceFlight : IDisposable
         if (input.ResetRequested)
         {
             ResetFlight();
-            return new FlightAdmission(true, fixedStepCount, updateSequence, input.FaultRequested);
+            return new FlightAdmission(
+                true, fixedStepCount, updateSequence, TimeSpan.Zero, input.FaultRequested);
         }
 
         // The Engine owns update admission and fixed-step timing; its facts
@@ -138,9 +135,13 @@ internal sealed class SpaceFlight : IDisposable
         {
             command = input.Command;
             inputMapper.Commit(input);
-            return new FlightAdmission(false, fixedStepCount, updateSequence, input.FaultRequested);
+            return new FlightAdmission(
+                false, fixedStepCount, updateSequence, TimeSpan.Zero, input.FaultRequested);
         }
 
+        // The Engine admitted these steps at its own rate, and that admitted
+        // duration is the only clock the turn runs on.
+        AdmittedTurn turn = AdmittedTurn.FromFacts(update.Facts);
         ulong nextFixedStepCount = checked(fixedStepCount + stepCount);
         ulong nextUpdateSequence = checked(updateSequence + SequenceIncrement);
         FlightBodyState turnStart = ToBodyState(readout);
@@ -165,12 +166,12 @@ internal sealed class SpaceFlight : IDisposable
                 bodyState,
                 input.Command,
                 currentReadout.YawInertia,
-                FixedStep,
+                turn.FixedStep,
                 stagedThrottle);
             stagedThrottle = substepOutput.ThrottleLevel;
             // The coupling actuator travels on the same per-substep clock for
             // the same reason.
-            stagedCoupling = coupling.Prepare(input.Command, FixedStep, stagedCoupling);
+            stagedCoupling = coupling.Prepare(input.Command, turn.FixedStep, stagedCoupling);
             FlightForces substepForces = ResolveForces(
                 bodyState,
                 fieldSample,
@@ -186,7 +187,7 @@ internal sealed class SpaceFlight : IDisposable
             // single DynamicsAction force for that substep.
             dynamics.Step(new DynamicsStepRequest(
                 world,
-                FixedStepSeconds,
+                turn.DynamicsStepSeconds,
                 SingleSubstep,
                 new[] { ToDynamicsAction(substepForces.Total) }));
             currentReadout = MapReadout(dynamics.Read(new DynamicsReadRequest(body)));
@@ -204,7 +205,7 @@ internal sealed class SpaceFlight : IDisposable
             stagedCoupling,
             nextFixedStepCount,
             stepCount,
-            FixedStep);
+            turn.FixedStep);
         contributions = forces;
         firstSubstepContributions = turnStartForces;
         lastFieldSample = fieldSample;
@@ -213,7 +214,8 @@ internal sealed class SpaceFlight : IDisposable
         readout = currentReadout;
         fixedStepCount = nextFixedStepCount;
         updateSequence = nextUpdateSequence;
-        return new FlightAdmission(true, fixedStepCount, updateSequence, input.FaultRequested);
+        return new FlightAdmission(
+            true, fixedStepCount, updateSequence, turn.Duration, input.FaultRequested);
     }
 
     internal void ResetFlight()
@@ -359,8 +361,14 @@ internal sealed class SpaceFlight : IDisposable
     }
 }
 
+/// <summary>
+/// What one admitted turn did, including the simulated time it covered, so
+/// what happens after a turn measures the same interval the Engine admitted
+/// rather than a count restated at a product constant.
+/// </summary>
 internal readonly record struct FlightAdmission(
     bool Published,
     ulong FixedStepCount,
     ulong UpdateSequence,
+    TimeSpan TurnDuration,
     bool FaultRequested);

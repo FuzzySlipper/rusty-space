@@ -167,19 +167,38 @@ public class FlightTelemetryTests
     }
 
     [Fact]
-    public void ANonPositiveFixedStepIsRejected()
+    public void ARateIsDividedByTheAdmittedWindow()
     {
+        // The same velocity change read over twice the admitted fixed step is
+        // half the acceleration. The window comes from the admitted step, so a
+        // host running another rate reports the physics rather than a product
+        // constant.
         FlightTelemetry telemetry = new();
+        PlanarVector change = new(3.0, 0.0);
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => telemetry.Capture(
+        telemetry.Capture(
             Frame(0.0, PlanarVector.Zero, 0.0),
-            Readout(0.0, PlanarVector.Zero, 0.0),
+            Readout(0.0, change, 0.0),
             FlightForces.Zero,
             Control(),
             SampledCoupling,
             1UL,
             1U,
-            TimeSpan.Zero));
+            TimeSpan.FromSeconds(2.0 / 60.0));
+        double coarse = telemetry.Current.ForwardAcceleration;
+
+        telemetry.Capture(
+            Frame(0.0, PlanarVector.Zero, 0.0),
+            Readout(0.0, change, 0.0),
+            FlightForces.Zero,
+            Control(),
+            SampledCoupling,
+            2UL,
+            1U,
+            FixedStep);
+        double fine = telemetry.Current.ForwardAcceleration;
+
+        Assert.Equal(fine / 2.0, coarse, RateTolerance);
     }
 
     private static FlightBodyState Frame(double headingRadians, PlanarVector velocity, double angularVelocity) =>

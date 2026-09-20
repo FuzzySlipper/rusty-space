@@ -33,8 +33,6 @@ internal sealed class FieldCoupling
     /// </summary>
     internal double Prepare(FlightCommand command, TimeSpan step, double currentLevel)
     {
-        ValidateStep(step);
-
         if (command.EmergencyUncouple)
         {
             return MinimumLevel;
@@ -53,12 +51,4 @@ internal sealed class FieldCoupling
     internal void Commit(double nextLevel) => level = nextLevel;
 
     internal void Reset() => level = tuning.DefaultLevel;
-
-    private static void ValidateStep(TimeSpan step)
-    {
-        if (step <= TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(nameof(step));
-        }
-    }
 }

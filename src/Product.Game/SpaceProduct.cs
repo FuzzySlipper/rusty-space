@@ -47,7 +47,7 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
     {
         RequireState(SpaceLifecycleState.Created, nameof(Start));
         PublishFlight();
-        FollowCamera(ReadOnlySpan<ProductInputEvent>.Empty);
+        FollowCamera(ReadOnlySpan<ProductInputEvent>.Empty, TimeSpan.Zero);
         lifecycle = SpaceLifecycleState.Running;
     }
 
@@ -74,7 +74,7 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
             PublishFlight();
         }
 
-        FollowCamera(update.Input);
+        FollowCamera(update.Input, admission.TurnDuration);
         if (!admission.Published)
         {
             return ProductUpdateResult.None;
@@ -98,7 +98,7 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
         RequireState(SpaceLifecycleState.Running, nameof(Restart));
         composition.Flight.ResetFlight();
         PublishFlight();
-        FollowCamera(ReadOnlySpan<ProductInputEvent>.Empty);
+        FollowCamera(ReadOnlySpan<ProductInputEvent>.Empty, TimeSpan.Zero);
     }
 
     public void Pause()
@@ -145,11 +145,12 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
         composition.Flight.Readout,
         composition.Flight.Telemetry);
 
-    private void FollowCamera(ReadOnlySpan<ProductInputEvent> input) => composition.Camera.Follow(
-        composition.Flight.Readout,
-        composition.Flight.FixedStepCount,
-        composition.Flight.ResetCount,
-        input);
+    private void FollowCamera(ReadOnlySpan<ProductInputEvent> input, TimeSpan turnDuration)
+        => composition.Camera.Follow(
+            composition.Flight.Readout,
+            turnDuration,
+            composition.Flight.ResetCount,
+            input);
 
     private void RequireState(SpaceLifecycleState expected, string operation)
     {

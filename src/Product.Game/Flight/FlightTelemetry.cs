@@ -26,8 +26,6 @@ internal sealed class FlightTelemetry
         uint admittedSteps,
         TimeSpan fixedStep)
     {
-        ValidateStep(fixedStep);
-
         double elapsed = admittedSteps * fixedStep.TotalSeconds;
         PlanarVector velocityChange = after.LinearVelocity - frame.LinearVelocity;
         current = new FlightTelemetrySnapshot(
@@ -47,12 +45,4 @@ internal sealed class FlightTelemetry
     }
 
     internal void Reset() => current = FlightTelemetrySnapshot.Neutral;
-
-    private static void ValidateStep(TimeSpan fixedStep)
-    {
-        if (fixedStep <= TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(nameof(fixedStep));
-        }
-    }
 }

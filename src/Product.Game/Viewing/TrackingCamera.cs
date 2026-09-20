@@ -16,10 +16,8 @@ internal sealed class TrackingCamera : IDisposable
 {
     private static ReadOnlySpan<byte> ZoomIntent => "space.camera.zoom"u8;
 
-    // The simulated flight clock advances in fixed 1/60 s steps; camera
-    // smoothing runs on that same clock so pauses and resets never invent
-    // wall-clock time.
-    private const double FixedStepSeconds = 1.0 / 60.0;
+    // Camera smoothing runs on admitted simulated time, never wall-clock time,
+    // so a paused product or a catch-up turn cannot invent or skip follow.
     private const double MaximumFollowDeltaSeconds = 0.25;
     private const double NeutralDeltaSeconds = 0.0;
     private const double FullSmoothing = 1.0;
@@ -34,7 +32,6 @@ internal sealed class TrackingCamera : IDisposable
     private readonly CameraTuning tuning;
     private readonly Camera camera;
     private Vector3 chasePosition;
-    private ulong lastFixedStepCount;
     private ulong lastResetCount;
     private double zoomScale = 1.0;
     private bool positioned;
@@ -44,14 +41,12 @@ internal sealed class TrackingCamera : IDisposable
         ICameraViewService cameraView,
         CameraTuning tuning,
         FlightReadout spawn,
-        ulong spawnFixedStepCount,
         ulong spawnResetCount)
     {
         this.cameraView = cameraView ?? throw new ArgumentNullException(nameof(cameraView));
         this.tuning = tuning.Validate();
         chasePosition = AnchorPosition(spawn.Position);
         positioned = true;
-        lastFixedStepCount = spawnFixedStepCount;
         lastResetCount = spawnResetCount;
         camera = this.cameraView.CreateCamera(Descriptor(chasePosition));
         this.cameraView.SetActiveCamera(camera);
@@ -59,7 +54,7 @@ internal sealed class TrackingCamera : IDisposable
 
     internal void Follow(
         FlightReadout readout,
-        ulong fixedStepCount,
+        TimeSpan turnDuration,
         ulong resetCount,
         ReadOnlySpan<ProductInputEvent> input)
     {
@@ -81,14 +76,15 @@ internal sealed class TrackingCamera : IDisposable
         else
         {
             nextChasePosition = chasePosition
-                + ((target - chasePosition) * ToSingle(FollowFraction(fixedStepCount)));
+                + ((target - chasePosition) * ToSingle(FollowFraction(
+                    turnDuration,
+                    tuning.PositionSmoothing)));
         }
 
         cameraView.UpdateCamera(new CameraUpdateRequest(camera, Descriptor(nextChasePosition)));
         chasePosition = nextChasePosition;
         positioned = nextPositioned;
         zoomScale = nextZoomScale;
-        lastFixedStepCount = fixedStepCount;
         lastResetCount = resetCount;
     }
 
@@ -158,11 +154,18 @@ internal sealed class TrackingCamera : IDisposable
             tuning.FarPlane),
         new CameraViewport(0.0, 0.0, 1.0, 1.0));
 
-    private double FollowFraction(ulong fixedStepCount)
+    /// <summary>
+    /// How much of the remaining gap the follow closes for one turn: a first
+    /// order lag over the simulated time the Engine admitted, capped so a long
+    /// stall still moves the view rather than teleporting it.
+    /// </summary>
+    internal static double FollowFraction(TimeSpan turnDuration, TimeSpan positionSmoothing)
     {
-        double deltaSeconds = (double)(fixedStepCount - lastFixedStepCount) * FixedStepSeconds;
-        deltaSeconds = Math.Clamp(deltaSeconds, NeutralDeltaSeconds, MaximumFollowDeltaSeconds);
-        return FullSmoothing - Math.Exp(-deltaSeconds / tuning.PositionSmoothing.TotalSeconds);
+        double deltaSeconds = Math.Clamp(
+            turnDuration.TotalSeconds,
+            NeutralDeltaSeconds,
+            MaximumFollowDeltaSeconds);
+        return FullSmoothing - Math.Exp(-deltaSeconds / positionSmoothing.TotalSeconds);
     }
 
     private static float ToSingle(double value) => checked((float)value);

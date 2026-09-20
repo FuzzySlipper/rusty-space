@@ -38,7 +38,6 @@ internal sealed class SpaceProductComposition
                 Engine.CameraView,
                 Tuning.Camera,
                 flight.Readout,
-                flight.FixedStepCount,
                 flight.ResetCount);
             Flight = flight;
             Presentation = presentation;

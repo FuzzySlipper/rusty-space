@@ -33,8 +33,6 @@ internal sealed class FlightController
         TimeSpan step,
         double currentThrottleLevel)
     {
-        ValidateStep(step);
-
         double throttleIntent = Math.Clamp(
             command.Throttle,
             MinimumThrottleIntent,
@@ -133,14 +131,6 @@ internal sealed class FlightController
             appliedTorque,
             Math.Abs(appliedTorque) / torqueAuthority,
             appliedTorque != requestedTorque);
-    }
-
-    private static void ValidateStep(TimeSpan step)
-    {
-        if (step <= TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(nameof(step));
-        }
     }
 
     /// <summary>
