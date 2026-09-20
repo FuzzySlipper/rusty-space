@@ -1,6 +1,8 @@
 using Rusty.Engine.Debugging;
 using Rusty.Space.Product.Field;
 using Rusty.Space.Product.Flight;
+using Rusty.Space.Product.Navigation;
+using Rusty.Space.Product.ShipSystems;
 
 namespace Rusty.Space.Product.Debugging;
 
@@ -50,6 +52,30 @@ public sealed class FlightDebugModule : IDebugCommandModule
             position    ({readout.Position.X:F2}, {readout.Position.Z:F2})
             velocity    ({readout.LinearVelocity.X:F3}, {readout.LinearVelocity.Z:F3})
             speed       {readout.LinearVelocity.Magnitude:F3}
+            """);
+    }
+
+    [DebugCommand("space.hardware", Description = "Shows the fitted parts, where each one pushes on the hull, and what its actuator reached.")]
+    public string Hardware()
+    {
+        InstalledShip ship = flight.Ship;
+        double heading = flight.Readout.HeadingRadians;
+        PlanarVector thrust = ship.MainThrustCenter(heading);
+        PlanarVector coupling = ship.FieldCouplingCenter(heading);
+        PlanarVector steering = ship.SteeringAuthorityCenter(heading);
+        PlanarVector stabilization = ship.StabilizationCenter(heading);
+        FlightTelemetrySnapshot telemetry = flight.Telemetry;
+        return FormattableString.Invariant(
+            $"""
+            fit         {ship.LoadoutName}
+            part        identity                      mount (x, z)     health  temp   actuator    limit
+            {Part("emitter", ship.Emitter)}
+            {Part("main drive", ship.MainDrive)}
+            {Part("stab port", ship.PortStabilizer)}
+            {Part("stab stbd", ship.StarboardStabilizer)}
+            centers     thrust ({thrust.X:F2}, {thrust.Z:F2})   coupling ({coupling.X:F2}, {coupling.Z:F2})
+            centers     steering ({steering.X:F2}, {steering.Z:F2})   stabilization ({stabilization.X:F2}, {stabilization.Z:F2})
+            heading     effort {telemetry.SteeringEffort:F3}   asymmetry {telemetry.HeadingAsymmetry:F3}   saturated {telemetry.SteeringSaturated}
             """);
     }
 
@@ -125,6 +151,13 @@ public sealed class FlightDebugModule : IDebugCommandModule
             total       {Row(first.Total)}  {Row(last.Total)}
             """);
     }
+
+    private static string Part(string role, InstalledPart part) =>
+        FormattableString.Invariant(
+            $"{role,-11} {part.Id.Value,-27} ({part.Definition.Mount.X,6:F2}, {part.Definition.Mount.Z,5:F2})")
+            + FormattableString.Invariant(
+                $"  {part.Health,5:F2} {part.Temperature,5:F2} {part.ActuatorValue,7:F3}/{part.ActuatorLimit,5:F2}")
+            + (part.Saturated ? "  at stop" : string.Empty);
 
     private static string Row(FlightWrench wrench) =>
         FormattableString.Invariant(

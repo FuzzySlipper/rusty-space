@@ -4,6 +4,7 @@ using Rusty.Space.Product.Field;
 using Rusty.Space.Product.Flight;
 using Rusty.Space.Product.Navigation;
 using Rusty.Space.Product.Presentation;
+using Rusty.Space.Product.ShipSystems;
 using Rusty.Space.Product.Viewing;
 
 namespace Rusty.Space.Product.Tuning;
@@ -12,6 +13,7 @@ internal sealed record SpaceTuning(
     FlightTuning Flight,
     CouplingTuning Coupling,
     FlightBodyTuning FlightBody,
+    ShipLoadout Ship,
     FieldTuning Field,
     OrbitalGravityTuning Orbital,
     DriftCurrentTuning GentleCurrent,
@@ -32,13 +34,18 @@ internal sealed record SpaceTuning(
         Coupling: new(
             DefaultLevel: 0.6,
             TrimResponse: TimeSpan.FromSeconds(1.5)),
+        // The hull on its own. What is mounted to it is the loadout's doing, and
+        // the stock fit's parts bring the weight and turn inertia back to what
+        // the bare hull used to carry, so a stock ship still flies the way it
+        // did before parts existed.
         FlightBody: new(
             SpawnPosition: PlanarVector.Zero,
             SpawnHeight: 0.0,
             SpawnHeadingRadians: 0.0,
             HalfExtents: new PlanarVector(0.5, 0.75),
             HalfHeight: 0.25,
-            Mass: 2.0),
+            Mass: 1.62),
+        Ship: ShipLoadouts.Stock,
         Field: new(
             PlanetPosition: new PlanarVector(14.0, 0.0),
             StellarFlow: new PlanarVector(0.0, 1.75),
@@ -131,6 +138,7 @@ internal sealed record SpaceTuning(
         Flight = Flight.Validate(),
         Coupling = Coupling.Validate(),
         FlightBody = FlightBody.Validate(),
+        Ship = Ship.Validate(),
         Field = Field.Validate(),
         Orbital = Orbital.Validate(),
         GentleCurrent = GentleCurrent.Validate(),

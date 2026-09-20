@@ -2,6 +2,7 @@ using System.Numerics;
 using Rusty.Engine;
 using Rusty.Space.Product.Field;
 using Rusty.Space.Product.Navigation;
+using Rusty.Space.Product.ShipSystems;
 
 namespace Rusty.Space.Product.Flight;
 
@@ -17,6 +18,13 @@ internal sealed class SpaceFlight : IDisposable
     private const uint FirstSubstep = 0;
     private const ulong SequenceIncrement = 1;
     private const double NeutralCommandIntent = 0.0;
+    private const float NoDamping = 0.0f;
+    private const float HullFriction = 0.5f;
+    private const float NoRestitution = 0.0f;
+    private const uint AllCollisionGroups = uint.MaxValue;
+    private const bool HullEnabled = true;
+    private const bool HullAsleep = false;
+    private const bool HullUsesContinuousCollision = false;
 
     private readonly IDynamicsService dynamics;
     private readonly DynamicsWorld world;
@@ -29,6 +37,7 @@ internal sealed class SpaceFlight : IDisposable
     private readonly DriftCurrent gentleCurrent;
     private readonly DriftCurrent swiftCurrent;
     private readonly FlightBodyTuning bodyTuning;
+    private readonly InstalledShip ship;
     private readonly FlightInputMapper inputMapper = new();
     private DynamicsBody body = null!;
     private FlightCommand command = FlightCommand.Neutral;
@@ -46,6 +55,7 @@ internal sealed class SpaceFlight : IDisposable
         FlightTuning flightTuning,
         CouplingTuning couplingTuning,
         FlightBodyTuning bodyTuning,
+        ShipLoadout shipLoadout,
         FieldTuning fieldTuning,
         OrbitalGravityTuning orbitalTuning,
         DriftCurrentTuning gentleCurrentTuning,
@@ -53,6 +63,7 @@ internal sealed class SpaceFlight : IDisposable
     {
         this.dynamics = dynamics ?? throw new ArgumentNullException(nameof(dynamics));
         this.bodyTuning = bodyTuning;
+        ship = new InstalledShip(shipLoadout, flightTuning.MaximumThrust);
         controller = new FlightController(flightTuning);
         coupling = new FieldCoupling(couplingTuning);
         field = new StellarField(fieldTuning);
@@ -66,6 +77,7 @@ internal sealed class SpaceFlight : IDisposable
         try
         {
             initialBody = CreateSpawnBody();
+            FitHull(initialBody);
             readout = MapReadout(this.dynamics.Read(new DynamicsReadRequest(initialBody)));
             body = initialBody;
             initialBody = null;
@@ -79,6 +91,12 @@ internal sealed class SpaceFlight : IDisposable
     }
 
     internal FlightReadout Readout => readout;
+
+    /// <summary>
+    /// The hardware mounted to this hull: what is fitted, where it pushes, and
+    /// what its actuators reached on the last turn.
+    /// </summary>
+    internal InstalledShip Ship => ship;
 
     internal FlightCommand LastCommand => command;
 
@@ -148,6 +166,7 @@ internal sealed class SpaceFlight : IDisposable
         FlightForces turnStartForces = FlightForces.Zero;
         FlightForces forces = FlightForces.Zero;
         FlightControlOutput output = default;
+        ShipEffort effort = default;
         FieldSample fieldSample = field.Sample(turnStart.Position);
         for (uint stepIndex = 0; stepIndex < stepCount; stepIndex++)
         {
@@ -165,12 +184,20 @@ internal sealed class SpaceFlight : IDisposable
             // The coupling actuator travels on the same per-substep clock for
             // the same reason.
             coupling.Advance(input.Command, turn.FixedStep);
+            // Every actuator the hull carries answers the demand the controllers
+            // resolved for this substep, and what they reached — not what was
+            // asked — is what pushes the ship this step.
+            ShipEffort substepEffort = ship.Advance(
+                substepOutput.Drive.Force,
+                substepOutput.Steering.YawTorque,
+                coupling.Level,
+                fieldSample,
+                turn.FixedStep);
             FlightForces substepForces = ResolveForces(
                 bodyState,
                 fieldSample,
-                substepOutput,
-                currentReadout.Mass,
-                coupling.Level);
+                substepEffort,
+                currentReadout.Mass);
             if (stepIndex == FirstSubstep)
             {
                 turnStartForces = substepForces;
@@ -185,6 +212,7 @@ internal sealed class SpaceFlight : IDisposable
                 new[] { ToDynamicsAction(substepForces.Total) }));
             currentReadout = MapReadout(dynamics.Read(new DynamicsReadRequest(body)));
             output = substepOutput;
+            effort = substepEffort;
             forces = substepForces;
         }
 
@@ -193,6 +221,7 @@ internal sealed class SpaceFlight : IDisposable
             currentReadout,
             forces,
             output,
+            effort,
             coupling.Level,
             nextFixedStepCount,
             stepCount,
@@ -229,6 +258,7 @@ internal sealed class SpaceFlight : IDisposable
             lastFieldSample = field.Sample(readout.Position);
             controller.Reset();
             coupling.Reset();
+            ship.Reset();
             telemetry.Reset();
             inputMapper.Reset();
             updateSequence = nextUpdateSequence;
@@ -261,35 +291,128 @@ internal sealed class SpaceFlight : IDisposable
 
     /// <summary>
     /// Resolves every environmental source against the body state a single
-    /// substep is about to act on. Control push comes from the controller output
-    /// for that same substep, so no source is ever evaluated against a state
-    /// from an earlier one.
+    /// substep is about to act on, and says where on the hull each of them acts.
+    /// Control push comes from the hardware for that same substep, so no source
+    /// is ever evaluated against a state from an earlier one.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A push applied away from the center of mass turns the hull as well as
+    /// driving it, and which center each source acts at is what gives a fit its
+    /// character. Flow-coupled push arrives at the emitter's mount; main thrust
+    /// at the drive's. The orbital well is the one source with no lever, because
+    /// gravity pulls on the hull's mass where that mass is: at the center of mass
+    /// itself.
+    /// </para>
+    /// </remarks>
     private FlightForces ResolveForces(
         FlightBodyState bodyState,
         FieldSample fieldSample,
-        FlightControlOutput output,
-        double mass,
-        double couplingLevel) => new(
-            MainDrive: output.Drive,
-            Steering: output.Steering,
-            Field: fieldResponse.Resolve(bodyState, fieldSample, couplingLevel, mass),
-            GentleCurrent: gentleCurrent.Resolve(
-                bodyState.Position,
-                bodyState.LinearVelocity,
-                mass,
-                couplingLevel),
-            SwiftCurrent: swiftCurrent.Resolve(
-                bodyState.Position,
-                bodyState.LinearVelocity,
-                mass,
-                couplingLevel),
-            // The well is a mass well rather than a flow-coupled drive, so it is
-            // the one source the coupling actuator does not reach.
+        ShipEffort effort,
+        double mass)
+    {
+        PlanarVector couplingCenter = ship.FieldCouplingCenter(bodyState.HeadingRadians);
+        PlanarVector thrustCenter = ship.MainThrustCenter(bodyState.HeadingRadians);
+        double couplingLevel = effort.Coupling;
+
+        return new FlightForces(
+            MainDrive: AtPoint(effort.DriveForce, thrustCenter),
+            Steering: new FlightWrench(PlanarVector.Zero, effort.HeadingTorque),
+            Field: AtPoint(
+                fieldResponse.Resolve(bodyState, fieldSample, couplingLevel, mass).Force,
+                couplingCenter),
+            GentleCurrent: AtPoint(
+                gentleCurrent.Resolve(
+                    bodyState.Position,
+                    bodyState.LinearVelocity,
+                    mass,
+                    couplingLevel).Force,
+                couplingCenter),
+            SwiftCurrent: AtPoint(
+                swiftCurrent.Resolve(
+                    bodyState.Position,
+                    bodyState.LinearVelocity,
+                    mass,
+                    couplingLevel).Force,
+                couplingCenter),
+            // A mass well pulls on the hull where the hull's mass is, so it has
+            // no lever about the center of mass and no mount to be fitted to.
             OrbitalPull: gravity.Resolve(bodyState.Position, mass),
-            // No fault has biased the handling yet; the channel exists so a
-            // damage response joins the table instead of replacing it.
-            DamageBias: FlightWrench.Zero);
+            // What the worn side of the effector pair pulls for itself, split out
+            // of the steering so the instruments can name which of the two the
+            // ship is fighting.
+            DamageBias: new FlightWrench(PlanarVector.Zero, effort.WearPull));
+    }
+
+    /// <summary>
+    /// The same push, with the turn it causes because it lands away from the
+    /// center of mass.
+    /// </summary>
+    private static FlightWrench AtPoint(PlanarVector force, PlanarVector offsetFromCenter) =>
+        new(force, PlanarFrame.YawTorque(offsetFromCenter, force));    /// <summary>
+    /// Hands the Engine the mass and turn inertia the fitted hardware adds to the
+    /// hull, through the body-update lane and with authored mass properties.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A hull is created with mass derived from its shape, so the fit is applied
+    /// against what the Engine reports for it: the read supplies the hull's own
+    /// inertia and mass, and every mounted part adds its share — its mass to the
+    /// total, and that mass times the square of its distance from the center for
+    /// the turn. That is what makes an outboard fit sluggish to yaw in a way a
+    /// bare hull of the same weight is not.
+    /// </para>
+    /// <para>
+    /// The authored center of mass is the hull's own origin. Mount offsets are
+    /// measured from there and every turn they cause is already counted where the
+    /// force is resolved, so moving the simulated center as well would bill the
+    /// same leverage twice.
+    /// </para>
+    /// <para>
+    /// The Engine's update replaces the whole property set rather than merging
+    /// into it, so the update restates the hull's locks, its damping, its
+    /// collision filtering, and the velocities it was read with. That is why the
+    /// fit is applied here, against a body that has just been created, rather
+    /// than at some later point: issued mid-flight it would carry the velocities
+    /// of a read that is already a step behind the ship.
+    /// </para>
+    /// </remarks>
+    private void FitHull(DynamicsBody hull)
+    {
+        DynamicsReadout current = dynamics.Read(new DynamicsReadRequest(hull));
+        dynamics.UpdateBody(new DynamicsUpdateBodyRequest(hull, FittedProperties(current)));
+    }
+
+    private DynamicsBodyProperties FittedProperties(DynamicsReadout hull) => new(
+        ToSingle(checked(hull.MassProperties.Mass + ship.AddedMass)),
+        new DynamicsMassPolicy(
+            DynamicsMassPolicyKind.Explicit,
+            new DynamicsExplicitMassProperties(
+                Vector3.Zero,
+                new Vector3(
+                    ToSingle(hull.MassProperties.PrincipalInertia.X),
+                    ToSingle(hull.MassProperties.PrincipalInertia.Y + ship.AddedYawInertia),
+                    ToSingle(hull.MassProperties.PrincipalInertia.Z)),
+                Quaternion.Identity)),
+        hull.LinearVelocity,
+        hull.AngularVelocity,
+        new AxisLocks(
+            TranslationX: AxisFree,
+            TranslationY: AxisLocked,
+            TranslationZ: AxisFree,
+            RotationX: AxisLocked,
+            RotationY: AxisFree,
+            RotationZ: AxisLocked),
+        LinearDamping: NoDamping,
+        AngularDamping: NoDamping,
+        GravityScale: ToSingle(NeutralCommandIntent),
+        Friction: HullFriction,
+        Restitution: NoRestitution,
+        CollisionGroups: AllCollisionGroups,
+        CollisionMask: AllCollisionGroups,
+        Enabled: HullEnabled,
+        Sleeping: HullAsleep,
+        ContinuousCollision: HullUsesContinuousCollision);
 
     private DynamicsBody CreateSpawnBody() => dynamics.CreateBody(new DynamicsCreateBodyRequest(
         world,

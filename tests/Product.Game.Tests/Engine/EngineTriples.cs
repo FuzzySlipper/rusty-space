@@ -131,9 +131,17 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
 
     private readonly ServiceFaults faults = faults;
     private Quaternion createdAttitude = Quaternion.Identity;
+    private DynamicsBodyProperties? appliedProperties;
 
     internal List<DynamicsStepRequest> Steps { get; } = [];
     internal int Reads { get; private set; }
+    internal int BodyUpdates { get; private set; }
+
+    /// <summary>
+    /// The body properties the product last handed through the update lane, so a
+    /// test can see the mass and inertia the fitted hardware asked for.
+    /// </summary>
+    internal DynamicsBodyProperties? AppliedProperties => appliedProperties;
     internal int BodyCreates { get; private set; }
     internal int BodyReleases { get; private set; }
     internal int WorldReleases { get; private set; }
@@ -164,9 +172,13 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
         Sleeping: false,
         new MassProperties(
             Available: true,
-            Mass: BodyMass,
-            PrincipalInertia: new Vector3(BodyInertia, BodyInertia, BodyInertia),
-            Policy: DynamicsMassPolicyKind.DeriveFromShapeAndMass,
+            Mass: appliedProperties.HasValue ? appliedProperties.Value.Mass : BodyMass,
+            PrincipalInertia: appliedProperties.HasValue
+                ? appliedProperties.Value.MassPolicy.Explicit.PrincipalInertia
+                : new Vector3(BodyInertia, BodyInertia, BodyInertia),
+            Policy: appliedProperties.HasValue
+                ? appliedProperties.Value.MassPolicy.Kind
+                : DynamicsMassPolicyKind.DeriveFromShapeAndMass,
             CenterOfMass: Vector3.Zero,
             PrincipalInertiaLocalFrame: Quaternion.Identity),
         ContactCount: 0U,
@@ -195,7 +207,12 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
 
     public void Reset(DynamicsResetRequest arg0) => throw new NotSupportedException();
 
-    public void UpdateBody(DynamicsUpdateBodyRequest arg0) => throw new NotSupportedException();
+    public void UpdateBody(DynamicsUpdateBodyRequest arg0)
+    {
+        faults.FailIf(nameof(UpdateBody));
+        appliedProperties = arg0.Properties;
+        BodyUpdates++;
+    }
 
     public DynamicsWorldReadout ReadWorld(DynamicsWorldReadRequest arg0)
         => throw new NotSupportedException();

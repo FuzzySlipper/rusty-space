@@ -197,14 +197,16 @@ impulses, body update, spatial sessions bindable to a dynamics world,
 lights, sprites, billboards, particles, audio voices and buses, and a
 generated product-facing debug command catalog.
 
-Continuous collision also exists at the pinned revision and reaches the
-managed surface as `DynamicsBodyProperties.ContinuousCollision`, with the
-per-step motion limit widening for bodies that opt in. Spatial collision
-shapes also become fixed bodies when a session is bound to a dynamics world,
-so a collision space needs no new Engine mechanism. The one remaining gap is
-narrower than it first appears: the generic create path omits the properties
-bag the shape-typed configs carry. That is filed as a narrow Engine request
-rather than worked around downstream.
+Continuous collision reaches the managed surface as
+`DynamicsBodyProperties.ContinuousCollision`, with the per-step motion limit
+widening for bodies that opt in. Spatial collision shapes also become fixed
+bodies when a session is bound to a dynamics world, so a collision space
+needs no new Engine mechanism. The asymmetry this campaign filed between the
+generic and shape-typed create paths is closed on the adopted pair: the
+generic `DynamicsBodyConfig` carries the same properties bag, and the generic
+create path applies all of it, so selecting damping, collision filtering, or
+continuous collision no longer needs a follow-up update or a different create
+path.
 
 Handles the product opens come back down in the reverse of the order that
 opened them, and the Engine's lease wrappers are what make that safe: a release

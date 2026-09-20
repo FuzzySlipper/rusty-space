@@ -1,4 +1,5 @@
 using Rusty.Space.Product.Navigation;
+using Rusty.Space.Product.ShipSystems;
 using Xunit;
 
 namespace Rusty.Space.Product.Flight.Tests;
@@ -25,6 +26,7 @@ public class FlightTelemetryTests
             Readout(0.0, PlanarVector.Zero, 0.0),
             forces,
             Control(),
+            Hardware(),
             SampledCoupling,
             3UL,
             1U,
@@ -51,6 +53,7 @@ public class FlightTelemetryTests
             Readout(headingRadians: Math.PI / 2.0, new PlanarVector(3.0, 0.0), 0.0),
             FlightForces.Zero,
             Control(),
+            Hardware(),
             SampledCoupling,
             7UL,
             1U,
@@ -73,6 +76,7 @@ public class FlightTelemetryTests
             Readout(0.0, drift, 0.0),
             FlightForces.Zero,
             Control(),
+            Hardware(),
             SampledCoupling,
             1UL,
             1U,
@@ -94,6 +98,7 @@ public class FlightTelemetryTests
             Readout(0.0, velocityChange, 0.0),
             FlightForces.Zero,
             Control(),
+            Hardware(),
             SampledCoupling,
             2UL,
             2U,
@@ -106,24 +111,32 @@ public class FlightTelemetryTests
     }
 
     [Fact]
-    public void ActuatorEffortAndSaturationAreCarriedThroughUntouched()
+    public void SteeringEffortIsReportedAsTheHardwareDeliveredIt()
     {
+        // A control law's demand and the effort the fitted actuators put in to
+        // meet it are different numbers, and the panel reports the actuators':
+        // a demand the ship cannot reach is not an effort the ship made. Drive
+        // effort is the throttle spool's own travel, so it comes from the
+        // controller; heading effort, saturation, and the disagreement between
+        // the two sides of the effector pair come from the hardware.
         FlightTelemetry telemetry = new();
 
         telemetry.Capture(
             Frame(0.0, PlanarVector.Zero, 0.0),
             Readout(0.0, PlanarVector.Zero, 0.0),
             FlightForces.Zero,
-            Control(driveEffort: 0.75, steeringEffort: 1.0, driveSaturated: false, steeringSaturated: true),
+            Control(driveEffort: 0.75, steeringEffort: 1.0, driveSaturated: false, steeringSaturated: false),
+            Hardware(headingEffort: 0.4, headingSaturated: true, headingAsymmetry: 0.5),
             SampledCoupling,
             3UL,
             1U,
             FixedStep);
 
         Assert.Equal(0.75, telemetry.Current.DriveEffort, 12);
-        Assert.Equal(1.0, telemetry.Current.SteeringEffort, 12);
+        Assert.Equal(0.4, telemetry.Current.SteeringEffort, 12);
         Assert.False(telemetry.Current.DriveSaturated);
         Assert.True(telemetry.Current.SteeringSaturated);
+        Assert.Equal(0.5, telemetry.Current.HeadingAsymmetry, 12);
     }
 
     [Fact]
@@ -136,6 +149,7 @@ public class FlightTelemetryTests
             Readout(0.0, PlanarVector.Zero, 0.0),
             FlightForces.Zero with { Field = new FlightWrench(new PlanarVector(0.0, -4.0), 0.0) },
             Control(),
+            Hardware(),
             SampledCoupling,
             1UL,
             1U,
@@ -153,6 +167,7 @@ public class FlightTelemetryTests
             Readout(0.0, new PlanarVector(0.0, 9.0), 0.0),
             FlightForces.Zero,
             Control(driveEffort: 1.0, steeringEffort: 1.0, driveSaturated: true, steeringSaturated: true),
+            Hardware(),
             SampledCoupling,
             9UL,
             1U,
@@ -181,6 +196,7 @@ public class FlightTelemetryTests
             Readout(0.0, change, 0.0),
             FlightForces.Zero,
             Control(),
+            Hardware(),
             SampledCoupling,
             1UL,
             1U,
@@ -192,6 +208,7 @@ public class FlightTelemetryTests
             Readout(0.0, change, 0.0),
             FlightForces.Zero,
             Control(),
+            Hardware(),
             SampledCoupling,
             2UL,
             1U,
@@ -206,6 +223,18 @@ public class FlightTelemetryTests
 
     private static FlightReadout Readout(double headingRadians, PlanarVector velocity, double angularVelocity) =>
         new(PlanarVector.Zero, headingRadians, velocity, angularVelocity, 2.0, 1.0);
+
+    private static ShipEffort Hardware(
+        double headingEffort = 0.0,
+        bool headingSaturated = false,
+        double headingAsymmetry = 0.0) => new(
+            PlanarVector.Zero,
+            0.0,
+            0.0,
+            0.0,
+            headingEffort,
+            headingSaturated,
+            headingAsymmetry);
 
     private static FlightControlOutput Control(
         double driveEffort = 0.0,

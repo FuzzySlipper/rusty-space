@@ -1,6 +1,7 @@
 using System.Text;
 using Rusty.Engine;
 using Rusty.Space.Product.Engine.Tests;
+using Rusty.Space.Product.ShipSystems;
 using Rusty.Space.Product.Tuning;
 using Xunit;
 
@@ -155,15 +156,55 @@ public class SpaceFlightTests
 
     private static SpaceFlight Flight(
         RecordingDynamics dynamics,
-        double spawnHeadingRadians = 0.0) => new(
+        double spawnHeadingRadians = 0.0,
+        ShipLoadout? loadout = null) => new(
         dynamics,
         SpaceTuning.Defaults.Flight,
         SpaceTuning.Defaults.Coupling,
         SpaceTuning.Defaults.FlightBody with { SpawnHeadingRadians = spawnHeadingRadians },
+        loadout ?? SpaceTuning.Defaults.Ship,
         SpaceTuning.Defaults.Field,
         SpaceTuning.Defaults.Orbital,
         SpaceTuning.Defaults.GentleCurrent,
         SpaceTuning.Defaults.SwiftCurrent);
+
+    [Fact]
+    public void ACouplingPointFittedForwardTurnsTheHullHarderThanOneOnTheCenter()
+    {
+        // The field pushes on the hull where the emitter is fitted. Move that
+        // point forward along the keel and the same flow that drives the ship
+        // also swings the bow into itself: an oversized coil wired in because it
+        // was there buys speed and a hull that will not hold a line. Nothing here
+        // is tuned differently except where the push lands and how much of the
+        // flow it catches, so the difference in the yaw the Engine is asked for
+        // is the lever and nothing else.
+        RecordingDynamics onSpec = new();
+        RecordingDynamics salvaged = new();
+        SpaceFlight stock = Flight(onSpec, loadout: ShipLoadouts.Stock);
+        SpaceFlight scavenged = Flight(salvaged, loadout: ShipLoadouts.OversizedScavengedEmitter);
+
+        double straightAhead = HeadingYawCommand(stock, onSpec);
+        double weathercock = HeadingYawCommand(scavenged, salvaged);
+
+        Assert.True(
+            straightAhead > 0.0,
+            $"expected the field to turn the hull at all, got {straightAhead}");
+        Assert.True(
+            weathercock > straightAhead * 3.0,
+            $"expected the forward coupling point to turn far harder: {weathercock} against {straightAhead}");
+    }
+
+    private static double HeadingYawCommand(SpaceFlight flight, RecordingDynamics dynamics)
+    {
+        for (uint turn = 1; turn <= 20; turn++)
+        {
+            flight.Admit(Update(turn, 1.0 / 60.0));
+        }
+
+        // The Engine turns the other way about +Y, so the heading-positive yaw the
+        // product asked for is the negation of what was recorded.
+        return -dynamics.Steps[^1].Actions.Span[0].Torque.Y;
+    }
 
     private static ProductUpdate Update(uint admittedSteps, double fixedDeltaSeconds) =>
         Turn(admittedSteps, fixedDeltaSeconds, []);

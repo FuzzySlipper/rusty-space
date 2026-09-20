@@ -66,6 +66,16 @@ internal static class PlanarFrame
         Math.Atan2(direction.Z, direction.X);
 
     /// <summary>
+    /// A local offset in the ship's own frame — <c>+X</c> toward the bow, <c>+Z</c>
+    /// toward starboard — expressed in the plane's world axes. The same turn that
+    /// makes a heading face where it faces carries a mounted part's lever arm to
+    /// wherever the ship is pointing, so a part's offset is authored once and
+    /// never has to be re-derived from the heading.
+    /// </summary>
+    internal static PlanarVector Rotate(PlanarVector local, double headingRadians) =>
+        Forward(headingRadians).Scale(local.X) + Right(headingRadians).Scale(local.Z);
+
+    /// <summary>
     /// The heading an Engine attitude faces: the exact inverse of
     /// <see cref="ToEngineAttitude"/>, so an authored heading survives the round
     /// trip through a body and back.

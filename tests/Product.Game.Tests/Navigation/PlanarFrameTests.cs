@@ -176,4 +176,25 @@ public class PlanarFrameTests
             PlanarFrame.HeadingOf(PlanarFrame.Forward(headingRadians)),
             ScalarTolerance);
     }
+
+    [Theory]
+    [InlineData(0.0, 0.40, 0.25, 0.40, 0.25)]
+    [InlineData(Math.PI / 2.0, 0.40, 0.25, -0.25, 0.40)]
+    [InlineData(Math.PI, 0.40, 0.25, -0.40, -0.25)]
+    [InlineData(-Math.PI / 2.0, 0.40, 0.25, 0.25, -0.40)]
+    public void ALeverArmSwingsAroundWithTheHullItIsBoltedTo(
+        double headingRadians,
+        double localX,
+        double localZ,
+        double expectedX,
+        double expectedZ)
+    {
+        // A mount is authored once in the ship's own frame. Turned with the hull,
+        // it has to land wherever that hull is pointing — the same turn that
+        // makes a heading face where it faces carries the lever arm with it.
+        PlanarVector offset = PlanarFrame.Rotate(new PlanarVector(localX, localZ), headingRadians);
+
+        Assert.Equal(expectedX, offset.X, 10);
+        Assert.Equal(expectedZ, offset.Z, 10);
+    }
 }

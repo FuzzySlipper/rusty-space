@@ -1,5 +1,6 @@
 using Rusty.Space.Product.Field;
 using Rusty.Space.Product.Navigation;
+using Rusty.Space.Product.ShipSystems;
 
 namespace Rusty.Space.Product.Flight;
 
@@ -21,6 +22,7 @@ internal sealed class FlightTelemetry
         FlightReadout after,
         FlightForces forces,
         FlightControlOutput control,
+        ShipEffort ship,
         double coupling,
         ulong fixedStepCount,
         uint admittedSteps,
@@ -35,11 +37,12 @@ internal sealed class FlightTelemetry
             velocityChange.Dot(frame.Right) / elapsed,
             (after.AngularVelocity - frame.AngularVelocity) / elapsed,
             control.DriveEffort,
-            control.SteeringEffort,
+            ship.HeadingEffort,
             control.DriveSaturated,
-            control.SteeringSaturated,
+            ship.HeadingSaturated,
             coupling,
             forces.Field.Force.Magnitude,
+            ship.HeadingAsymmetry,
             // Impacts report through this same value once local geometry exists.
             PlanarVector.Zero);
     }

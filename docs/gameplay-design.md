@@ -52,8 +52,21 @@ Product owners, one mutable state family each:
 - `Field/DriftCurrent` — one finite drift band, under the same coupling gate.
 - `Field/OrbitalGravity` — the planet's mass well, deliberately outside that
   gate: a mass relation is not a flow the hull can decline.
+- `ShipSystems/InstalledShip` — the hardware fitted to the hull: which parts,
+  where each is mounted, what the fit weighs and how hard it is to yaw, and
+  what each part's actuator actually reached. It is the owner of the ship's
+  several centers — center of mass, main thrust, field coupling, steering
+  authority, stabilization — and of nothing else. It never integrates the hull
+  and never issues an Engine action.
+- `ShipSystems/ActuatorResponse` — the second-order response every part's
+  actuator is built from: `response'' + 2·ζ·ω·response' + ω²·response =
+  ω²·command`. Frequency is how fast a part gets where it is told; damping
+  ratio is how much it overshoots. Both are authored per part, so two sides of
+  the same effector pair can disagree, which is where a ship's quirks come
+  from.
 - `Navigation/PlanarFrame`, `Navigation/PlanarVector` — the planar frame and
-  its sign convention, including yaw torque for an offset force.
+  its sign convention, including yaw torque for an offset force and turning a
+  part's local mount offset into the world axes.
 - `Viewing/TrackingCamera` — framing policy around the Engine camera service:
   smoothed chase position, zoom, camera cut on reset.
 - `Presentation/SpacePresentation` — product readouts out to Engine
@@ -68,6 +81,50 @@ and delivered content are what the Engine reports about itself, and Space
 keeps no copy of them. `Lifecycle/SpaceLifecycleState` is the product's own
 state machine — the guard that a turn is admitted only while running, that a
 pause is resumed rather than started, and that teardown is idempotent.
+
+## One hull, several centers
+
+The ship is one rigid body and stays one rigid body. Installed parts are
+logical effectors: each has a mount offset from the center of mass, a mass of
+its own, and an actuator, and it contributes force, torque, mass, and inertia
+modifiers to that single body rather than becoming one. No joints, no extra
+colliders, no second spatial authority. Only something that physically breaks
+loose would ever need a body of its own, and that is not a fit.
+
+A force applied away from the center of mass turns the hull as well as
+driving it, and which center each source acts at is most of a ship's
+character:
+
+- flow-coupled push — the stellar field and every drift band — arrives at the
+  **emitter's mount**. Fitted forward of the center, the same flow that drives
+  the hull also swings the bow into itself, so an oversized coil weathervanes.
+- main thrust arrives at the **drive's mount**. One hung off the keel makes the
+  throttle a steering input the ship has to hold off as a matter of course.
+- the heading effector pair pushes on opposite sides of the keel, and the turn
+  it delivers is the sum of what the two sides reach. A side that cannot reach
+  its share shortfalls the turn and reports the disagreement, rather than the
+  other side quietly being asked for more than it has.
+- the orbital well is the one source with no lever: a mass relation pulls on
+  the hull where the hull's mass is, at the center of mass itself.
+
+Wear is authored the same way. A tired side keeps its rated peak authority but
+answers more slowly, rings past a load threshold instead of settling, and adds
+a standing pull proportional to the load it is carrying — all continuous in the
+load, so the onset is somewhere a player can find and remember. Nothing about
+the response is random: no white-noise torque, and no dependence on how the
+turn happened to be admitted.
+
+The fit's weight and turn inertia go to the Engine through its body-update
+lane, with authored mass properties: the hull is created with mass derived
+from its shape, and the fit adds each part's mass and that mass times the
+square of its distance from the center. The authored center of mass is the
+hull's own origin, because mount offsets are measured from there and every
+turn they cause is already counted where the force is resolved — moving the
+simulated center as well would bill the same leverage twice. Note what the
+update lane actually does: it replaces the whole property set rather than
+merging into it, so an update carries the hull's current velocities as just
+read, its locks, damping, and collision filtering. That is why a fit is
+applied where the hull is freshly built, not opportunistically mid-flight.
 
 ## Time is admitted, not assumed
 
