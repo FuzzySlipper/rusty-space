@@ -51,7 +51,7 @@ public class OrbitalGravityTests
         // sideways component that lets a coasting ship bend into an arc.
         Assert.True(wrench.Force.X > 0.0);
         Assert.True(wrench.Force.Z < 0.0);
-        Assert.Equal(0.0, wrench.TorqueY, 12);
+        Assert.Equal(0.0, wrench.YawTorque, 12);
     }
 
     [Fact]

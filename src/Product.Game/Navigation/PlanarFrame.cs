@@ -23,13 +23,21 @@ namespace Rusty.Space.Product.Navigation;
 /// </para>
 /// <para>
 /// The planar heading is authoritative: it is what the player sees, what the
-/// controller aims along, and what every consumer means by forward. A body's own
-/// attitude comes back through <see cref="EngineYawOf"/>, which carries
-/// <c>+h</c> where anything drawn for it stands at <c>-h</c>. A collider
-/// silhouette or mount offset authored against the drawn ship therefore reads
-/// mirrored in <c>Z</c>: an asymmetric half-extent pair presents its long side
-/// and its short side on opposite halves of a turn from the long and short sides
-/// of the ship it belongs to.
+/// controller aims along, and what every consumer means by forward. Because the
+/// plane turns the other way about <c>+Y</c>, the Engine's angular channel —
+/// attitude, angular velocity, and torque alike — is the negation of the
+/// heading quantity it stands for, in both directions. <see cref="HeadingOf"/>
+/// and <see cref="HeadingRateOf"/> read an Engine attitude or angular velocity
+/// back as heading and heading rate; <see cref="EngineYaw"/> turns a
+/// heading-positive angular quantity into the Engine value to command.
+/// </para>
+/// <para>
+/// These are one rule, not three. Read one and write the other in the same
+/// direction and the ship spins one way while its nose, its thrust, and its
+/// readouts report the other: a heading <c>h</c> authored and then read back
+/// comes home to <c>h</c> only when both crossings flip. Anything that touches
+/// an Engine attitude or the <c>+Y</c> angular channel goes through this type,
+/// which is the only place the flip is written down.
 /// </para>
 /// </remarks>
 internal static class PlanarFrame
@@ -58,18 +66,31 @@ internal static class PlanarFrame
         Math.Atan2(direction.Z, direction.X);
 
     /// <summary>
-    /// Yaw an Engine attitude carries, read the way the product reads heading.
-    /// Not the inverse of <see cref="ToEngineAttitude"/>: see the mirror in the
-    /// type remarks.
+    /// The heading an Engine attitude faces: the exact inverse of
+    /// <see cref="ToEngineAttitude"/>, so an authored heading survives the round
+    /// trip through a body and back.
     /// </summary>
-    internal static double EngineYawOf(Quaternion attitude)
+    internal static double HeadingOf(Quaternion attitude)
     {
         double yawNumerator = QuaternionDoubleFactor
             * ((attitude.W * attitude.Y) + (attitude.X * attitude.Z));
         double yawDenominator = QuaternionUnitMagnitude - (QuaternionDoubleFactor
             * ((attitude.Y * attitude.Y) + (attitude.Z * attitude.Z)));
-        return Math.Atan2(yawNumerator, yawDenominator);
+        return -Math.Atan2(yawNumerator, yawDenominator);
     }
+
+    /// <summary>
+    /// How fast the authoritative heading turns under an Engine angular velocity
+    /// about <c>+Y</c>. Inverse of <see cref="EngineYaw"/>.
+    /// </summary>
+    internal static double HeadingRateOf(double engineYawRate) => -engineYawRate;
+
+    /// <summary>
+    /// The Engine value for the <c>+Y</c> angular channel — an angular velocity
+    /// to command or a torque to apply — that turns the authoritative heading by
+    /// the given heading-positive amount.
+    /// </summary>
+    internal static double EngineYaw(double headingChannel) => -headingChannel;
 
     /// <summary>
     /// The Engine attitude that turns a shape's local <c>+X</c> to face a planar
@@ -79,15 +100,16 @@ internal static class PlanarFrame
         Quaternion.CreateFromAxisAngle(Vector3.UnitY, checked((float)-headingRadians));
 
     /// <summary>
-    /// Signed Engine-Y torque for an in-plane offset from the center of mass and
-    /// an in-plane force. Positive increases the heading, turning the nose
-    /// toward the ship's right, so an offset toward starboard driving forward
-    /// yaws the ship to port.
+    /// Signed torque for an in-plane offset from the center of mass and an
+    /// in-plane force, in the authoritative heading sense: positive increases
+    /// the heading, turning the nose toward the ship's right, so an offset
+    /// toward starboard driving forward yaws the ship to port.
     /// </summary>
     /// <remarks>
-    /// A world-space cross product of the same two vectors has the opposite
-    /// sign, and that is the one a solver applies to a body's own frame. The
-    /// mirror in the type remarks separates the two.
+    /// This is a heading quantity, so it reaches a solver only through
+    /// <see cref="EngineYaw"/>. A raw world-space cross product of the same two
+    /// vectors has the opposite sign, and the heading sense is the negation of
+    /// it.
     /// </remarks>
     internal static double YawTorque(PlanarVector offset, PlanarVector force) =>
         (offset.X * force.Z) - (offset.Z * force.X);

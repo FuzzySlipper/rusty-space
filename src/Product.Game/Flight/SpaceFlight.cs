@@ -321,7 +321,10 @@ internal sealed class SpaceFlight : IDisposable
     private DynamicsAction ToDynamicsAction(FlightWrench wrench) => new(
         body,
         new Vector3(ToSingle(wrench.Force.X), ToSingle(NeutralCommandIntent), ToSingle(wrench.Force.Z)),
-        new Vector3(ToSingle(NeutralCommandIntent), ToSingle(wrench.TorqueY), ToSingle(NeutralCommandIntent)),
+        new Vector3(
+            ToSingle(NeutralCommandIntent),
+            ToSingle(PlanarFrame.EngineYaw(wrench.YawTorque)),
+            ToSingle(NeutralCommandIntent)),
         Vector3.Zero,
         Vector3.Zero,
         Wake: true);
@@ -334,9 +337,9 @@ internal sealed class SpaceFlight : IDisposable
 
     private static FlightReadout MapReadout(DynamicsReadout native) => new(
         new PlanarVector(native.Transform.Translation.X, native.Transform.Translation.Z),
-        PlanarFrame.EngineYawOf(native.Transform.Rotation),
+        PlanarFrame.HeadingOf(native.Transform.Rotation),
         new PlanarVector(native.LinearVelocity.X, native.LinearVelocity.Z),
-        native.AngularVelocity.Y,
+        PlanarFrame.HeadingRateOf(native.AngularVelocity.Y),
         native.MassProperties.Mass,
         native.MassProperties.PrincipalInertia.Y);
 

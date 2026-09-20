@@ -1,5 +1,6 @@
-using System.Numerics;
+using System.Text;
 using Rusty.Engine;
+using Rusty.Space.Product.Engine.Tests;
 using Rusty.Space.Product.Tuning;
 using Xunit;
 
@@ -14,14 +15,48 @@ namespace Rusty.Space.Product.Flight.Tests;
 /// </summary>
 public class SpaceFlightTests
 {
+    private const double SpawnHeading = Math.PI / 2.0;
+    private const double HeadingTolerance = 5;
     private const float BodyMass = 2.0f;
     private const float BodyInertia = 2.0f;
     private const float RateTolerance = 1e-6f;
 
     [Fact]
+    public void AnAuthoredSpawnHeadingSurvivesTheRoundTripThroughDynamics()
+    {
+        // The service echoes back the attitude each body was created with, so
+        // the heading below travels the production path: authored, converted to
+        // an Engine rotation, handed to Dynamics, and read off the readout whose
+        // heading every consumer steers and thrusts along.
+        RecordingDynamics dynamics = new();
+        SpaceFlight flight = Flight(dynamics, SpawnHeading);
+
+        Assert.Equal(SpawnHeading, flight.Readout.HeadingRadians, HeadingTolerance);
+    }
+
+    [Fact]
+    public void ATurnToStarboardCommandsTheYawAxisOppositeTheEngineSense()
+    {
+        // A right turn is a heading-positive demand, and the planar plane turns
+        // the other way about +Y. A command crossing without the flip would spin
+        // the ship one way while its nose, its thrust, and its readouts reported
+        // the other, and no straight-line check would notice.
+        RecordingDynamics dynamics = new();
+        SpaceFlight flight = Flight(dynamics);
+
+        flight.Admit(TurningUpdate(1, 1.0 / 60.0));
+
+        Assert.Single(dynamics.Steps);
+        DynamicsAction action = dynamics.Steps[0].Actions.Span[0];
+        Assert.True(
+            action.Torque.Y < 0.0f,
+            $"expected a negative Engine yaw torque for a starboard turn, got {action.Torque.Y}");
+    }
+
+    [Fact]
     public void EachAdmittedFixedStepBecomesOneStepAtTheAdmittedDuration()
     {
-        AdmittedDynamics dynamics = new();
+        RecordingDynamics dynamics = new();
         SpaceFlight flight = Flight(dynamics);
 
         flight.Admit(Update(admittedSteps: 4, fixedDeltaSeconds: 1.0 / 60.0));
@@ -40,7 +75,7 @@ public class SpaceFlightTests
         // The product restates no rate of its own, so a host running the
         // lifecycle at half the rate halves the step it is asked to integrate
         // rather than getting a product constant it never declared.
-        AdmittedDynamics dynamics = new();
+        RecordingDynamics dynamics = new();
         SpaceFlight flight = Flight(dynamics);
 
         flight.Admit(Update(admittedSteps: 2, fixedDeltaSeconds: 1.0 / 30.0));
@@ -52,7 +87,7 @@ public class SpaceFlightTests
     [Fact]
     public void ATurnAdmittedWithNoStepsAsksTheIntegratorForNothing()
     {
-        AdmittedDynamics dynamics = new();
+        RecordingDynamics dynamics = new();
         SpaceFlight flight = Flight(dynamics);
 
         flight.Admit(Update(admittedSteps: 0, fixedDeltaSeconds: 1.0 / 60.0));
@@ -66,7 +101,7 @@ public class SpaceFlightTests
         // A catch-up turn does not freeze one answer and apply it four times:
         // every substep carries a force for the body state that substep is
         // about to integrate, taken from the read-back between substeps.
-        AdmittedDynamics dynamics = new();
+        RecordingDynamics dynamics = new();
         SpaceFlight flight = Flight(dynamics);
         flight.Admit(Update(admittedSteps: 2, fixedDeltaSeconds: 1.0 / 60.0));
 
@@ -83,7 +118,7 @@ public class SpaceFlightTests
     [Fact]
     public void ReleasingTheFlightPutsItsWorldAndHullDownExactlyOnce()
     {
-        AdmittedDynamics dynamics = new();
+        RecordingDynamics dynamics = new();
         SpaceFlight flight = Flight(dynamics);
 
         Assert.Equal(1, dynamics.BodyCreates);
@@ -98,7 +133,7 @@ public class SpaceFlightTests
     [Fact]
     public void AReleasedFlightRefusesToAdmitAnotherTurn()
     {
-        AdmittedDynamics dynamics = new();
+        RecordingDynamics dynamics = new();
         SpaceFlight flight = Flight(dynamics);
         flight.Dispose();
 
@@ -109,7 +144,7 @@ public class SpaceFlightTests
     [Fact]
     public void AResetPutsTheOldHullDownAndSpawnsAFreshOne()
     {
-        AdmittedDynamics dynamics = new();
+        RecordingDynamics dynamics = new();
         SpaceFlight flight = Flight(dynamics);
 
         flight.ResetFlight();
@@ -118,124 +153,47 @@ public class SpaceFlightTests
         Assert.Equal(1, dynamics.BodyReleases);
     }
 
-    private static SpaceFlight Flight(AdmittedDynamics dynamics) => new(
+    private static SpaceFlight Flight(
+        RecordingDynamics dynamics,
+        double spawnHeadingRadians = 0.0) => new(
         dynamics,
         SpaceTuning.Defaults.Flight,
         SpaceTuning.Defaults.Coupling,
-        SpaceTuning.Defaults.FlightBody,
+        SpaceTuning.Defaults.FlightBody with { SpawnHeadingRadians = spawnHeadingRadians },
         SpaceTuning.Defaults.Field,
         SpaceTuning.Defaults.Orbital,
         SpaceTuning.Defaults.GentleCurrent,
         SpaceTuning.Defaults.SwiftCurrent);
 
-    private static ProductUpdate Update(uint admittedSteps, double fixedDeltaSeconds) => new(
-        new ProductUpdateFacts(
-            ProductUpdateMode.Realtime,
-            ProductLifecycleState.Running,
-            Generation: 1UL,
-            ControlRevision: 0UL,
-            ObservedHostTimeNanoseconds: 0UL,
-            SimulationStep: 0UL,
-            FixedStepHz: 60U,
-            AdmittedStepCount: admittedSteps,
-            DroppedStepCount: 0UL,
-            FixedDeltaSeconds: fixedDeltaSeconds),
-        ReadOnlySpan<ProductInputEvent>.Empty);
+    private static ProductUpdate Update(uint admittedSteps, double fixedDeltaSeconds) =>
+        Turn(admittedSteps, fixedDeltaSeconds, []);
 
-    /// <summary>
-    /// The smallest Dynamics service that records what the product asked the
-    /// integrator for and hands out lease handles a test can watch being
-    /// released. Anything Space never calls is refused loudly, so a change that
-    /// starts reaching for another path is a test failure rather than a silent
-    /// widening of the seam.
-    /// </summary>
-    private sealed class AdmittedDynamics : IDynamicsService
+    private static ProductUpdate TurningUpdate(uint admittedSteps, double fixedDeltaSeconds) =>
+        Turn(admittedSteps, fixedDeltaSeconds,
+            [Digital("space.flight.turn-right")]);
+
+    private static ProductUpdate Turn(
+        uint admittedSteps,
+        double fixedDeltaSeconds,
+        ProductInputEvent[] input) => new(
+            new ProductUpdateFacts(
+                ProductUpdateMode.Realtime,
+                ProductLifecycleState.Running,
+                Generation: 1UL,
+                ControlRevision: 0UL,
+                ObservedHostTimeNanoseconds: 0UL,
+                SimulationStep: 0UL,
+                FixedStepHz: 60U,
+                AdmittedStepCount: admittedSteps,
+                DroppedStepCount: 0UL,
+                FixedDeltaSeconds: fixedDeltaSeconds),
+            input);
+
+    private static ProductInputEvent Digital(string intent) => new()
     {
-        private const float SlipPerRead = 0.5f;
-
-        internal List<DynamicsStepRequest> Steps { get; } = [];
-        internal int Reads { get; private set; }
-        internal int BodyCreates { get; private set; }
-        internal int BodyReleases { get; private set; }
-        internal int WorldReleases { get; private set; }
-
-        public DynamicsWorld CreateWorld(DynamicsWorldConfig arg0) => new(default, RecordWorldRelease);
-
-        public DynamicsBody CreateBody(DynamicsCreateBodyRequest arg0)
-        {
-            BodyCreates++;
-            return new DynamicsBody(default, RecordBodyRelease);
-        }
-
-        public DynamicsStepReceipt Step(DynamicsStepRequest arg0)
-        {
-            Steps.Add(arg0);
-            return new DynamicsStepReceipt((ulong)Steps.Count, 1U, 0U);
-        }
-
-        public DynamicsReadout Read(DynamicsReadRequest arg0) => new(
-            new Transform(Vector3.Zero, Quaternion.Identity, Vector3.One),
-            new Vector3(SlipPerRead * ++Reads, 0.0f, 0.0f),
-            Vector3.Zero,
-            Sleeping: false,
-            new MassProperties(
-                Available: true,
-                Mass: BodyMass,
-                PrincipalInertia: new Vector3(BodyInertia, BodyInertia, BodyInertia),
-                Policy: DynamicsMassPolicyKind.DeriveFromShapeAndMass,
-                CenterOfMass: Vector3.Zero,
-                PrincipalInertiaLocalFrame: Quaternion.Identity),
-            ContactCount: 0U,
-            FirstContact: default);
-
-        public DynamicsBody CreateSphereBody(DynamicsCreateSphereBodyRequest arg0)
-            => throw new NotSupportedException();
-
-        public DynamicsBody CreateCuboidBody(DynamicsCreateCuboidBodyRequest arg0)
-            => throw new NotSupportedException();
-
-        public DynamicsBody CreateSphereBodyWithProperties(DynamicsCreateSphereBodyPropertiesRequest arg0)
-            => throw new NotSupportedException();
-
-        public DynamicsBody CreateCapsuleBody(DynamicsCreateCapsuleBodyRequest arg0)
-            => throw new NotSupportedException();
-
-        public void BindWorldCollision(DynamicsWorldCollisionBindingRequest arg0)
-            => throw new NotSupportedException();
-
-        public DynamicsRebaseWorldOriginReceipt RebaseWorldOrigin(DynamicsRebaseWorldOriginRequest arg0)
-            => throw new NotSupportedException();
-
-        public DynamicsStepAndReadLeaseReceipt StepAndRead(DynamicsStepAndReadRequest arg0)
-            => throw new NotSupportedException();
-
-        public void Reset(DynamicsResetRequest arg0) => throw new NotSupportedException();
-
-        public void UpdateBody(DynamicsUpdateBodyRequest arg0) => throw new NotSupportedException();
-
-        public DynamicsWorldReadout ReadWorld(DynamicsWorldReadRequest arg0)
-            => throw new NotSupportedException();
-
-        public DynamicsBodyAtReceipt ReadBodyAt(DynamicsBodyAtRequest arg0)
-            => throw new NotSupportedException();
-
-        public DynamicsContactAtReceipt ReadContactAt(DynamicsContactAtRequest arg0)
-            => throw new NotSupportedException();
-
-        public DynamicsBody ReplaceBody(DynamicsReplaceBodyRequest arg0)
-            => throw new NotSupportedException();
-
-        public DynamicsBody ReplaceCuboidBody(DynamicsReplaceCuboidBodyRequest arg0)
-            => throw new NotSupportedException();
-
-        public DynamicsBody ReplaceSphereBody(DynamicsReplaceSphereBodyRequest arg0)
-            => throw new NotSupportedException();
-
-        public DynamicsBody ReplaceCapsuleBody(DynamicsReplaceCapsuleBodyRequest arg0)
-            => throw new NotSupportedException();
-
-        private void RecordWorldRelease() => WorldReleases++;
-
-        private void RecordBodyRelease() => BodyReleases++;
-    }
+        Kind = InputEventKind.MappedDigital,
+        Phase = InputPhase.Pressed,
+        X = 1.0f,
+        Intent = Encoding.UTF8.GetBytes(intent),
+    };
 }

@@ -94,8 +94,12 @@ reads names and holds no vocabulary of physical labels: there is no second path
 that interprets raw keys when a mapped turn looks unrecognized, and the camera
 does not listen for a raw wheel behind the declared intent. One gesture cannot
 act twice, and re-binding a control is a manifest edit rather than a code
-change. An admitted `Clear` is what empties held state; that is the Engine's
-contract and the product's only reset of it.
+change. Two things empty held state, and both are deliberate. An admitted
+`Clear` is the Engine's: focus lost, device lost, or a binding change. And
+Space resets the mapper itself whenever the hull is rebuilt — the mapped
+reset intent and the product's own restart both run the same flight reset —
+so a respawn starts from released controls rather than from whatever was
+still being held when the ship was replaced.
 
 Two handles are keyboard-only today: the attitude-hold switch, the emergency
 uncouple, and abort have no controller button, and coupling trim has no digital

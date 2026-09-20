@@ -121,7 +121,7 @@ public class FlightControllerTests
             FixedStep);
 
         double authority = inertia * tuning.MaximumTurnRate / tuning.SteeringResponse.TotalSeconds;
-        Assert.Equal(authority, output.Steering.TorqueY, Tolerance);
+        Assert.Equal(authority, output.Steering.YawTorque, Tolerance);
         Assert.Equal(1.0, output.SteeringEffort, 9);
         Assert.True(output.SteeringSaturated);
     }
@@ -142,7 +142,7 @@ public class FlightControllerTests
             momentOfInertia: 2.0,
             FixedStep);
 
-        Assert.Equal(-port.Steering.TorqueY, starboard.Steering.TorqueY, Tolerance);
+        Assert.Equal(-port.Steering.YawTorque, starboard.Steering.YawTorque, Tolerance);
         Assert.Equal(port.SteeringEffort, starboard.SteeringEffort, Tolerance);
     }
 
@@ -157,7 +157,7 @@ public class FlightControllerTests
             momentOfInertia: 0.0,
             FixedStep);
 
-        Assert.Equal(0.0, output.Steering.TorqueY, Tolerance);
+        Assert.Equal(0.0, output.Steering.YawTorque, Tolerance);
         Assert.Equal(0.0, output.SteeringEffort, Tolerance);
         Assert.False(output.SteeringSaturated);
     }
@@ -253,7 +253,7 @@ public class FlightControllerTests
             momentOfInertia: 2.0,
             FixedStep);
 
-        Assert.Equal(0.0, coasting.Steering.TorqueY, 12);
+        Assert.Equal(0.0, coasting.Steering.YawTorque, 12);
         Assert.Equal(0.0, coasting.SteeringEffort, 12);
     }
 
@@ -268,7 +268,7 @@ public class FlightControllerTests
             momentOfInertia: 2.0,
             FixedStep);
 
-        Assert.True(holding.Steering.TorqueY < 0.0);
+        Assert.True(holding.Steering.YawTorque < 0.0);
         Assert.True(holding.SteeringEffort > 0.0);
     }
 
@@ -288,7 +288,7 @@ public class FlightControllerTests
             momentOfInertia: 2.0,
             FixedStep);
 
-        Assert.True(turning.Steering.TorqueY > 0.0);
+        Assert.True(turning.Steering.YawTorque > 0.0);
     }
 
     /// <summary>

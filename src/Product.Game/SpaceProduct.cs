@@ -19,10 +19,24 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
     public SpaceProduct(ProductCreateContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
-        composition = new SpaceProductComposition(context);
-        // Create-time projection: the Engine retains this initial snapshot
-        // alongside create outputs, before any update is admitted.
-        PublishFlight();
+        SpaceProductComposition composed = new(context);
+        try
+        {
+            composition = composed;
+            // Create-time projection: the Engine retains this initial snapshot
+            // alongside create outputs, before any update is admitted.
+            PublishFlight();
+        }
+        catch
+        {
+            // A create that fails here leaves no product for anyone to dispose,
+            // so every owner this constructor opened goes back down now. That is
+            // what the lease contract covers: a release issued inside the create
+            // call is committed or rolled back with it, so putting owners down
+            // on the way out cannot desynchronize the failed create.
+            composed.Dispose();
+            throw;
+        }
     }
 
     // The Engine generates the catalog and its dispatch; Space only names the

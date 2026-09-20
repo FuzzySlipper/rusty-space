@@ -43,7 +43,7 @@ public class DriftCurrentTests
             coupling: FullyCoupled);
 
         Assert.True(wrench.Force.X > 0.0);
-        Assert.Equal(0.0, wrench.TorqueY, 12);
+        Assert.Equal(0.0, wrench.YawTorque, 12);
     }
 
     [Fact]

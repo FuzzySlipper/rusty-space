@@ -28,14 +28,28 @@ public sealed class FlightDebugModule : IDebugCommandModule
         return FormattableString.Invariant(
             $"""
             fixed step {flight.FixedStepCount}
-            main drive  force ({forces.MainDrive.Force.X:F3}, {forces.MainDrive.Force.Z:F3})  torque {forces.MainDrive.TorqueY:F3}
-            steering    force ({forces.Steering.Force.X:F3}, {forces.Steering.Force.Z:F3})  torque {forces.Steering.TorqueY:F3}
-            field       force ({forces.Field.Force.X:F3}, {forces.Field.Force.Z:F3})  torque {forces.Field.TorqueY:F3}
-            gentle      force ({forces.GentleCurrent.Force.X:F3}, {forces.GentleCurrent.Force.Z:F3})  torque {forces.GentleCurrent.TorqueY:F3}
-            swift       force ({forces.SwiftCurrent.Force.X:F3}, {forces.SwiftCurrent.Force.Z:F3})  torque {forces.SwiftCurrent.TorqueY:F3}
-            orbital     force ({forces.OrbitalPull.Force.X:F3}, {forces.OrbitalPull.Force.Z:F3})  torque {forces.OrbitalPull.TorqueY:F3}
-            damage      force ({forces.DamageBias.Force.X:F3}, {forces.DamageBias.Force.Z:F3})  torque {forces.DamageBias.TorqueY:F3}
-            total       force ({forces.Total.Force.X:F3}, {forces.Total.Force.Z:F3})  torque {forces.Total.TorqueY:F3}
+            main drive  force ({forces.MainDrive.Force.X:F3}, {forces.MainDrive.Force.Z:F3})  torque {forces.MainDrive.YawTorque:F3}
+            steering    force ({forces.Steering.Force.X:F3}, {forces.Steering.Force.Z:F3})  torque {forces.Steering.YawTorque:F3}
+            field       force ({forces.Field.Force.X:F3}, {forces.Field.Force.Z:F3})  torque {forces.Field.YawTorque:F3}
+            gentle      force ({forces.GentleCurrent.Force.X:F3}, {forces.GentleCurrent.Force.Z:F3})  torque {forces.GentleCurrent.YawTorque:F3}
+            swift       force ({forces.SwiftCurrent.Force.X:F3}, {forces.SwiftCurrent.Force.Z:F3})  torque {forces.SwiftCurrent.YawTorque:F3}
+            orbital     force ({forces.OrbitalPull.Force.X:F3}, {forces.OrbitalPull.Force.Z:F3})  torque {forces.OrbitalPull.YawTorque:F3}
+            damage      force ({forces.DamageBias.Force.X:F3}, {forces.DamageBias.Force.Z:F3})  torque {forces.DamageBias.YawTorque:F3}
+            total       force ({forces.Total.Force.X:F3}, {forces.Total.Force.Z:F3})  torque {forces.Total.YawTorque:F3}
+            """);
+    }
+
+    [DebugCommand("space.attitude", Description = "Shows the hull's heading, turn rate, and motion as the last admitted turn read them back.")]
+    public string Attitude()
+    {
+        FlightReadout readout = flight.Readout;
+        return FormattableString.Invariant(
+            $"""
+            heading     {readout.HeadingRadians:F4}
+            yaw rate    {readout.AngularVelocity:F4}
+            position    ({readout.Position.X:F2}, {readout.Position.Z:F2})
+            velocity    ({readout.LinearVelocity.X:F3}, {readout.LinearVelocity.Z:F3})
+            speed       {readout.LinearVelocity.Magnitude:F3}
             """);
     }
 
@@ -114,5 +128,5 @@ public sealed class FlightDebugModule : IDebugCommandModule
 
     private static string Row(FlightWrench wrench) =>
         FormattableString.Invariant(
-            $"({wrench.Force.X:F3}, {wrench.Force.Z:F3}) {wrench.TorqueY:F3}");
+            $"({wrench.Force.X:F3}, {wrench.Force.Z:F3}) {wrench.YawTorque:F3}");
 }

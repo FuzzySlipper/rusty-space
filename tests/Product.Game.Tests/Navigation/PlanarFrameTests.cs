@@ -32,18 +32,42 @@ public class PlanarFrameTests
     }
 
     [Theory]
+    [InlineData(0.0)]
     [InlineData(Math.PI / 6.0)]
     [InlineData(Math.PI / 2.0)]
+    [InlineData(Math.PI)]
     [InlineData(-Math.PI / 3.0)]
-    public void ABodyReadBackCarriesTheHeadingMirroredInZ(double headingRadians)
+    [InlineData(-2.5)]
+    public void AnAttitudeReadBackReturnsTheHeadingItWasBuiltFrom(double headingRadians)
     {
-        // ToEngineAttitude turns a shape to face the planar heading; an Engine
-        // body holding that heading stands at the negated yaw. A silhouette
-        // authored against the drawn ship is mirrored on the body, and this
-        // records that the two are not the same angle.
+        // An authored heading crosses into Dynamics as an Engine rotation and
+        // comes back on a body readout. Both crossings flip, so the heading an
+        // author wrote is the heading the product reads. Read only one of them
+        // and every nonzero heading arrives reversed — invisible at the zero
+        // default, and wrong in a way no straight-line flight would show.
         Quaternion attitude = PlanarFrame.ToEngineAttitude(headingRadians);
 
-        Assert.Equal(-headingRadians, PlanarFrame.EngineYawOf(attitude), ScalarTolerance);
+        Assert.Equal(headingRadians, PlanarFrame.HeadingOf(attitude), ScalarTolerance);
+        Assert.Equal(
+            headingRadians,
+            PlanarFrame.HeadingOf(PlanarFrame.ToEngineAttitude(PlanarFrame.HeadingOf(attitude))),
+            ScalarTolerance);
+    }
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(0.5)]
+    [InlineData(-1.25)]
+    public void TheEnginesYawAxisRunsOppositeTheHeadingItServes(double headingChannel)
+    {
+        // Attitude, angular velocity, and torque share one axis flip, so a
+        // heading-positive command and the rate it should read back cannot
+        // disagree about which way the ship turns.
+        Assert.Equal(-headingChannel, PlanarFrame.EngineYaw(headingChannel), ScalarTolerance);
+        Assert.Equal(
+            headingChannel,
+            PlanarFrame.HeadingRateOf(PlanarFrame.EngineYaw(headingChannel)),
+            ScalarTolerance);
     }
 
     [Theory]

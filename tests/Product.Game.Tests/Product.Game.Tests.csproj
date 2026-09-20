@@ -17,9 +17,10 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>
 
-  <!-- Product code is the unit under test. It consumes the Engine SDK, but
-       these tests cover the pure planar math only: no Engine service handle,
-       no host, no runtime pack. -->
+  <!-- Product code is the unit under test. These tests drive it directly: pure
+       planar and flight math, plus the composition boundary through recording
+       Engine service doubles. No Engine host, no runtime pack, and no real
+       renderer, camera, or content service is ever reached. -->
   <ItemGroup>
     <ProjectReference Include="..\..\src\Product.Game\Product.Game.csproj" />
   </ItemGroup>

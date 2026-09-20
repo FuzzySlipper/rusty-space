@@ -34,7 +34,7 @@ public class FlightForcesTests
 
         Assert.Equal(1.625, total.Force.X, Tolerance);
         Assert.Equal(3.125, total.Force.Z, Tolerance);
-        Assert.Equal(-1.28, total.TorqueY, 12);
+        Assert.Equal(-1.28, total.YawTorque, 12);
     }
 
     [Fact]
@@ -45,7 +45,7 @@ public class FlightForcesTests
 
         Assert.Equal(drive.Force.X, forces.Total.Force.X, Tolerance);
         Assert.Equal(drive.Force.Z, forces.Total.Force.Z, Tolerance);
-        Assert.Equal(drive.TorqueY, forces.Total.TorqueY, Tolerance);
+        Assert.Equal(drive.YawTorque, forces.Total.YawTorque, Tolerance);
     }
 
     [Fact]
@@ -56,6 +56,6 @@ public class FlightForcesTests
 
         Assert.Equal(-3.0, joined.Force.X, Tolerance);
         Assert.Equal(8.0, joined.Force.Z, Tolerance);
-        Assert.Equal(2.0, joined.TorqueY, Tolerance);
+        Assert.Equal(2.0, joined.YawTorque, Tolerance);
     }
 }

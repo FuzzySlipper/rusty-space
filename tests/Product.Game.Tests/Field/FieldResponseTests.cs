@@ -46,7 +46,7 @@ public class FieldResponseTests
             mass: ShipMass);
 
         Assert.True(wrench.Force.Dot(Flow) > 0.0);
-        Assert.Equal(0.0, wrench.TorqueY, 12);
+        Assert.Equal(0.0, wrench.YawTorque, 12);
     }
 
     [Fact]

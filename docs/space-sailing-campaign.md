@@ -104,24 +104,32 @@ These hold for every change in this campaign and are what a review checks.
 
 The product planar frame is authoritative for ship attitude. `PlanarFrame`
 in `Navigation` owns every expression of it: forward and right for a
-heading, the heading of a direction, the yaw an Engine attitude carries, the
-single heading to-attitude conversion, and the Engine-`Y` sign of a torque
-built from an in-plane offset and force. Positions, velocities, and forces
-cross into Dynamics with the plane's coordinates taken identically as `(X,
-Z)`; no planar vector is mirrored on the way across.
+heading, the heading of a direction or of an Engine attitude, the heading
+rate an Engine angular velocity carries, the single heading to-attitude
+conversion, the Engine value of a heading-positive angular quantity, and
+the heading sense of a torque built from an in-plane offset and force.
+Positions, velocities, and forces cross into Dynamics with the plane's
+coordinates taken identically as `(X, Z)`; no planar vector is mirrored on
+the way across.
 
 The Engine is right-handed Y-up while a planar `(X, Z)` pair is left-handed
 about `+Y`, so a heading `h` needs an Engine rotation of `-h` to face `(cos
-h, sin h)`. At Engine yaw 30 degrees a body's local `+X` is `(0.866,
--0.500)` where a heading of the same angle faces `(0.866, 0.500)`: a body
-stands at `+h` and anything drawn for it stands at `-h`.
-
-The mirror is the part still open.
+h, sin h)`. That negation is one rule about one axis rather than three
+separate quirks: the Engine's whole angular channel — attitude angle,
+angular velocity, and torque — is the negation of the heading quantity it
+stands for, in both directions. `PlanarFrame` crosses it in both directions,
+and the crossings have to agree. Read one of them in the other's direction
+and the ship spins one way while its nose, its thrust, and its readouts
+report the other: wrong at every nonzero heading, and invisible at the zero
+heading a default spawn happens to use. Anything that touches an Engine
+attitude or the `+Y` angular channel goes through this type, which is the
+only place the flip is written down.
 
 Hand-computed torque from an off-center force inherits the question. Call
 `PlanarFrame.YawTorque` rather than a cross product already in hand: it
-returns the Engine-`Y` sign that agrees with the authoritative frame, which
-is the negation of the world-space cross product of the same two vectors.
+returns the heading-positive sense, which is the negation of the
+world-space cross product of the same two vectors, and it reaches a solver
+only through `PlanarFrame.EngineYaw`.
 Get it wrong and the ship weathercocks, trims, and asymmetry-corrects in the
 mirrored direction, silently, with perfectly stable numbers.
 
