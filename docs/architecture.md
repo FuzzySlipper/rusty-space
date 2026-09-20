@@ -16,11 +16,15 @@ src/ui/main.js (product-owned DOM UI)
   -> staged as product UI; no world renderer or gameplay authority
 ```
 
-The product package is pinned to `Rusty.Engine` `0.1.0-dev.cbf35130d06c` and
-`.runtime/runtime-pack-cbf35130d06c`. These artifacts carry a matching generated
-ABI identity. Keep the pair together and let the host reject a mismatch;
-products do not add version negotiation, copied Engine assets, or handwritten
-interop.
+The product runs on one exact matched release pair, and this document does not
+name it. `RustyEngineSdkPackageVersion` in `Product.Game.csproj` carries the
+package version; `.den-serve.json` and `.den-playwright.json` name the
+installed runtime pack under the ignored `.runtime/` tree; the adopting Den
+task records the pair. Both halves come from one Engine revision and carry a
+matching generated ABI identity. Keep the pair together and let the host
+reject a mismatch; products do not add version negotiation, copied Engine
+assets, or handwritten interop. Adoption is the checksummed archive and
+bundled verifier described in the Engine's `docs/csharp-distribution.md`.
 
 ## Ownership
 
@@ -29,6 +33,10 @@ inertial state, field meaning, tuning, camera policy, presentation facts, HUD
 projection, and lifecycle policy. The Engine owns update admission and clock
 facts, input delivery, Dynamics and Camera mechanisms, Appearance resources and
 retained frames, canvas/backend integration, host lifecycle, and UI transport.
+
+The per-owner map of which Space class holds which state, and where newly
+adopted Engine surface is meant to be used, is
+[Space gameplay design](gameplay-design.md).
 
 `SpaceProduct` is the lifecycle entrypoint. `SpaceProductComposition` wires
 the named product owners. `SpaceFlight` translates product commands into
@@ -44,11 +52,12 @@ them from drifting into one another, is stated in
 
 ## Runtime lanes
 
-The standard launch path is:
+The standard launch path uses the installed runtime pack. `<runtime-pack>` is
+the pack path the launch configs name:
 
 ```bash
-./.runtime/runtime-pack-cbf35130d06c/bin/rusty dev \
-  --runtime ./.runtime/runtime-pack-cbf35130d06c \
+./.runtime/<runtime-pack>/bin/rusty dev \
+  --runtime ./.runtime/<runtime-pack> \
   --project ./src/Product.Game/Product.Game.csproj \
   --live-debug --port 8787
 ```

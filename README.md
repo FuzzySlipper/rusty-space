@@ -23,25 +23,29 @@ src/
   ui/               product-owned DOM UI only
 content/            canonical product content and authored assets
 .runtime/
-  runtime-pack-2574cc89fd30-gamepad2/  matching `rusty dev` runtime pack (ignored)
+  runtime-pack-<revision>/  matching `rusty dev` runtime pack (ignored)
   sdk-feed/             matching Rusty.Engine package feed (ignored)
 docs/                current ownership and product design notes
 ```
 
-The installed pair is pinned to the Engine controller development build based on `2574cc89fd30`:
-`Rusty.Engine` `0.1.0-dev.2574cc89fd30.gamepad1` and
-`.runtime/runtime-pack-2574cc89fd30-gamepad2`. Keep the package and runtime pack matched;
-do not replace one with an older backup. Product content and the exploratory
+The product runs on one exact matched release pair: the SDK version pinned as
+`RustyEngineSdkPackageVersion` in `src/Product.Game/Product.Game.csproj` and
+the runtime pack built from the same Engine revision, named by the launch
+commands in `.den-serve.json` and `.den-playwright.json`. Keep the package and
+runtime pack matched; do not replace one with an older backup. Adopting a new
+pair means the checksummed archive and its bundled verifier, per the Engine's
+`docs/csharp-distribution.md`. Product content and the exploratory
 design notes under `docs/ideas/` are intentional provenance and should not be
 removed as host cleanup.
 
 ## Develop or use the Den service
 
-Use the installed runtime pack directly:
+Use the installed runtime pack directly. `<runtime-pack>` is the pack path the
+launch configs name:
 
 ```bash
-./.runtime/runtime-pack-2574cc89fd30-gamepad2/bin/rusty dev \
-  --runtime ./.runtime/runtime-pack-2574cc89fd30-gamepad2 \
+./.runtime/<runtime-pack>/bin/rusty dev \
+  --runtime ./.runtime/<runtime-pack> \
   --project ./src/Product.Game/Product.Game.csproj \
   --live-debug --bind-host 127.0.0.1 --port 8787
 ```

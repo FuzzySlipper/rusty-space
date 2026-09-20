@@ -11,6 +11,10 @@ Earlier Rust and TypeScript gameplay, browser-world rendering, and
 source-coupled host projects were retired. Git history is a donor record only;
 do not restore those lanes as part of ordinary product work.
 
+The current code-level ownership map — which named owner holds which state,
+and where newly adopted Engine surface is meant to be used — is
+[`docs/gameplay-design.md`](docs/gameplay-design.md).
+
 ## Ownership and boundary
 
 > The product decides. The Engine guarantees.
@@ -48,17 +52,23 @@ infrastructure or fake proof.
 - `content/` is canonical product content and should be preserved when host
   or packaging files are cleaned up.
 
-The root `NuGet.Config` points at the installed local SDK feed. The product is
-pinned to `Rusty.Engine` `0.1.0-dev.2574cc89fd30.gamepad1`; `.runtime/runtime-pack-2574cc89fd30-gamepad2`
-is its matching `rusty dev` host/runtime. Keep the pair together. Generated
-output, staging directories, and other build residue belong under ignored
-paths and are disposable when they are not owned by a live service.
+The root `NuGet.Config` points at the installed local SDK feed. The product
+runs on one exact matched release pair: the SDK version pinned as
+`RustyEngineSdkPackageVersion` in `Product.Game.csproj`, and the runtime pack
+built from the same Engine revision installed under the ignored `.runtime/`
+tree. The launch commands in `.den-serve.json` and `.den-playwright.json`
+name the installed pack, and the adopting Den task records the pair. Keep the
+pair together, adopt a new one only as a checksummed pair artifact verified by
+its bundled verifier, and let the host reject a mismatch. Generated output,
+staging directories, and other build residue belong under ignored paths and
+are disposable when they are not owned by a live service.
 
-Ordinary commands use the installed runtime pack directly:
+Ordinary commands use the installed runtime pack directly. `<runtime-pack>`
+below is the pack path the launch configs name:
 
 ```bash
-./.runtime/runtime-pack-2574cc89fd30-gamepad2/bin/rusty dev \
-  --runtime ./.runtime/runtime-pack-2574cc89fd30-gamepad2 \
+./.runtime/<runtime-pack>/bin/rusty dev \
+  --runtime ./.runtime/<runtime-pack> \
   --project ./src/Product.Game/Product.Game.csproj \
   --live-debug --bind-host 127.0.0.1 --port 8787
 ```

@@ -4,6 +4,8 @@ Durable technical companion to
 [`space_sailing_reactive_ship_ideas.md`](ideas/space_sailing_reactive_ship_ideas.md)
 and
 [`ship_physics_implementation_notes.md`](ideas/ship_physics_implementation_notes.md).
+The code-level owners these invariants apply to are mapped in
+[`gameplay-design.md`](gameplay-design.md).
 
 > Den owns sequencing, status, and progress. This document holds the canonical
 > state split, ownership boundaries, invariants, and known hazards. It
