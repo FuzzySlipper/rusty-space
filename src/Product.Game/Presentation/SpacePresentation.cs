@@ -10,7 +10,7 @@ namespace Rusty.Space.Product.Presentation;
 /// <summary>
 /// Product-owned meaning for a small set of Engine-rendered Space facts.
 /// </summary>
-internal sealed class SpacePresentation
+internal sealed class SpacePresentation : IDisposable
 {
     // Content identity of the authored ship dart; admitted product content is
     // keyed by its content-root-relative path.
@@ -37,6 +37,7 @@ internal sealed class SpacePresentation
     private readonly UiStream hudStream;
     private ulong hudSequence;
     private bool retainedSnapshotRetired;
+    private bool released;
 
     internal SpacePresentation(
         IGraphicsService appearance,
@@ -192,6 +193,31 @@ internal sealed class SpacePresentation
 
     private static double PlanarSpeed(PlanarVector velocity) => Math.Sqrt(
         velocity.X * velocity.X + velocity.Z * velocity.Z);
+
+    /// <summary>
+    /// Releases the render and UI handles this projection opened. Shutdown
+    /// retires the retained snapshot before this runs, so no snapshot still
+    /// points at a handle being put down. A generated lease wrapper releases
+    /// through the staged call it is issued in, and once the runtime is
+    /// terminal it drops its release instead of issuing one, so this is safe on
+    /// a live turn and at teardown alike.
+    /// </summary>
+    public void Dispose()
+    {
+        if (released)
+        {
+            return;
+        }
+
+        released = true;
+        hudStream.Dispose();
+        starAppearance.Dispose();
+        swiftAppearance.Dispose();
+        gentleAppearance.Dispose();
+        wakeAppearance.Dispose();
+        planetAppearance.Dispose();
+        shipAppearance.Dispose();
+    }
 
     internal void RetireRetainedSnapshot()
     {

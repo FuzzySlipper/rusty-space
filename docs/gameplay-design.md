@@ -63,10 +63,11 @@ Product owners, one mutable state family each:
 - `Tuning/SpaceTuning` — the single composition-root aggregate of the
   per-owner tuning records, admitted once at composition.
 
-`Lifecycle/` and `Content/` currently mirror host facts — lifecycle state,
-last admitted update evidence, a content file count — with no product
-consumer of their own; the campaign #8366 lifecycle child reconciles them
-against the adopted contract.
+Host facts stay the Engine's: mode, generation, admitted and dropped steps,
+and delivered content are what the Engine reports about itself, and Space
+keeps no copy of them. `Lifecycle/SpaceLifecycleState` is the product's own
+state machine — the guard that a turn is admitted only while running, that a
+pause is resumed rather than started, and that teardown is idempotent.
 
 ## Time is admitted, not assumed
 
@@ -111,6 +112,27 @@ acceptance transaction, and there is no staging-and-commit protocol
 protecting in-process state from itself. Numerical guards that express real
 physical ranges, domain clamps, and disposal guards stay; they are not
 ceremony.
+
+## Release follows construction
+
+`SpaceProductComposition` builds flight, then the presentation projection,
+then the camera, and puts them down in the reverse of that order. A create
+that fails partway releases whatever got as far as opening Engine handles, so
+a failed construction leaves no owner holding a handle nobody can reach.
+
+Teardown order matters once: shutdown retires the product's retained
+appearance snapshot while the services it references are still reachable, and
+the handles that snapshot pointed at are released afterwards.
+
+The Engine's lease wrappers are what make releasing at teardown safe rather
+than fragile. A release issued inside a staged call is enrolled and committed
+or rolled back with that call; once the runtime has completed terminally, a
+release drops its action instead of issuing a native call. So Space releases
+what it opened on both paths and needs no retry list or lease registry of its
+own to do it safely.
+
+Space starts no external timelines, so it does not claim to complete them: the
+Engine's default answer — none was completed — is the truthful one.
 
 ## Entities, components, and stats: planned, not present
 

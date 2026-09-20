@@ -7,15 +7,14 @@ using Rusty.Space.Product.Lifecycle;
 namespace Rusty.Space.Product;
 
 /// <summary>
-/// Product-owned lifecycle and admitted-update state around Engine Dynamics and Appearance facts.
-/// The standard Engine host owns transport, control fencing, and output delivery.
+/// Product-owned lifecycle around the composed Space owners. The Engine host
+/// owns transport, control fencing, and output delivery; this type decides what
+/// the product does when the host admits a turn, a control, or a teardown.
 /// </summary>
 public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
 {
     private readonly SpaceProductComposition composition;
     private SpaceLifecycleState lifecycle = SpaceLifecycleState.Created;
-    private ulong admittedUpdateCount;
-    private HostUpdateEvidence? lastHostUpdate;
 
     public SpaceProduct(ProductCreateContext context)
     {
@@ -25,15 +24,6 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
         // alongside create outputs, before any update is admitted.
         PublishFlight();
     }
-
-    public SpaceProductStatus Status => new(
-        lifecycle,
-        composition.Content.FileCount,
-        admittedUpdateCount,
-        lastHostUpdate,
-        composition.Flight.Readout,
-        composition.Flight.FixedStepCount,
-        composition.Flight.UpdateSequence);
 
     // The Engine generates the catalog and its dispatch; Space only names the
     // live owners worth reading. Commands report state and never write it.
@@ -75,22 +65,7 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
         }
 
         FollowCamera(update.Input, admission.TurnDuration);
-        if (!admission.Published)
-        {
-            return ProductUpdateResult.None;
-        }
-
-        lastHostUpdate = HostUpdateEvidence.From(update);
-        admittedUpdateCount = checked(admittedUpdateCount + 1UL);
         return ProductUpdateResult.None;
-    }
-
-    // Space initiates no external timelines yet, so it accepts completions
-    // addressed to it; a zero ticket is not a valid Engine ticket id.
-    public bool CompleteTimeline(ProductTimelineCompletion completion)
-    {
-        RequireState(SpaceLifecycleState.Running, nameof(CompleteTimeline));
-        return completion.Ticket != 0UL;
     }
 
     public void Restart()
@@ -120,10 +95,10 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
             return;
         }
 
-        // The Engine opens a staged service call around Shutdown. Retire the
-        // retained projection here, but leave the terminal runtime/context to
-        // reclaim its own lease-backed resources. The current safe C# surface
-        // has no post-commit acknowledgement for transactional lease release.
+        // Shutdown arrives inside a staged Engine call, so the retained
+        // projection is retired here while the services it references are still
+        // reachable. The handles that snapshot pointed at are put down in
+        // Dispose, after it no longer reads them.
         composition.Presentation.RetireRetainedSnapshot();
         lifecycle = SpaceLifecycleState.Shutdown;
     }
@@ -135,10 +110,14 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
             return;
         }
 
-        // NativeAOT Destroy is deliberately not a staged Engine call. The
-        // terminal Engine runtime/context reclaims its lease-backed resources,
-        // and a create-time destroy must likewise avoid calling its services.
+        // The generated host completes its lease coordinator terminally before
+        // it calls this, and a lease handle released after that point drops its
+        // release rather than issuing one. So putting the composed owners down
+        // here cannot reach into a runtime that has already gone, while on any
+        // earlier path the same calls release through the staged call they are
+        // issued in.
         lifecycle = SpaceLifecycleState.Disposed;
+        composition.Dispose();
     }
 
     private void PublishFlight() => composition.Presentation.Publish(
