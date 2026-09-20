@@ -87,6 +87,16 @@ These hold for every change in this campaign and are what a review checks.
 8. **Every secondary system bends back toward piloting.** If removing a
    system would not change how the ship flies, it is decorative or too
    disconnected.
+9. **Admitted time is the only clock.** The fixed delta and step count the
+   Engine admits drive every per-substep actuator, force, and Dynamics
+   operation, and any duration a turn reports to telemetry or the camera. A
+   rate written into product code is a second clock that quietly disagrees
+   with the host.
+10. **Controls are declared, not detected.** Every control the product answers
+    to is a named intent with its mapping in the product manifest, and the
+    Engine maps physical controls onto those names before a turn reaches the
+    product. Product code holds no vocabulary of physical labels, so a gesture
+    cannot act twice and re-binding is a manifest edit.
 
 ## Known hazards
 
@@ -187,6 +197,13 @@ so a collision space needs no new Engine mechanism. The one remaining gap is
 narrower than it first appears: the generic create path omits the properties
 bag the shape-typed configs carry. That is filed as a narrow Engine request
 rather than worked around downstream.
+
+Handles the product opens come back down in the reverse of the order that
+opened them, and the Engine's lease wrappers are what make that safe: a release
+issued inside a staged call is committed or rolled back with it, and once the
+runtime has completed terminally a release drops its action instead of issuing
+a native call. So a product-side retry list or private lease registry is never
+the answer to a lifetime question.
 
 Missing capability is a valid result. File one purpose-neutral owning
 request and stop that slice; never substitute a C# renderer, loop, timer,
