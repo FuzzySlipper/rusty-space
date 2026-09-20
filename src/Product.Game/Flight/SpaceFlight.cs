@@ -52,7 +52,7 @@ internal sealed class SpaceFlight : IDisposable
         DriftCurrentTuning swiftCurrentTuning)
     {
         this.dynamics = dynamics ?? throw new ArgumentNullException(nameof(dynamics));
-        this.bodyTuning = bodyTuning.Validate();
+        this.bodyTuning = bodyTuning;
         controller = new FlightController(flightTuning);
         coupling = new FieldCoupling(couplingTuning);
         field = new StellarField(fieldTuning);
@@ -115,7 +115,7 @@ internal sealed class SpaceFlight : IDisposable
     {
         ThrowIfDisposed();
 
-        FlightInputPlan input = inputMapper.Prepare(update.Input);
+        FlightTurnInput input = inputMapper.Apply(update.Input);
         if (input.ResetRequested)
         {
             ResetFlight();
@@ -134,7 +134,6 @@ internal sealed class SpaceFlight : IDisposable
         if (stepCount == NoSteps)
         {
             command = input.Command;
-            inputMapper.Commit(input);
             return new FlightAdmission(
                 false, fixedStepCount, updateSequence, TimeSpan.Zero, input.FaultRequested);
         }
@@ -150,34 +149,28 @@ internal sealed class SpaceFlight : IDisposable
         FlightForces forces = FlightForces.Zero;
         FlightControlOutput output = default;
         FieldSample fieldSample = field.Sample(turnStart.Position);
-        double stagedThrottle = controller.ThrottleLevel;
-        double stagedCoupling = coupling.Level;
-
         for (uint stepIndex = 0; stepIndex < stepCount; stepIndex++)
         {
             FlightBodyState bodyState = ToBodyState(currentReadout);
             fieldSample = field.Sample(bodyState.Position);
-            // The actuator spool advances once per fixed substep, not once per
-            // admitted turn: an admitted step is one fixed step of simulated
-            // time, so a turn that catches up four steps has had four steps of
-            // throttle travel. Commit below publishes one final level per turn,
-            // so no interval is counted twice.
-            FlightControlOutput substepOutput = controller.Prepare(
+            // Each actuator owns its own level and moves over the one admitted
+            // fixed step this substep integrates, so a turn that catches up four
+            // steps has had four steps of travel and no interval is counted
+            // twice.
+            FlightControlOutput substepOutput = controller.Advance(
                 bodyState,
                 input.Command,
                 currentReadout.YawInertia,
-                turn.FixedStep,
-                stagedThrottle);
-            stagedThrottle = substepOutput.ThrottleLevel;
+                turn.FixedStep);
             // The coupling actuator travels on the same per-substep clock for
             // the same reason.
-            stagedCoupling = coupling.Prepare(input.Command, turn.FixedStep, stagedCoupling);
+            coupling.Advance(input.Command, turn.FixedStep);
             FlightForces substepForces = ResolveForces(
                 bodyState,
                 fieldSample,
                 substepOutput,
                 currentReadout.Mass,
-                stagedCoupling);
+                coupling.Level);
             if (stepIndex == FirstSubstep)
             {
                 turnStartForces = substepForces;
@@ -195,14 +188,12 @@ internal sealed class SpaceFlight : IDisposable
             forces = substepForces;
         }
 
-        controller.Commit(output);
-        coupling.Commit(stagedCoupling);
         telemetry.Capture(
             turnStart,
             currentReadout,
             forces,
             output,
-            stagedCoupling,
+            coupling.Level,
             nextFixedStepCount,
             stepCount,
             turn.FixedStep);
@@ -210,7 +201,6 @@ internal sealed class SpaceFlight : IDisposable
         firstSubstepContributions = turnStartForces;
         lastFieldSample = fieldSample;
         command = input.Command;
-        inputMapper.Commit(input);
         readout = currentReadout;
         fixedStepCount = nextFixedStepCount;
         updateSequence = nextUpdateSequence;

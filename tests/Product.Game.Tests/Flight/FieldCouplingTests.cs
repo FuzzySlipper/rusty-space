@@ -30,32 +30,31 @@ public class FieldCouplingTests
     {
         FieldCoupling coupling = new(tuning);
 
-        double next = coupling.Prepare(Trim(1.0), FixedStep, coupling.Level);
+        coupling.Advance(Trim(1.0), FixedStep);
 
         double expected = CradleLevel + (FixedStep.TotalSeconds / tuning.TrimResponse.TotalSeconds);
-        Assert.True(next > CradleLevel);
-        Assert.True(next < 1.0);
-        Assert.Equal(expected, next, Tolerance);
+        Assert.True(coupling.Level > CradleLevel);
+        Assert.True(coupling.Level < 1.0);
+        Assert.Equal(expected, coupling.Level, Tolerance);
     }
 
     [Fact]
     public void TheActuatorStopsAtBothEndsOfItsTravel()
     {
         FieldCoupling coupling = new(tuning);
-        double level = coupling.Level;
         for (int step = 0; step < 400; step++)
         {
-            level = coupling.Prepare(Trim(1.0), FixedStep, level);
+            coupling.Advance(Trim(1.0), FixedStep);
         }
 
-        Assert.Equal(1.0, level, Tolerance);
+        Assert.Equal(1.0, coupling.Level, Tolerance);
 
         for (int step = 0; step < 600; step++)
         {
-            level = coupling.Prepare(Trim(-1.0), FixedStep, level);
+            coupling.Advance(Trim(-1.0), FixedStep);
         }
 
-        Assert.Equal(0.0, level, Tolerance);
+        Assert.Equal(0.0, coupling.Level, Tolerance);
     }
 
     [Fact]
@@ -64,13 +63,12 @@ public class FieldCouplingTests
         // The sailing has to be windable all the way off, or the environment can
         // never actually be declined.
         FieldCoupling coupling = new(tuning);
-        double level = coupling.Level;
         for (int step = 0; step < 120; step++)
         {
-            level = coupling.Prepare(Trim(-1.0), FixedStep, level);
+            coupling.Advance(Trim(-1.0), FixedStep);
         }
 
-        Assert.Equal(0.0, level, Tolerance);
+        Assert.Equal(0.0, coupling.Level, Tolerance);
     }
 
     [Fact]
@@ -78,39 +76,40 @@ public class FieldCouplingTests
     {
         FieldCoupling coupling = new(tuning);
 
-        double dumped = coupling.Prepare(
+        coupling.Advance(
             new FlightCommand(
                 Throttle: 0.0,
                 Turn: 0.0,
                 CouplingTrim: 0.0,
                 StabilizerEnabled: true,
                 EmergencyUncouple: true),
-            FixedStep,
-            coupling.Level);
+            FixedStep);
 
-        Assert.Equal(0.0, dumped, Tolerance);
+        Assert.Equal(0.0, coupling.Level, Tolerance);
     }
 
     [Fact]
-    public void NothingMovesTheActuatorUntilTheTurnCommitsIt()
+    public void OneAdmittedStepTravelsTheActuatorExactlyOnce()
     {
+        // The actuator carries its own level, so a turn that catches up four
+        // fixed steps lands on four steps of travel: each advance moves over the
+        // interval it is handed, and reading the level moves nothing.
         FieldCoupling coupling = new(tuning);
-
-        double prepared = coupling.Prepare(Trim(1.0), FixedStep, coupling.Level);
-        Assert.Equal(CradleLevel, coupling.Level, Tolerance);
-
-        // Commit publishes the staged value, so a turn that advances four
-        // substeps still sets the actuator once.
-        coupling.Commit(prepared);
-        coupling.Commit(prepared);
-        Assert.Equal(prepared, coupling.Level, Tolerance);
+        double perStep = FixedStep.TotalSeconds / tuning.TrimResponse.TotalSeconds;
+        double expected = CradleLevel;
+        for (int step = 0; step < 4; step++)
+        {
+            coupling.Advance(Trim(1.0), FixedStep);
+            expected += perStep;
+            Assert.Equal(expected, coupling.Level, Tolerance);
+        }
     }
 
     [Fact]
     public void AResetReturnsTheActuatorToItsCradleSetting()
     {
         FieldCoupling coupling = new(tuning);
-        coupling.Commit(coupling.Prepare(Trim(-1.0), FixedStep, coupling.Level));
+        coupling.Advance(Trim(-1.0), FixedStep);
 
         coupling.Reset();
 
@@ -121,9 +120,12 @@ public class FieldCouplingTests
     public void NoTrimDemandHoldsTheSettingWhereThePlayerLeftIt()
     {
         FieldCoupling coupling = new(tuning);
-        double wound = coupling.Prepare(Trim(1.0), FixedStep, coupling.Level);
+        coupling.Advance(Trim(1.0), FixedStep);
+        double wound = coupling.Level;
 
-        Assert.Equal(wound, coupling.Prepare(Trim(0.0), FixedStep, wound), Tolerance);
+        coupling.Advance(Trim(0.0), FixedStep);
+
+        Assert.Equal(wound, coupling.Level, Tolerance);
     }
 
     private static FlightCommand Trim(double trimIntent) => new(

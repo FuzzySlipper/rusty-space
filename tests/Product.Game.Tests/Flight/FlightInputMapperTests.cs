@@ -17,10 +17,15 @@ public class FlightInputMapperTests
     {
         FlightInputMapper mapper = new();
 
-        double inboard = mapper.Prepare(new[] { Digital("space.flight.couple", active: true) })
+        double inboard = mapper.Apply(new[] { Digital("space.flight.couple", active: true) })
             .Command.CouplingTrim;
-        double outboard = mapper.Prepare(new[] { Digital("space.flight.uncouple", active: true) })
-            .Command.CouplingTrim;
+        // Held input is held state: the turn that lets E go and grabs Q carries
+        // both edges, and only Q is left standing.
+        double outboard = mapper.Apply(new[]
+        {
+            Digital("space.flight.couple", active: false),
+            Digital("space.flight.uncouple", active: true),
+        }).Command.CouplingTrim;
 
         Assert.Equal(1.0, inboard, 9);
         Assert.Equal(-1.0, outboard, 9);
@@ -34,9 +39,9 @@ public class FlightInputMapperTests
         // away from wherever the player left it.
         FlightInputMapper mapper = new();
 
-        double resting = mapper.Prepare(new[] { Axis("space.flight.coupling-trim", 0.1f) })
+        double resting = mapper.Apply(new[] { Axis("space.flight.coupling-trim", 0.1f) })
             .Command.CouplingTrim;
-        double deflected = mapper.Prepare(new[] { Axis("space.flight.coupling-trim", 1.0f) })
+        double deflected = mapper.Apply(new[] { Axis("space.flight.coupling-trim", 1.0f) })
             .Command.CouplingTrim;
 
         Assert.Equal(0.0, resting, 9);
@@ -48,7 +53,7 @@ public class FlightInputMapperTests
     {
         FlightInputMapper mapper = new();
 
-        double commanded = mapper.Prepare(new[]
+        double commanded = mapper.Apply(new[]
         {
             Digital("space.flight.uncouple", active: true),
             Axis("space.flight.coupling-trim", 1.0f),
@@ -79,10 +84,10 @@ public class FlightInputMapperTests
         FlightInputMapper mapper = new();
 
         Assert.True(mapper
-            .Prepare(new[] { Digital("space.flight.emergency-uncouple", active: true) })
+            .Apply(new[] { Digital("space.flight.emergency-uncouple", active: true) })
             .Command.EmergencyUncouple);
         Assert.False(mapper
-            .Prepare(new[] { Digital("space.flight.emergency-uncouple", active: false) })
+            .Apply(new[] { Digital("space.flight.emergency-uncouple", active: false) })
             .Command.EmergencyUncouple);
     }
 
@@ -91,8 +96,8 @@ public class FlightInputMapperTests
     {
         FlightInputMapper mapper = new();
 
-        FlightCommand thrusting = mapper.Prepare(new[] { RawKey("KeyW", pressed: true) }).Command;
-        FlightCommand trimmedOut = mapper.Prepare(new[] { RawKey("KeyQ", pressed: true) }).Command;
+        FlightCommand thrusting = mapper.Apply(new[] { RawKey("KeyW", pressed: true) }).Command;
+        FlightCommand trimmedOut = mapper.Apply(new[] { RawKey("KeyQ", pressed: true) }).Command;
 
         Assert.Equal(1.0, thrusting.Throttle, 9);
         Assert.Equal(-1.0, trimmedOut.CouplingTrim, 9);
@@ -105,7 +110,7 @@ public class FlightInputMapperTests
         // mappings. Where the mappings exist it must not add a second voice.
         FlightInputMapper mapper = new();
 
-        FlightCommand command = mapper.Prepare(new[]
+        FlightCommand command = mapper.Apply(new[]
         {
             Digital("space.flight.thrust", active: true),
             RawKey("KeyQ", pressed: true),
@@ -116,17 +121,13 @@ public class FlightInputMapperTests
     }
 
     /// <summary>
-    /// One admitted turn: read the input, then commit it as the coordinator
-    /// does, so the next turn starts from what this one left behind.
+    /// One admitted turn, read the way the coordinator reads it: held state
+    /// moves as it is read, so the next turn starts from what this one left
+    /// behind.
     /// </summary>
-    private static FlightInputPlan Turn(
+    private static FlightTurnInput Turn(
         FlightInputMapper mapper,
-        params ProductInputEvent[] events)
-    {
-        FlightInputPlan plan = mapper.Prepare(events);
-        mapper.Commit(plan);
-        return plan;
-    }
+        params ProductInputEvent[] events) => mapper.Apply(events);
 
     private static ProductInputEvent Digital(string intent, bool active) => new()
     {

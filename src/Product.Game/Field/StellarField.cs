@@ -18,7 +18,7 @@ internal sealed class StellarField
 
     internal StellarField(FieldTuning tuning)
     {
-        this.tuning = tuning.Validate();
+        this.tuning = tuning;
     }
 
     internal FieldSample Sample(PlanarVector position)

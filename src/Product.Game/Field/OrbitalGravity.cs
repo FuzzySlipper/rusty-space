@@ -17,7 +17,7 @@ internal sealed class OrbitalGravity
 
     internal OrbitalGravity(OrbitalGravityTuning tuning)
     {
-        this.tuning = tuning.Validate();
+        this.tuning = tuning;
     }
 
     internal FlightWrench Resolve(PlanarVector position, double mass)

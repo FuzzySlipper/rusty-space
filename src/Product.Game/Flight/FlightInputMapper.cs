@@ -39,9 +39,14 @@ internal sealed class FlightInputMapper
 
     private FlightInputState state = FlightInputState.Neutral;
 
-    internal FlightInputPlan Prepare(ReadOnlySpan<ProductInputEvent> input)
+    /// <summary>
+    /// Folds one admitted turn's events into the held control state and reports
+    /// what they amount to. Held input lives here and moves as it is read: the
+    /// Engine has already admitted these events, so there is no acceptance
+    /// transaction left to run afterwards.
+    /// </summary>
+    internal FlightTurnInput Apply(ReadOnlySpan<ProductInputEvent> input)
     {
-        FlightInputState stagedState = state;
         bool resetRequested = false;
         bool faultRequested = false;
 
@@ -54,7 +59,7 @@ internal sealed class FlightInputMapper
         {
             if (inputEvent.Kind == InputEventKind.Clear)
             {
-                stagedState = FlightInputState.Neutral;
+                state = FlightInputState.Neutral;
                 continue;
             }
 
@@ -64,17 +69,17 @@ internal sealed class FlightInputMapper
                 if (axisIntent.SequenceEqual(AnalogThrustIntent))
                 {
                     hasSemanticFlightInput = true;
-                    stagedState = stagedState with { AnalogThrust = NormalizeAnalogThrust(inputEvent.X) };
+                    state = state with { AnalogThrust = NormalizeAnalogThrust(inputEvent.X) };
                 }
                 else if (axisIntent.SequenceEqual(AnalogTurnIntent))
                 {
                     hasSemanticFlightInput = true;
-                    stagedState = stagedState with { AnalogTurn = NormalizeAnalogAxis(inputEvent.X) };
+                    state = state with { AnalogTurn = NormalizeAnalogAxis(inputEvent.X) };
                 }
                 else if (axisIntent.SequenceEqual(AnalogCouplingTrimIntent))
                 {
                     hasSemanticFlightInput = true;
-                    stagedState = stagedState with { AnalogCouplingTrim = NormalizeAnalogAxis(inputEvent.X) };
+                    state = state with { AnalogCouplingTrim = NormalizeAnalogAxis(inputEvent.X) };
                 }
 
                 continue;
@@ -89,42 +94,42 @@ internal sealed class FlightInputMapper
             if (intent.SequenceEqual(ThrustIntent))
             {
                 hasSemanticFlightInput = true;
-                stagedState = stagedState with { KeyboardThrustHeld = IsDigitalActive(inputEvent) };
+                state = state with { KeyboardThrustHeld = IsDigitalActive(inputEvent) };
             }
             else if (intent.SequenceEqual(LeftTurnIntentId))
             {
                 hasSemanticFlightInput = true;
-                stagedState = stagedState with { KeyboardLeftHeld = IsDigitalActive(inputEvent) };
+                state = state with { KeyboardLeftHeld = IsDigitalActive(inputEvent) };
             }
             else if (intent.SequenceEqual(RightTurnIntentId))
             {
                 hasSemanticFlightInput = true;
-                stagedState = stagedState with { KeyboardRightHeld = IsDigitalActive(inputEvent) };
+                state = state with { KeyboardRightHeld = IsDigitalActive(inputEvent) };
             }
             else if (intent.SequenceEqual(ControllerLeftTurnIntent))
             {
                 hasSemanticFlightInput = true;
-                stagedState = stagedState with { ControllerLeftHeld = IsDigitalActive(inputEvent) };
+                state = state with { ControllerLeftHeld = IsDigitalActive(inputEvent) };
             }
             else if (intent.SequenceEqual(ControllerRightTurnIntent))
             {
                 hasSemanticFlightInput = true;
-                stagedState = stagedState with { ControllerRightHeld = IsDigitalActive(inputEvent) };
+                state = state with { ControllerRightHeld = IsDigitalActive(inputEvent) };
             }
             else if (intent.SequenceEqual(CoupleIntent))
             {
                 hasSemanticFlightInput = true;
-                stagedState = stagedState with { CoupleHeld = IsDigitalActive(inputEvent) };
+                state = state with { CoupleHeld = IsDigitalActive(inputEvent) };
             }
             else if (intent.SequenceEqual(UncoupleIntent))
             {
                 hasSemanticFlightInput = true;
-                stagedState = stagedState with { UncoupleHeld = IsDigitalActive(inputEvent) };
+                state = state with { UncoupleHeld = IsDigitalActive(inputEvent) };
             }
             else if (intent.SequenceEqual(EmergencyUncoupleIntent))
             {
                 hasSemanticFlightInput = true;
-                stagedState = stagedState with { EmergencyUncoupleHeld = IsDigitalActive(inputEvent) };
+                state = state with { EmergencyUncoupleHeld = IsDigitalActive(inputEvent) };
             }
             else if (intent.SequenceEqual(StabilizerIntent))
             {
@@ -134,9 +139,9 @@ internal sealed class FlightInputMapper
                 // release mapping is needed to stop a repeated flip.
                 if (IsPressed(inputEvent))
                 {
-                    stagedState = stagedState with
+                    state = state with
                     {
-                        StabilizerEnabled = !stagedState.StabilizerEnabled,
+                        StabilizerEnabled = !state.StabilizerEnabled,
                     };
                 }
             }
@@ -168,7 +173,7 @@ internal sealed class FlightInputMapper
             {
                 if (inputEvent.Kind == InputEventKind.Clear)
                 {
-                    stagedState = FlightInputState.Neutral;
+                    state = FlightInputState.Neutral;
                     continue;
                 }
 
@@ -182,68 +187,66 @@ internal sealed class FlightInputMapper
                 ReadOnlySpan<byte> label = inputEvent.Label.Span;
                 if (label.SequenceEqual("KeyW"u8))
                 {
-                    stagedState = stagedState with { KeyboardThrustHeld = pressed };
+                    state = state with { KeyboardThrustHeld = pressed };
                 }
                 else if (label.SequenceEqual("KeyA"u8))
                 {
-                    stagedState = stagedState with { KeyboardLeftHeld = pressed };
+                    state = state with { KeyboardLeftHeld = pressed };
                 }
                 else if (label.SequenceEqual("KeyD"u8))
                 {
-                    stagedState = stagedState with { KeyboardRightHeld = pressed };
+                    state = state with { KeyboardRightHeld = pressed };
                 }
                 else if (label.SequenceEqual("KeyQ"u8))
                 {
-                    stagedState = stagedState with { UncoupleHeld = pressed };
+                    state = state with { UncoupleHeld = pressed };
                 }
                 else if (label.SequenceEqual("KeyE"u8))
                 {
-                    stagedState = stagedState with { CoupleHeld = pressed };
+                    state = state with { CoupleHeld = pressed };
                 }
                 else if (label.SequenceEqual("KeyX"u8))
                 {
-                    stagedState = stagedState with { EmergencyUncoupleHeld = pressed };
+                    state = state with { EmergencyUncoupleHeld = pressed };
                 }
                 else if (label.SequenceEqual("KeyT"u8))
                 {
                     // Raw physical edges repeat while a key goes down, so the
                     // flip is guarded by the held flag the semantic path gets
                     // for free from its press phase.
-                    if (pressed && !stagedState.StabilizerKeyHeld)
+                    if (pressed && !state.StabilizerKeyHeld)
                     {
-                        stagedState = stagedState with
+                        state = state with
                         {
-                            StabilizerEnabled = !stagedState.StabilizerEnabled,
+                            StabilizerEnabled = !state.StabilizerEnabled,
                         };
                     }
 
-                    stagedState = stagedState with { StabilizerKeyHeld = pressed };
+                    state = state with { StabilizerKeyHeld = pressed };
                 }
                 else if (label.SequenceEqual("KeyR"u8))
                 {
-                    if (pressed && !stagedState.ResetHeld)
+                    if (pressed && !state.ResetHeld)
                     {
                         resetRequested = true;
                     }
 
-                    stagedState = stagedState with { ResetHeld = pressed };
+                    state = state with { ResetHeld = pressed };
                 }
                 else if (label.SequenceEqual("KeyF"u8))
                 {
-                    if (pressed && !stagedState.FaultHeld)
+                    if (pressed && !state.FaultHeld)
                     {
                         faultRequested = true;
                     }
 
-                    stagedState = stagedState with { FaultHeld = pressed };
+                    state = state with { FaultHeld = pressed };
                 }
             }
         }
 
-        return new FlightInputPlan(stagedState, ToCommand(stagedState), resetRequested, faultRequested);
+        return new FlightTurnInput(ToCommand(state), resetRequested, faultRequested);
     }
-
-    internal void Commit(FlightInputPlan plan) => state = plan.State;
 
     internal void Reset() => state = FlightInputState.Neutral;
 
@@ -344,8 +347,11 @@ internal readonly record struct FlightInputState(
         FaultHeld: false);
 }
 
-internal readonly record struct FlightInputPlan(
-    FlightInputState State,
+/// <summary>
+/// What one admitted turn's input amounted to: the command the pilot is asking
+/// for now, plus the one-shot actions the turn carried.
+/// </summary>
+internal readonly record struct FlightTurnInput(
     FlightCommand Command,
     bool ResetRequested,
     bool FaultRequested);

@@ -19,36 +19,35 @@ internal sealed class FieldCoupling
 
     internal FieldCoupling(CouplingTuning tuning)
     {
-        this.tuning = tuning.Validate();
+        this.tuning = tuning;
         level = tuning.DefaultLevel;
     }
 
     internal double Level => level;
 
     /// <summary>
-    /// Advances the actuator over one fixed step from the level the caller has
-    /// staged. Pure about the actuator, exactly like the throttle spool: it
-    /// moves the value it was handed and leaves publication to
-    /// <see cref="Commit"/>.
+    /// Travels the actuator over one admitted fixed step. The level is the
+    /// actuator's own: the caller reads it back with <see cref="Level"/>, so an
+    /// interval can only be counted once and a turn that admits four steps gets
+    /// four calls, not one call with four times the travel.
     /// </summary>
-    internal double Prepare(FlightCommand command, TimeSpan step, double currentLevel)
+    internal void Advance(FlightCommand command, TimeSpan step)
     {
         if (command.EmergencyUncouple)
         {
-            return MinimumLevel;
+            level = MinimumLevel;
+            return;
         }
 
         double trimIntent = Math.Clamp(command.CouplingTrim, -MaximumLevel, MaximumLevel);
         if (trimIntent == NoTrimIntent)
         {
-            return currentLevel;
+            return;
         }
 
         double travel = trimIntent * (step.TotalSeconds / tuning.TrimResponse.TotalSeconds);
-        return Math.Clamp(currentLevel + travel, MinimumLevel, MaximumLevel);
+        level = Math.Clamp(level + travel, MinimumLevel, MaximumLevel);
     }
-
-    internal void Commit(double nextLevel) => level = nextLevel;
 
     internal void Reset() => level = tuning.DefaultLevel;
 }

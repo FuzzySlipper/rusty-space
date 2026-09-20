@@ -24,7 +24,7 @@ internal sealed class DriftCurrent
 
     internal DriftCurrent(DriftCurrentTuning tuning)
     {
-        this.tuning = tuning.Validate();
+        this.tuning = tuning;
         direction = tuning.Direction.Scale(1.0 / tuning.Direction.Magnitude);
     }
 

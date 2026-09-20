@@ -48,10 +48,10 @@ internal sealed class SpacePresentation
     {
         this.appearance = appearance ?? throw new ArgumentNullException(nameof(appearance));
         this.ui = ui ?? throw new ArgumentNullException(nameof(ui));
-        this.fieldTuning = fieldTuning.Validate();
-        this.gentleCurrent = gentleCurrent.Validate();
-        this.swiftCurrent = swiftCurrent.Validate();
-        this.tuning = tuning.Validate();
+        this.fieldTuning = fieldTuning;
+        this.gentleCurrent = gentleCurrent;
+        this.swiftCurrent = swiftCurrent;
+        this.tuning = tuning;
 
         // A failed create callback is discarded by the staged Engine call, so
         // this constructor deliberately does not issue individual release

@@ -44,7 +44,7 @@ internal sealed class TrackingCamera : IDisposable
         ulong spawnResetCount)
     {
         this.cameraView = cameraView ?? throw new ArgumentNullException(nameof(cameraView));
-        this.tuning = tuning.Validate();
+        this.tuning = tuning;
         chasePosition = AnchorPosition(spawn.Position);
         positioned = true;
         lastResetCount = spawnResetCount;

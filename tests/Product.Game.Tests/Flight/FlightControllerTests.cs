@@ -13,6 +13,7 @@ public class FlightControllerTests
 {
     private const double Tolerance = 1e-9;
     private const int CatchUpSubsteps = 4;
+    private const int SettledSpoolSteps = 400;
     private static readonly TimeSpan FixedStep = TimeSpan.FromSeconds(1.0 / 60.0);
 
     private readonly FlightTuning tuning = SpaceTuning.Defaults.Flight;
@@ -22,12 +23,11 @@ public class FlightControllerTests
     {
         FlightController controller = new(tuning);
 
-        FlightControlOutput output = controller.Prepare(
+        FlightControlOutput output = controller.Advance(
             Coast(headingRadians: 0.0),
             Command(1.0, 0.0),
             momentOfInertia: 2.0,
-            FixedStep,
-            currentThrottleLevel: 0.0);
+            FixedStep);
 
         double expectedSpool = tuning.MaximumThrust * (FixedStep.TotalSeconds / tuning.ThrottleResponse.TotalSeconds);
         Assert.Equal(expectedSpool, output.ThrottleLevel, Tolerance);
@@ -37,14 +37,13 @@ public class FlightControllerTests
     [Fact]
     public void ReleasingThrustEndsThePushOnTheSameTurnItIsReleased()
     {
-        FlightController controller = new(tuning);
+        FlightController controller = AtFullThrust();
 
-        FlightControlOutput output = controller.Prepare(
+        FlightControlOutput output = controller.Advance(
             Coast(headingRadians: 0.0),
             Command(0.0, 0.0),
             momentOfInertia: 2.0,
-            FixedStep,
-            currentThrottleLevel: tuning.MaximumThrust);
+            FixedStep);
 
         Assert.Equal(0.0, output.ThrottleLevel, Tolerance);
         Assert.Equal(0.0, output.Drive.Force.X, Tolerance);
@@ -54,14 +53,13 @@ public class FlightControllerTests
     [Fact]
     public void DriveFollowsTheHeadingSoATurnedShipPushesSomewhereElse()
     {
-        FlightController controller = new(tuning);
+        FlightController controller = AtFullThrust(headingRadians: Math.PI / 2.0);
 
-        FlightControlOutput north = controller.Prepare(
+        FlightControlOutput north = controller.Advance(
             Coast(headingRadians: Math.PI / 2.0),
             Command(1.0, 0.0),
             momentOfInertia: 2.0,
-            FixedStep,
-            currentThrottleLevel: tuning.MaximumThrust);
+            FixedStep);
 
         Assert.Equal(0.0, north.Drive.Force.X, 9);
         Assert.Equal(tuning.MaximumThrust, north.Drive.Force.Z, 9);
@@ -71,18 +69,17 @@ public class FlightControllerTests
     [Fact]
     public void DriveStopsAddingPushAlongTheVelocityOnceTheShipReachesMaximumSpeed()
     {
-        FlightController controller = new(tuning);
+        FlightController controller = AtFullThrust(headingRadians: 0.0);
         FlightBodyState atCeiling = Coast(headingRadians: 0.0) with
         {
             LinearVelocity = new PlanarVector(tuning.MaximumSpeed, 0.0),
         };
 
-        FlightControlOutput output = controller.Prepare(
+        FlightControlOutput output = controller.Advance(
             atCeiling,
             Command(1.0, 0.0),
             momentOfInertia: 2.0,
-            FixedStep,
-            currentThrottleLevel: tuning.MaximumThrust);
+            FixedStep);
 
         Assert.Equal(0.0, output.Drive.Force.X, Tolerance);
         Assert.True(output.DriveSaturated);
@@ -91,18 +88,17 @@ public class FlightControllerTests
     [Fact]
     public void TheSpeedCeilingOnlyRemovesPushAlongTheVelocity()
     {
-        FlightController controller = new(tuning);
+        FlightController controller = AtFullThrust(headingRadians: Math.PI / 2.0);
         FlightBodyState atCeiling = Coast(headingRadians: Math.PI / 2.0) with
         {
             LinearVelocity = new PlanarVector(tuning.MaximumSpeed, 0.0),
         };
 
-        FlightControlOutput output = controller.Prepare(
+        FlightControlOutput output = controller.Advance(
             atCeiling,
             Command(1.0, 0.0),
             momentOfInertia: 2.0,
-            FixedStep,
-            currentThrottleLevel: tuning.MaximumThrust);
+            FixedStep);
 
         // A ship pinned at the ceiling in one direction can still be pushed
         // into a new one; only the component that would take it further past
@@ -118,12 +114,11 @@ public class FlightControllerTests
         FlightController controller = new(tuning);
         const double inertia = 2.0;
 
-        FlightControlOutput output = controller.Prepare(
+        FlightControlOutput output = controller.Advance(
             Coast(headingRadians: 0.0) with { AngularVelocity = -tuning.MaximumTurnRate },
             Command(0.0, 1.0),
             inertia,
-            FixedStep,
-            currentThrottleLevel: 0.0);
+            FixedStep);
 
         double authority = inertia * tuning.MaximumTurnRate / tuning.SteeringResponse.TotalSeconds;
         Assert.Equal(authority, output.Steering.TorqueY, Tolerance);
@@ -136,18 +131,16 @@ public class FlightControllerTests
     {
         FlightController controller = new(tuning);
 
-        FlightControlOutput starboard = controller.Prepare(
+        FlightControlOutput starboard = controller.Advance(
             Coast(headingRadians: 0.0),
             Command(0.0, 0.5),
             momentOfInertia: 2.0,
-            FixedStep,
-            currentThrottleLevel: 0.0);
-        FlightControlOutput port = controller.Prepare(
+            FixedStep);
+        FlightControlOutput port = controller.Advance(
             Coast(headingRadians: 0.0),
             Command(0.0, -0.5),
             momentOfInertia: 2.0,
-            FixedStep,
-            currentThrottleLevel: 0.0);
+            FixedStep);
 
         Assert.Equal(-port.Steering.TorqueY, starboard.Steering.TorqueY, Tolerance);
         Assert.Equal(port.SteeringEffort, starboard.SteeringEffort, Tolerance);
@@ -158,12 +151,11 @@ public class FlightControllerTests
     {
         FlightController controller = new(tuning);
 
-        FlightControlOutput output = controller.Prepare(
+        FlightControlOutput output = controller.Advance(
             Coast(headingRadians: 0.0),
             Command(0.0, 1.0),
             momentOfInertia: 0.0,
-            FixedStep,
-            currentThrottleLevel: 0.0);
+            FixedStep);
 
         Assert.Equal(0.0, output.Steering.TorqueY, Tolerance);
         Assert.Equal(0.0, output.SteeringEffort, Tolerance);
@@ -176,20 +168,19 @@ public class FlightControllerTests
         // A host admitted at a coarser fixed rate hands the spool more time per
         // turn, so it travels further, and no admitted rate overshoots the
         // commanded thrust.
-        FlightController controller = new(tuning);
+        FlightController fineSpool = new(tuning);
+        FlightController coarseSpool = new(tuning);
 
-        double fine = controller.Prepare(
+        double fine = fineSpool.Advance(
             Coast(headingRadians: 0.0),
             Command(1.0, 0.0),
             momentOfInertia: 2.0,
-            TimeSpan.FromSeconds(1.0 / 60.0),
-            currentThrottleLevel: 0.0).ThrottleLevel;
-        double coarse = controller.Prepare(
+            TimeSpan.FromSeconds(1.0 / 60.0)).ThrottleLevel;
+        double coarse = coarseSpool.Advance(
             Coast(headingRadians: 0.0),
             Command(1.0, 0.0),
             momentOfInertia: 2.0,
-            TimeSpan.FromSeconds(1.0 / 30.0),
-            currentThrottleLevel: 0.0).ThrottleLevel;
+            TimeSpan.FromSeconds(1.0 / 30.0)).ThrottleLevel;
 
         Assert.True(fine > 0.0);
         Assert.True(coarse > fine);
@@ -203,15 +194,13 @@ public class FlightControllerTests
         // substeps inside one turn travel four times and land where four
         // separate turns would land.
         FlightController controller = new(tuning);
-        double level = controller.ThrottleLevel;
         for (int substep = 0; substep < CatchUpSubsteps; substep++)
         {
-            level = controller.Prepare(
+            controller.Advance(
                 Coast(headingRadians: 0.0),
                 Command(1.0, 0.0),
                 momentOfInertia: 2.0,
-                FixedStep,
-                currentThrottleLevel: level).ThrottleLevel;
+                FixedStep);
         }
 
         double response = FixedStep.TotalSeconds / tuning.ThrottleResponse.TotalSeconds;
@@ -221,28 +210,31 @@ public class FlightControllerTests
             expected += (tuning.MaximumThrust - expected) * response;
         }
 
-        Assert.Equal(expected, level, Tolerance);
+        Assert.Equal(expected, controller.ThrottleLevel, Tolerance);
     }
 
     [Fact]
-    public void OnlyCommitPublishesTheSpoolSoOneSubstepCannotBeCountedTwice()
+    public void TheSpoolAnAdvanceReportsIsTheSpoolTheOwnerNowHolds()
     {
+        // The level reported for a substep and the controller's own state are
+        // one value, so an admitted interval can neither be counted twice nor
+        // go unpublished until the end of the turn.
         FlightController controller = new(tuning);
 
-        FlightControlOutput output = controller.Prepare(
+        FlightControlOutput first = controller.Advance(
             Coast(headingRadians: 0.0),
             Command(1.0, 0.0),
             momentOfInertia: 2.0,
-            FixedStep,
-            currentThrottleLevel: 0.0);
+            FixedStep);
+        Assert.Equal(first.ThrottleLevel, controller.ThrottleLevel, Tolerance);
 
-        // Preparing is pure about the spool; the level moves only when the turn
-        // commits, and committing the same output again cannot advance it.
-        Assert.Equal(0.0, controller.ThrottleLevel, Tolerance);
-
-        controller.Commit(output);
-        controller.Commit(output);
-        Assert.Equal(output.ThrottleLevel, controller.ThrottleLevel, Tolerance);
+        FlightControlOutput second = controller.Advance(
+            Coast(headingRadians: 0.0),
+            Command(1.0, 0.0),
+            momentOfInertia: 2.0,
+            FixedStep);
+        Assert.True(second.ThrottleLevel > first.ThrottleLevel);
+        Assert.Equal(second.ThrottleLevel, controller.ThrottleLevel, Tolerance);
     }
 
     [Fact]
@@ -250,7 +242,7 @@ public class FlightControllerTests
     {
         FlightController controller = new(tuning);
 
-        FlightControlOutput coasting = controller.Prepare(
+        FlightControlOutput coasting = controller.Advance(
             Spinning(headingRadians: 0.0, angularVelocity: 1.4),
             new FlightCommand(
                 Throttle: 0.0,
@@ -259,8 +251,7 @@ public class FlightControllerTests
                 StabilizerEnabled: false,
                 EmergencyUncouple: false),
             momentOfInertia: 2.0,
-            FixedStep,
-            currentThrottleLevel: 0.0);
+            FixedStep);
 
         Assert.Equal(0.0, coasting.Steering.TorqueY, 12);
         Assert.Equal(0.0, coasting.SteeringEffort, 12);
@@ -271,12 +262,11 @@ public class FlightControllerTests
     {
         FlightController controller = new(tuning);
 
-        FlightControlOutput holding = controller.Prepare(
+        FlightControlOutput holding = controller.Advance(
             Spinning(headingRadians: 0.0, angularVelocity: 1.4),
             Command(0.0, 0.0),
             momentOfInertia: 2.0,
-            FixedStep,
-            currentThrottleLevel: 0.0);
+            FixedStep);
 
         Assert.True(holding.Steering.TorqueY < 0.0);
         Assert.True(holding.SteeringEffort > 0.0);
@@ -287,7 +277,7 @@ public class FlightControllerTests
     {
         FlightController controller = new(tuning);
 
-        FlightControlOutput turning = controller.Prepare(
+        FlightControlOutput turning = controller.Advance(
             Spinning(headingRadians: 0.0, angularVelocity: 0.0),
             new FlightCommand(
                 Throttle: 0.0,
@@ -296,10 +286,31 @@ public class FlightControllerTests
                 StabilizerEnabled: false,
                 EmergencyUncouple: false),
             momentOfInertia: 2.0,
-            FixedStep,
-            currentThrottleLevel: 0.0);
+            FixedStep);
 
         Assert.True(turning.Steering.TorqueY > 0.0);
+    }
+
+    /// <summary>
+    /// A controller whose spool has already reached commanded thrust, for tests
+    /// about what a settled actuator pushes rather than how long the spool takes
+    /// to get there. The spool is first order, so a few seconds of admitted
+    /// steps is what lands it on full.
+    /// </summary>
+    private FlightController AtFullThrust(double headingRadians = 0.0)
+    {
+        FlightController controller = new(tuning);
+        for (int step = 0; step < SettledSpoolSteps; step++)
+        {
+            controller.Advance(
+                Coast(headingRadians),
+                Command(1.0, 0.0),
+                momentOfInertia: 2.0,
+                FixedStep);
+        }
+
+        Assert.Equal(tuning.MaximumThrust, controller.ThrottleLevel, 9);
+        return controller;
     }
 
     private static FlightBodyState Coast(double headingRadians) => new(

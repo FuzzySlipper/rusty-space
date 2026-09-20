@@ -14,7 +14,7 @@ internal sealed class FieldResponse
 
     internal FieldResponse(FieldTuning tuning)
     {
-        this.tuning = tuning.Validate();
+        this.tuning = tuning;
     }
 
     /// <summary>

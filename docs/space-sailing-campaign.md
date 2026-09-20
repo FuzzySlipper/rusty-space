@@ -136,9 +136,10 @@ rebuild; that cost lands only on turns that were already catching up.
 
 The actuator spool advances per fixed substep for the same reason: an
 admitted step is one fixed step of simulated time, so a turn that catches up
-four steps has had four steps of throttle travel.
-`FlightController.Prepare` stays pure about the spool and only `Commit`
-publishes it, so a turn commits once and no interval is counted twice.
+four steps has had four steps of throttle travel. The spool and the coupling
+level are their owners' own state, each moved over the one admitted interval it
+is handed and read back from the owner, so an interval cannot be counted twice
+and nothing a turn did is left waiting for a separate publication.
 
 ### Coupling is the ship's, the well is the planet's
 

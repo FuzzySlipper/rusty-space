@@ -21,26 +21,31 @@ internal sealed class FlightController
 
     internal FlightController(FlightTuning tuning)
     {
-        this.tuning = tuning.Validate();
+        this.tuning = tuning;
     }
 
     internal double ThrottleLevel => throttleLevel;
 
-    internal FlightControlOutput Prepare(
+    /// <summary>
+    /// Advances the throttle spool over one admitted fixed step and resolves
+    /// what the control effectors push for that step. The spool is this owner's
+    /// state, so the interval it travels is the one it is handed and no caller
+    /// carries a level between substeps.
+    /// </summary>
+    internal FlightControlOutput Advance(
         FlightBodyState body,
         FlightCommand command,
         double momentOfInertia,
-        TimeSpan step,
-        double currentThrottleLevel)
+        TimeSpan step)
     {
         double throttleIntent = Math.Clamp(
             command.Throttle,
             MinimumThrottleIntent,
             MaximumThrottleIntent);
         double turnIntent = Math.Clamp(command.Turn, MinimumTurnIntent, MaximumTurnIntent);
-        double nextThrottleLevel = AdvanceThrottle(throttleIntent, step, currentThrottleLevel);
+        AdvanceThrottle(throttleIntent, step);
 
-        PlanarVector commandedForce = body.Forward.Scale(nextThrottleLevel);
+        PlanarVector commandedForce = body.Forward.Scale(throttleLevel);
         PlanarVector driveForce = RemoveForwardAccelerationAtMaximumSpeed(
             commandedForce,
             body.LinearVelocity);
@@ -53,32 +58,33 @@ internal sealed class FlightController
         return new FlightControlOutput(
             new FlightWrench(driveForce, NoYawTorque),
             new FlightWrench(new PlanarVector(NoPlanarForce, NoPlanarForce), steering.Torque),
-            nextThrottleLevel,
-            nextThrottleLevel / tuning.MaximumThrust,
+            throttleLevel,
+            throttleLevel / tuning.MaximumThrust,
             steering.Effort,
             DriveSaturated: driveForce != commandedForce,
             steering.Saturated);
     }
 
-    internal void Commit(FlightControlOutput output) => throttleLevel = output.ThrottleLevel;
-
     internal void Reset() => throttleLevel = MinimumThrottleIntent;
 
-    private double AdvanceThrottle(double throttleIntent, TimeSpan step, double currentThrottleLevel)
+    /// <summary>
+    /// Moves the spool toward the commanded thrust over the interval it is
+    /// handed. Releasing thrust is not an approach: the push ends on the turn it
+    /// is released, so coast starts with nothing left over to integrate.
+    /// </summary>
+    private void AdvanceThrottle(double throttleIntent, TimeSpan step)
     {
-        // Classic inertial flight stops adding force as soon as thrust is
-        // released. Acceleration may spool up for feel, but coast begins with
-        // no lingering force and therefore preserves its velocity exactly.
         if (throttleIntent == MinimumThrottleIntent)
         {
-            return MinimumThrottleIntent;
+            throttleLevel = MinimumThrottleIntent;
+            return;
         }
 
         double desiredThrust = throttleIntent * tuning.MaximumThrust;
         double responseFactor = Math.Min(
             step.TotalSeconds / tuning.ThrottleResponse.TotalSeconds,
             FullResponseFactor);
-        return currentThrottleLevel + ((desiredThrust - currentThrottleLevel) * responseFactor);
+        throttleLevel += (desiredThrust - throttleLevel) * responseFactor;
     }
 
     private PlanarVector RemoveForwardAccelerationAtMaximumSpeed(
