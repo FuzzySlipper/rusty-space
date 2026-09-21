@@ -1,4 +1,5 @@
 using Rusty.Engine.Debugging;
+using Rusty.Space.Product.Approach;
 using Rusty.Space.Product.Field;
 using Rusty.Space.Product.Flight;
 using Rusty.Space.Product.Navigation;
@@ -98,6 +99,24 @@ public sealed class FlightDebugModule : IDebugCommandModule
             centers     thrust ({thrust.X:F2}, {thrust.Z:F2})   coupling ({coupling.X:F2}, {coupling.Z:F2})
             centers     steering ({steering.X:F2}, {steering.Z:F2})   stabilization ({stabilization.X:F2}, {stabilization.Z:F2})
             heading     effort {telemetry.SteeringEffort:F3}   asymmetry {telemetry.HeadingAsymmetry:F3}   saturated {telemetry.SteeringSaturated}
+            faults      {Faults(flight.Ship)}
+            """);
+    }
+
+    [DebugCommand("space.impacts", Description = "Shows the chart the hull is flying, what it has struck, and what each contact left behind.")]
+    public string Impacts()
+    {
+        HullStrike strike = flight.LastStrike;
+        HullDamage? damage = strike.Damage;
+        PlanarVector struckSide = damage?.StruckSide ?? PlanarVector.Zero;
+        return FormattableString.Invariant(
+            $"""
+            chart       {flight.Approach.Name}  ({flight.Approach.Obstacles.Count} authored)
+            contacts    {flight.ImpactCount} since this hull was built
+            last        {NameOf(strike.Impact.Struck)} on {NameOf(damage?.Part)}  impulse ({strike.Impact.LocalImpulse.X:F3}, {strike.Impact.LocalImpulse.Z:F3})  magnitude {strike.Impact.Magnitude:F3}
+            struck side ({struckSide.X:F2}, {struckSide.Z:F2})   health lost {damage?.HealthLost ?? 0.0:F3}
+            health      emitter {flight.Ship.Emitter.Health:F2}  drive {flight.Ship.MainDrive.Health:F2}  port {flight.Ship.PortStabilizer.Health:F2}  starboard {flight.Ship.StarboardStabilizer.Health:F2}
+            faults      {Faults(flight.Ship)}
             """);
     }
 
@@ -183,7 +202,23 @@ public sealed class FlightDebugModule : IDebugCommandModule
             $"{role,-11} {part.Id.Value,-27} ({part.Definition.Mount.X,6:F2}, {part.Definition.Mount.Z,5:F2})")
             + FormattableString.Invariant(
                 $"  {part.Health,5:F2} {part.Temperature,5:F2} {part.ActuatorValue,7:F3}/{part.ActuatorLimit,5:F2}")
-            + (part.Saturated ? "  at stop" : string.Empty);
+            + (part.Saturated ? "  at stop" : string.Empty)
+            + (part.OutOfTrim ? "  jammed" : string.Empty);
+
+    private static string NameOf(ObstacleId? obstacle) => obstacle?.Value ?? "nothing";
+
+    private static string NameOf(PartId? part) => part?.Value ?? "nothing";
+
+    private static string Faults(InstalledShip ship)
+    {
+        string[] latched =
+        [
+            .. new[] { ship.Emitter, ship.MainDrive, ship.PortStabilizer, ship.StarboardStabilizer }
+                .Where(part => part.OutOfTrim)
+                .Select(part => $"{part.Id.Value} (patch {part.RepairProgress:F2})"),
+        ];
+        return latched.Length == 0 ? "none" : string.Join("  ", latched);
+    }
 
     private static string Row(FlightWrench wrench) =>
         FormattableString.Invariant(

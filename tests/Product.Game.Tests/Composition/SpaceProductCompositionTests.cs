@@ -1,5 +1,6 @@
 using Rusty.Engine;
 using Rusty.Space.Product.Engine.Tests;
+using Rusty.Space.Product.Tuning;
 using Xunit;
 
 namespace Rusty.Space.Product.Tests;
@@ -18,10 +19,15 @@ public class SpaceProductCompositionTests
     // Every appearance handle the navigation projection opens at construction:
     // the hull, the planet, the wake, both band cores, both band authority
     // regions, the declined band, the velocity reading, the projected path, the
-    // flow lattice, the tuning-only push vectors, the centers of force, and the
-    // star field. A teardown that leaves any of them open is a leak this count
+    // flow lattice, the tuning-only push vectors, the centers of force, the
+    // star field, the chart's blocks and boulders, and the mark a contact leaves
+    // on the hull. A teardown that leaves any of them open is a leak this count
     // catches.
-    private const int ProjectionHandleCount = 14;
+    private const int ProjectionHandleCount = 17;
+
+    // Every body the flight opens in the Engine: the hull, and one for each piece
+    // of authored approach geometry the chart stands on.
+    private static int OpenedBodies => 1 + SpaceTuning.Defaults.Approach.Obstacles.Count;
 
     [Fact]
     public void AComposedProductPutsDownEveryOwnerItOpened()
@@ -49,7 +55,7 @@ public class SpaceProductCompositionTests
         Assert.Equal(0, engine.CameraView.CameraReleases);
         Assert.Equal(1, engine.Ui.StreamReleases);
         Assert.Equal(ProjectionHandleCount, engine.Graphics.AppearanceReleases);
-        Assert.Equal(1, engine.Dynamics.BodyReleases);
+        Assert.Equal(OpenedBodies, engine.Dynamics.BodyReleases);
         Assert.Equal(1, engine.Dynamics.WorldReleases);
         AssertReleasedDeepestFirst(engine);
     }
@@ -69,7 +75,7 @@ public class SpaceProductCompositionTests
         Assert.Equal(0, engine.CameraView.CameraReleases);
         Assert.Equal(0, engine.Ui.StreamReleases);
         Assert.Equal(0, engine.Graphics.AppearanceReleases);
-        Assert.Equal(1, engine.Dynamics.BodyReleases);
+        Assert.Equal(OpenedBodies, engine.Dynamics.BodyReleases);
         Assert.Equal(1, engine.Dynamics.WorldReleases);
     }
 
@@ -87,7 +93,7 @@ public class SpaceProductCompositionTests
         Assert.Equal(1, engine.CameraView.CameraReleases);
         Assert.Equal(1, engine.Ui.StreamReleases);
         Assert.Equal(ProjectionHandleCount, engine.Graphics.AppearanceReleases);
-        Assert.Equal(1, engine.Dynamics.BodyReleases);
+        Assert.Equal(OpenedBodies, engine.Dynamics.BodyReleases);
         Assert.Equal(1, engine.Dynamics.WorldReleases);
         Assert.Equal(["camera", "ui", "appearance", "body", "world"], engine.Faults.OwnersReleasedInOrder());
     }

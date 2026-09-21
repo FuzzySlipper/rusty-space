@@ -26,7 +26,8 @@ internal sealed class FlightTelemetry
         double coupling,
         ulong fixedStepCount,
         uint admittedSteps,
-        TimeSpan fixedStep)
+        TimeSpan fixedStep,
+        HullStrike strike)
     {
         double elapsed = admittedSteps * fixedStep.TotalSeconds;
         PlanarVector velocityChange = after.LinearVelocity - frame.LinearVelocity;
@@ -43,8 +44,12 @@ internal sealed class FlightTelemetry
             coupling,
             forces.Field.Force.Magnitude,
             ship.HeadingAsymmetry,
-            // Impacts report through this same value once local geometry exists.
-            PlanarVector.Zero);
+            // What the Engine's contacts gave the hull, reported in the hull's own
+            // frame: the same push the body already answers to, stated where the
+            // ship's instruments can read it.
+            strike.Impact.LocalImpulse,
+            strike.Impact.Magnitude,
+            strike.Damage?.Part);
     }
 
     internal void Reset() => current = FlightTelemetrySnapshot.Neutral;

@@ -44,7 +44,7 @@ public class InstalledShipTests
     [Fact]
     public void AFitWeighsWhatIsMountedOnIt()
     {
-        InstalledShip stock = new(ShipLoadouts.Stock, DriveAuthority);
+        InstalledShip stock = new(ShipLoadouts.Stock, DriveAuthority, SpaceTuning.Defaults.Damage);
 
         Assert.Equal(StockAddedMass, stock.AddedMass, 12);
         Assert.Equal(StockAddedYawInertia, stock.AddedYawInertia, 8);
@@ -57,7 +57,7 @@ public class InstalledShipTests
         // has to arrive wherever the hull is pointing. A mount computed against
         // the world instead would keep pushing at the same compass bearing while
         // the ship spun beneath it.
-        InstalledShip scavenged = new(ShipLoadouts.OversizedScavengedEmitter, DriveAuthority);
+        InstalledShip scavenged = new(ShipLoadouts.OversizedScavengedEmitter, DriveAuthority, SpaceTuning.Defaults.Damage);
 
         PlanarVector facingDownrange = scavenged.FieldCouplingCenter(0.0);
         PlanarVector facingStarboard = scavenged.FieldCouplingCenter(Math.PI / 2.0);
@@ -71,7 +71,7 @@ public class InstalledShipTests
     [Fact]
     public void AMatchedPairSharesATurnDemandEvenly()
     {
-        InstalledShip stock = new(ShipLoadouts.Stock, DriveAuthority);
+        InstalledShip stock = new(ShipLoadouts.Stock, DriveAuthority, SpaceTuning.Defaults.Damage);
 
         ShipEffort delivered = Drive(stock, demandedHeadingTorque: 3.0, NominalTrim, Calm, steps: 240);
 
@@ -91,7 +91,7 @@ public class InstalledShipTests
         {
             StarboardStabilizer = ShipLoadouts.Stock.StarboardStabilizer with { Health = HalfScale },
         };
-        InstalledShip limping = new(halfASide, DriveAuthority);
+        InstalledShip limping = new(halfASide, DriveAuthority, SpaceTuning.Defaults.Damage);
 
         ShipEffort delivered = Drive(limping, demandedHeadingTorque: 6.0, NominalTrim, Calm, steps: 240);
 
@@ -111,14 +111,14 @@ public class InstalledShipTests
         // load by accident: the pull is authored against the load, so the ship
         // behaves normally on calm water and starts to fight the player in a
         // wake. That is what makes the defect findable rather than random.
-        InstalledShip worn = new(ShipLoadouts.DamagedStabilizer, DriveAuthority);
+        InstalledShip worn = new(ShipLoadouts.DamagedStabilizer, DriveAuthority, SpaceTuning.Defaults.Damage);
 
         ShipEffort atRest = Drive(worn, NoDemand, coupling: 0.0, Calm, steps: 240);
 
         Assert.Equal(0.0, atRest.WearPull, 12);
         Assert.Equal(0.0, atRest.HeadingTorque, 9);
 
-        InstalledShip alsoWorn = new(ShipLoadouts.DamagedStabilizer, DriveAuthority);
+        InstalledShip alsoWorn = new(ShipLoadouts.DamagedStabilizer, DriveAuthority, SpaceTuning.Defaults.Damage);
         ShipEffort underLoad = Drive(alsoWorn, NoDemand, FullTrim, HardFlow, steps: 480);
 
         Assert.Equal(WornPullAtFullLoad, underLoad.WearPull, 9);
@@ -133,8 +133,8 @@ public class InstalledShipTests
         // Same demand, same hardware, two loads: past the wear threshold the
         // response rings instead of settling. The onset is a load a player can
         // find, and the ring is the same every time it is reached.
-        InstalledShip calm = new(ShipLoadouts.DamagedStabilizer, DriveAuthority);
-        InstalledShip loaded = new(ShipLoadouts.DamagedStabilizer, DriveAuthority);
+        InstalledShip calm = new(ShipLoadouts.DamagedStabilizer, DriveAuthority, SpaceTuning.Defaults.Damage);
+        InstalledShip loaded = new(ShipLoadouts.DamagedStabilizer, DriveAuthority, SpaceTuning.Defaults.Damage);
 
         double calmPeak = DriveToPeak(calm, demandedHeadingTorque: 2.0, NominalTrim, Calm, steps: 90);
         double loadedPeak = DriveToPeak(loaded, demandedHeadingTorque: 2.0, FullTrim, HardFlow, steps: 90);
@@ -154,8 +154,8 @@ public class InstalledShipTests
         // that demand through the hardware fitted to answer it. A coil rated
         // above the hull's own trim catches more of the same flow, which is the
         // whole reason anyone would wire in something that does not belong.
-        InstalledShip stock = new(ShipLoadouts.Stock, DriveAuthority);
-        InstalledShip scavenged = new(ShipLoadouts.OversizedScavengedEmitter, DriveAuthority);
+        InstalledShip stock = new(ShipLoadouts.Stock, DriveAuthority, SpaceTuning.Defaults.Damage);
+        InstalledShip scavenged = new(ShipLoadouts.OversizedScavengedEmitter, DriveAuthority, SpaceTuning.Defaults.Damage);
 
         ShipEffort onSpec = Drive(stock, NoDemand, NominalTrim, Calm, steps: 480);
         ShipEffort oversized = Drive(scavenged, NoDemand, NominalTrim, Calm, steps: 480);
@@ -185,7 +185,7 @@ public class InstalledShipTests
     [Fact]
     public void AWorkedPartWarmsAndAPartLeftAloneCoolsDown()
     {
-        InstalledShip ship = new(ShipLoadouts.Stock, DriveAuthority);
+        InstalledShip ship = new(ShipLoadouts.Stock, DriveAuthority, SpaceTuning.Defaults.Damage);
 
         Drive(ship, demandedHeadingTorque: 4.0, NominalTrim, Calm, steps: 120);
         double worked = ship.StarboardStabilizer.Temperature;
@@ -200,7 +200,7 @@ public class InstalledShipTests
     [Fact]
     public void EveryFittedPartIsNamedAndAccountedFor()
     {
-        InstalledShip worn = new(ShipLoadouts.DamagedStabilizer, DriveAuthority);
+        InstalledShip worn = new(ShipLoadouts.DamagedStabilizer, DriveAuthority, SpaceTuning.Defaults.Damage);
 
         Assert.Equal("emitter-stock", worn.Emitter.Id.Value);
         Assert.Equal("drive-stock", worn.MainDrive.Id.Value);

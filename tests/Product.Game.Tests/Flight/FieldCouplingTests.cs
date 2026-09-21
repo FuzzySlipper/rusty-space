@@ -82,7 +82,8 @@ public class FieldCouplingTests
                 Turn: 0.0,
                 CouplingTrim: 0.0,
                 StabilizerEnabled: true,
-                EmergencyUncouple: true),
+                EmergencyUncouple: true,
+                    RepairHeld: false),
             FixedStep);
 
         Assert.Equal(0.0, coupling.Level, Tolerance);
@@ -133,5 +134,6 @@ public class FieldCouplingTests
         Turn: 0.0,
         CouplingTrim: trimIntent,
         StabilizerEnabled: true,
-        EmergencyUncouple: false);
+        EmergencyUncouple: false,
+            RepairHeld: false);
 }

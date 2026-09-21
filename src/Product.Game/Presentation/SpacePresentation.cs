@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using Rusty.Engine;
+using Rusty.Space.Product.Approach;
 using Rusty.Space.Product.Field;
 using Rusty.Space.Product.Flight;
 using Rusty.Space.Product.Navigation;
@@ -47,11 +48,19 @@ internal sealed class SpacePresentation : IDisposable
     private const ulong FirstFlowPointId = 3_000UL;
     private const ulong FirstDebugVectorId = 4_000UL;
     private const ulong FirstCenterMarkerId = 4_100UL;
+    private const ulong FirstObstacleId = 5_000UL;
+    private const ulong StruckMarkObjectId = 6_000UL;
 
     // Scene facts that are always there, whatever the ship is doing: the hull,
-    // the planet, the wake, both bands and both authority regions, and the
-    // velocity reading beside the hull.
-    private const int FixedSceneFactCount = 8;
+    // the planet, the wake, both bands and both authority regions, the velocity
+    // reading beside the hull, and the mark left on the side last struck. The
+    // mark is published whether or not anything was hit — it is the same object
+    // with nothing to say this turn rather than an object appearing and gone.
+    private const int FixedSceneFactCount = 9;
+
+    // A chart proxy is authored half and half and an Engine appearance is scaled
+    // by its full extent.
+    private const float FullExtent = 2.0f;
 
     // One marker per center of force the hull has, beside the push each source
     // puts on the world.
@@ -64,6 +73,7 @@ internal sealed class SpacePresentation : IDisposable
     private const int ThrustCenterMarker = 0;
     private const int CouplingCenterMarker = 1;
     private const int SteeringCenterMarker = 2;
+    private const float ChartPlaneHeight = 0.0f;
     private const float NoFlow = 0.0f;
     private const double NegligibleFlow = 1e-3;
     private const double NegligibleForce = 1e-3;
@@ -74,6 +84,7 @@ internal sealed class SpacePresentation : IDisposable
     private readonly StellarField field;
     private readonly DriftCurrent gentleCurrent;
     private readonly DriftCurrent swiftCurrent;
+    private readonly ApproachField approach;
     private readonly SpacePresentationTuning tuning;
     private readonly NavigationOverlayTuning overlay;
     private readonly Appearance shipAppearance;
@@ -90,6 +101,9 @@ internal sealed class SpacePresentation : IDisposable
     private readonly Appearance debugVectorAppearance;
     private readonly Appearance centerMarkerAppearance;
     private readonly Appearance starAppearance;
+    private readonly Appearance wreckAppearance;
+    private readonly Appearance boulderAppearance;
+    private readonly Appearance struckMarkAppearance;
     private readonly UiStream hudStream;
     private ulong hudSequence;
     private bool retainedSnapshotRetired;
@@ -99,6 +113,7 @@ internal sealed class SpacePresentation : IDisposable
         IGraphicsService appearance,
         IUiService ui,
         FlightEnvironment environment,
+        ApproachField approach,
         SpacePresentationTuning tuning,
         NavigationOverlayTuning overlay)
     {
@@ -107,6 +122,7 @@ internal sealed class SpacePresentation : IDisposable
         field = environment.Field;
         gentleCurrent = environment.GentleCurrent;
         swiftCurrent = environment.SwiftCurrent;
+        this.approach = approach ?? throw new ArgumentNullException(nameof(approach));
         this.tuning = tuning;
         this.overlay = overlay.Validate();
 
@@ -128,6 +144,9 @@ internal sealed class SpacePresentation : IDisposable
         debugVectorAppearance = CreateCube(overlay.DebugColor);
         centerMarkerAppearance = CreateCube(overlay.DebugCenterColor);
         starAppearance = CreateSphere(this.tuning.StarColor);
+        wreckAppearance = CreateCube(this.tuning.WreckColor);
+        boulderAppearance = CreateSphere(this.tuning.BoulderColor);
+        struckMarkAppearance = CreateCube(overlay.StruckMarkColor);
         hudStream = this.ui.OpenStream(new UiStreamRequest(HudStreamName, HudContract));
     }
 
@@ -136,11 +155,12 @@ internal sealed class SpacePresentation : IDisposable
         FlightTelemetrySnapshot telemetry,
         FlightForces contributions,
         FlightPath path,
+        HullStrike strike,
         InstalledShip ship)
     {
         ArgumentNullException.ThrowIfNull(ship);
 
-        PublishAppearance(readout, telemetry, contributions, path, ship);
+        PublishAppearance(readout, telemetry, contributions, path, strike, ship);
         PublishHud(readout, telemetry);
     }
 
@@ -149,6 +169,7 @@ internal sealed class SpacePresentation : IDisposable
         FlightTelemetrySnapshot telemetry,
         FlightForces contributions,
         FlightPath path,
+        HullStrike strike,
         InstalledShip ship)
     {
         int starWidth = checked((tuning.StarGridRadius * 2) + 1);
@@ -157,7 +178,7 @@ internal sealed class SpacePresentation : IDisposable
         int flowCount = checked(flowWidth * flowWidth);
         AppearanceFact[] facts = new AppearanceFact[checked(
             FixedSceneFactCount + path.Points.Length + flowCount
-            + DebugVectorCount + CenterMarkerCount)];
+            + DebugVectorCount + CenterMarkerCount + approach.Obstacles.Count)];
         facts[0] = new AppearanceFact(
                 (ulong)SpaceAppearanceObject.Ship,
                 false,
@@ -219,13 +240,80 @@ internal sealed class SpacePresentation : IDisposable
                 Visible: true,
                 RenderLayer.Scene);
         facts[7] = VelocityTransform(readout);
+        facts[8] = StruckMarkFact(strike, readout, ship);
         int index = FixedSceneFactCount;
+        PublishObstacles(facts, ref index);
         index = PublishPath(facts, index, path);
         index = PublishFlowLattice(facts, index, readout);
         index = PublishDebugVectors(facts, index, readout, contributions, ship);
         PublishCenterMarkers(facts, index, readout.HeadingRadians, ship);
         appearance.PublishSnapshot(facts);
     }
+
+    /// <summary>
+    /// The chart the hull is flying: every authored obstacle, drawn where the
+    /// Engine put its collision proxy. A boulder is drawn round because a boulder
+    /// is round to the hull as well, and meeting the view and the collision on
+    /// different terms is how a chart teaches a player to distrust it.
+    /// </summary>
+    private void PublishObstacles(AppearanceFact[] facts, ref int index)
+    {
+        int obstacle = 0;
+        foreach (ObstacleDefinition authored in approach.Obstacles)
+        {
+            facts[index++] = new AppearanceFact(
+                checked(FirstObstacleId + (ulong)obstacle),
+                false,
+                0,
+                new Transform(
+                    PositionAtHeight(authored.Position, ChartPlaneHeight),
+                    PlanarFrame.ToEngineAttitude(authored.HeadingRadians),
+                    AuthoredExtent(authored)),
+                authored is Boulder ? boulderAppearance : wreckAppearance,
+                Visible: true,
+                RenderLayer.Scene);
+            obstacle++;
+        }
+    }
+
+    /// <summary>
+    /// Where the last contact left its mark: at the mount of the part the struck
+    /// side exposed, grown by how hard the hull arrived. A player who hears about
+    /// a hit and can see which side of their own ship it landed on knows which
+    /// effector to expect to pull the wrong way.
+    /// </summary>
+    private AppearanceFact StruckMarkFact(HullStrike strike, FlightReadout readout, InstalledShip ship)
+    {
+        PlanarVector mount = strike.Damage is HullDamage damage
+            && ship.PartWithId(damage.Part) is { } part
+            ? part.Definition.Mount
+            : PlanarVector.Zero;
+        PlanarVector at = readout.Position + PlanarFrame.Rotate(mount, readout.HeadingRadians);
+        double size = overlay.StruckMarkSize
+            + (strike.Impact.Magnitude * overlay.StruckMarkPerUnitImpulse);
+        return new AppearanceFact(
+            StruckMarkObjectId,
+            false,
+            0,
+            new Transform(
+                PositionAtHeight(at, overlay.StruckMarkHeight),
+                PlanarFrame.ToEngineAttitude(readout.HeadingRadians),
+                new Vector3(checked((float)size))),
+            struckMarkAppearance,
+            Visible: strike.Impact.Present,
+            RenderLayer.Scene);
+    }
+
+    private static Vector3 AuthoredExtent(ObstacleDefinition authored) => authored switch
+    {
+        Boulder boulder => new Vector3(
+            checked((float)(boulder.Radius * FullExtent))),
+        WreckBlock block => new Vector3(
+            checked((float)(block.HalfExtents.X * FullExtent)),
+            checked((float)(block.HalfHeight * FullExtent)),
+            checked((float)(block.HalfExtents.Z * FullExtent))),
+        _ => new Vector3(UniformScale),
+    };
 
     /// <summary>
     /// The line the hull is on, one marker per sample ahead.
@@ -501,6 +589,9 @@ internal sealed class SpacePresentation : IDisposable
 
         released = true;
         hudStream.Dispose();
+        struckMarkAppearance.Dispose();
+        boulderAppearance.Dispose();
+        wreckAppearance.Dispose();
         starAppearance.Dispose();
         centerMarkerAppearance.Dispose();
         debugVectorAppearance.Dispose();
@@ -551,7 +642,7 @@ internal sealed class SpacePresentation : IDisposable
         double flow = LocalFlowAt(readout.Position).Magnitude;
         StructuredValueNode[] nodes =
         [
-            new(StructuredValueKind.Object, 0, 0, 0, 0, 0, 0, 0, 8),
+            new(StructuredValueKind.Object, 0, 0, 0, 0, 0, 0, 0, 9),
             new(StructuredValueKind.Number, 0, readout.HeadingRadians, 0, 7, 0, 0, 0, 0),
             new(StructuredValueKind.Number, 0, PlanarSpeed(readout.LinearVelocity), 7, 5, 0, 0, 0, 0),
             new(StructuredValueKind.Number, 0, telemetry.DriveEffort, 12, 6, 0, 0, 0, 0),
@@ -560,15 +651,16 @@ internal sealed class SpacePresentation : IDisposable
             new(StructuredValueKind.Number, 0, telemetry.Coupling, 27, 8, 0, 0, 0, 0),
             new(StructuredValueKind.Number, 0, flow, 35, 4, 0, 0, 0, 0),
             new(StructuredValueKind.Number, 0, telemetry.HeadingAsymmetry, 39, 4, 0, 0, 0, 0),
+            new(StructuredValueKind.Number, 0, telemetry.CollisionMagnitude, 43, 6, 0, 0, 0, 0),
         ];
         ui.PublishProjection(new UiProjection(
             hudStream,
             checked(++hudSequence),
             new UiValue(
                 nodes,
-                (uint[])[1, 2, 3, 4, 5, 6, 7, 8],
+                (uint[])[1, 2, 3, 4, 5, 6, 7, 8, 9],
                 0,
-                "headingspeedthrustaccelturncouplingflowasym"u8.ToArray())));
+                "headingspeedthrustaccelturncouplingflowasymimpact"u8.ToArray())));
     }
 
     private static double PlanarSpeed(PlanarVector velocity) => Math.Sqrt(

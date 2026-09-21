@@ -1,5 +1,6 @@
 using System.Numerics;
 using Rusty.Engine;
+using Rusty.Space.Product.Approach;
 using Rusty.Space.Product.Field;
 using Rusty.Space.Product.Navigation;
 using Rusty.Space.Product.ShipSystems;
@@ -34,6 +35,8 @@ internal sealed class SpaceFlight : IDisposable
     private readonly StellarField field;
     private readonly HullForceModel forceModel;
     private readonly TrajectoryProjection trajectory;
+    private readonly ApproachField approach;
+    private readonly HullContacts hullContacts;
     private readonly FlightBodyTuning bodyTuning;
     private readonly InstalledShip ship;
     private readonly FlightInputMapper inputMapper = new();
@@ -44,9 +47,12 @@ internal sealed class SpaceFlight : IDisposable
     private FlightForces firstSubstepContributions = FlightForces.Zero;
     private FieldSample lastFieldSample;
     private FlightPath projectedPath = FlightPath.None;
+    private HullStrike lastStrike = NoStrike;
+    private bool inContact;
     private ulong fixedStepCount;
     private ulong updateSequence;
     private ulong resetCount;
+    private ulong impactCount;
     private bool disposed;
 
     internal SpaceFlight(
@@ -56,23 +62,25 @@ internal sealed class SpaceFlight : IDisposable
         CouplingTuning couplingTuning,
         FlightBodyTuning bodyTuning,
         ShipLoadout shipLoadout,
+        DamageTuning damageTuning,
         FieldTuning fieldTuning,
         OrbitalGravityTuning orbitalTuning,
         DriftCurrentTuning gentleCurrentTuning,
         DriftCurrentTuning swiftCurrentTuning,
-        TrajectoryTuning trajectoryTuning)
+        TrajectoryTuning trajectoryTuning,
+        ApproachFieldDefinition approachDefinition)
     {
         this.dynamics = dynamics ?? throw new ArgumentNullException(nameof(dynamics));
         this.bodyTuning = bodyTuning;
-        ship = new InstalledShip(shipLoadout, flightTuning.MaximumThrust);
+        ship = new InstalledShip(shipLoadout, flightTuning.MaximumThrust, damageTuning);
         controller = new FlightController(flightTuning);
         coupling = new FieldCoupling(couplingTuning);
         field = new StellarField(fieldTuning);
         DriftCurrent gentle = new(gentleCurrentTuning);
         DriftCurrent swift = new(swiftCurrentTuning);
-        // The same environment instances the hull is resolved against, handed out
-        /// so the navigation view reads exactly what the ship feels rather than a
-        /// second copy of the same field.
+        // The same environment instances the hull is resolved against, handed
+        // out so the navigation view reads exactly what the ship feels rather
+        // than a second copy of the same field.
         Environment = new FlightEnvironment(field, gentle, swift);
         // One rule turns a hull state into push, used both for the substep the
         // Engine integrates and for the line the view draws ahead of the ship.
@@ -92,6 +100,11 @@ internal sealed class SpaceFlight : IDisposable
             readout = MapReadout(this.dynamics.Read(new DynamicsReadRequest(initialBody)));
             body = initialBody;
             initialBody = null;
+            // The chart this hull is flying goes into the same world the hull is
+            // in, through the Engine's own create lane, and stays there: the
+            // Engine is what decides what happens where two bodies meet.
+            approach = new ApproachField(this.dynamics, world, approachDefinition);
+            hullContacts = new HullContacts(this.dynamics, approach);
         }
         catch
         {
@@ -100,6 +113,12 @@ internal sealed class SpaceFlight : IDisposable
             throw;
         }
     }
+
+    /// <summary>
+    /// The no-contact answer: nothing touched the hull, so nothing was struck and
+    /// nothing has to be explained.
+    /// </summary>
+    private static HullStrike NoStrike => new(HullImpact.None, null);
 
     internal FlightReadout Readout => readout;
 
@@ -146,6 +165,25 @@ internal sealed class SpaceFlight : IDisposable
     /// </summary>
     internal FlightPath ProjectedPath => projectedPath;
 
+    /// <summary>
+    /// The chart this hull is flying: what stands in the world alongside it, and
+    /// which of that a contact named by the Engine was a contact with.
+    /// </summary>
+    internal ApproachField Approach => approach;
+
+    /// <summary>
+    /// The hardest contact the last admitted turn reported, together with what the
+    /// hardware fitted to this hull made of it.
+    /// </summary>
+    internal HullStrike LastStrike => lastStrike;
+
+    /// <summary>
+    /// How many times this hull has come into contact with something since it was
+    /// built. A hull that finds itself resting against a face is counted once, not
+    /// once for every step it stays there.
+    /// </summary>
+    internal ulong ImpactCount => impactCount;
+
     internal ulong FixedStepCount => fixedStepCount;
 
     internal ulong UpdateSequence => updateSequence;
@@ -190,6 +228,7 @@ internal sealed class SpaceFlight : IDisposable
         FlightForces forces = FlightForces.Zero;
         FlightControlOutput output = default;
         ShipEffort effort = default;
+        HullStrike strike = NoStrike;
         FieldSample fieldSample = field.Sample(turnStart.Position);
         for (uint stepIndex = 0; stepIndex < stepCount; stepIndex++)
         {
@@ -207,6 +246,9 @@ internal sealed class SpaceFlight : IDisposable
             // The coupling actuator travels on the same per-substep clock for
             // the same reason.
             coupling.Advance(input.Command, turn.FixedStep);
+            // A patch held on a latched effector is held against the same clock
+            // everything else on this hull answers to.
+            ship.AdvanceRepairs(input.Command.RepairHeld, turn.FixedStep);
             // Every actuator the hull carries answers the demand the controllers
             // resolved for this substep, and what they reached — not what was
             // asked — is what pushes the ship this step.
@@ -234,7 +276,37 @@ internal sealed class SpaceFlight : IDisposable
                 turn.DynamicsStepSeconds,
                 SingleSubstep,
                 new[] { ToDynamicsAction(substepForces.Total) }));
-            currentReadout = MapReadout(dynamics.Read(new DynamicsReadRequest(body)));
+            DynamicsReadout nativeReadout = dynamics.Read(new DynamicsReadRequest(body));
+            currentReadout = MapReadout(nativeReadout);
+            // The Engine has already given the hull whatever its contacts amounted
+            // to, and the readout above is where that shows up. What happens here
+            // turns the same push into something the instruments can report and the
+            // hardware can remember. It is never handed back to the Engine, which
+            // would bill the hull twice for one mistake.
+            HullImpact contact = hullContacts.Read(
+                world,
+                body,
+                nativeReadout,
+                currentReadout.HeadingRadians);
+            if (contact.Present)
+            {
+                if (!inContact)
+                {
+                    impactCount = checked(impactCount + SequenceIncrement);
+                }
+
+                inContact = true;
+                HullDamage struck = ship.TakeImpact(contact.LocalImpulse, contact.Magnitude);
+                if (contact.Magnitude >= strike.Impact.Magnitude)
+                {
+                    strike = new HullStrike(contact, struck);
+                }
+            }
+            else
+            {
+                inContact = false;
+            }
+
             output = substepOutput;
             effort = substepEffort;
             forces = substepForces;
@@ -249,7 +321,8 @@ internal sealed class SpaceFlight : IDisposable
             coupling.Level,
             nextFixedStepCount,
             stepCount,
-            turn.FixedStep);
+            turn.FixedStep,
+            strike);
         // The line the navigation view draws is walked from the state this turn
         // actually left the ship in, with the hardware's last reached effort held,
         // so what the player reads ahead is the same rule that moved the hull.
@@ -261,6 +334,7 @@ internal sealed class SpaceFlight : IDisposable
             turn.FixedStep);
         contributions = forces;
         firstSubstepContributions = turnStartForces;
+        lastStrike = strike;
         lastFieldSample = fieldSample;
         command = input.Command;
         readout = currentReadout;
@@ -295,6 +369,8 @@ internal sealed class SpaceFlight : IDisposable
             firstSubstepContributions = FlightForces.Zero;
             lastFieldSample = field.Sample(readout.Position);
             projectedPath = FlightPath.None;
+            lastStrike = NoStrike;
+            inContact = false;
             controller.Reset();
             coupling.Reset();
             ship.Reset();
@@ -318,6 +394,9 @@ internal sealed class SpaceFlight : IDisposable
         }
 
         disposed = true;
+        // The chart goes down with the world it was put into. Its bodies were
+        // opened in that world, so they are released while it is still open.
+        approach.Dispose();
         try
         {
             body.Dispose();
@@ -329,27 +408,13 @@ internal sealed class SpaceFlight : IDisposable
     }
 
     /// <summary>
-    /// Resolves every environmental source against the body state a single
-    /// substep is about to act on, and says where on the hull each of them acts.
-    /// Control push comes from the hardware for that same substep, so no source
-    /// is ever evaluated against a state from an earlier one.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// A push applied away from the center of mass turns the hull as well as
-    /// driving it, and which center each source acts at is what gives a fit its
-    /// character. Flow-coupled push arrives at the emitter's mount; main thrust
-    /// at the drive's. The orbital well is the one source with no lever, because
-    /// gravity pulls on the hull's mass where that mass is: at the center of mass
-    /// itself.
-    /// </para>
-    /// </remarks>
-    /// <summary>
     /// The same push, with the turn it causes because it lands away from the
     /// center of mass.
     /// </summary>
     private static FlightWrench AtPoint(PlanarVector force, PlanarVector offsetFromCenter) =>
-        new(force, PlanarFrame.YawTorque(offsetFromCenter, force));    /// <summary>
+        new(force, PlanarFrame.YawTorque(offsetFromCenter, force));
+
+    /// <summary>
     /// Hands the Engine the mass and turn inertia the fitted hardware adds to the
     /// hull, through the body-update lane and with authored mass properties.
     /// </summary>

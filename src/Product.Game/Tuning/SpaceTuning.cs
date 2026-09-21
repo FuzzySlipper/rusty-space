@@ -1,5 +1,6 @@
 using System;
 using Rusty.Engine;
+using Rusty.Space.Product.Approach;
 using Rusty.Space.Product.Field;
 using Rusty.Space.Product.Flight;
 using Rusty.Space.Product.Navigation;
@@ -14,6 +15,8 @@ internal sealed record SpaceTuning(
     CouplingTuning Coupling,
     FlightBodyTuning FlightBody,
     ShipLoadout Ship,
+    DamageTuning Damage,
+    ApproachFieldDefinition Approach,
     FieldTuning Field,
     OrbitalGravityTuning Orbital,
     DriftCurrentTuning GentleCurrent,
@@ -48,6 +51,21 @@ internal sealed record SpaceTuning(
             HalfHeight: 0.25,
             Mass: 1.62),
         Ship: ShipLoadouts.Stock,
+        // A hull that arrives at something at walking pace is pushed and nothing
+        // more; what it costs in health starts above that and runs with the size
+        // of the hit, so a poor line is worse in proportion to how poor it was.
+        // Hardware caught at better than two and a half metres a second has
+        // something in it jammed, and the jam stays until the crew has had a
+        // second and a half on it. Nothing goes through the health floor: a badly
+        // dented hull flies badly, it does not stop flying.
+        Damage: new(
+            MinimumHealth: 0.25,
+            HealthPerUnitImpulse: 0.04,
+            GlancingImpulse: 1.2,
+            KnockoutImpulse: 5.0,
+            TrimOffsetFraction: 0.22,
+            RepairTime: TimeSpan.FromSeconds(1.6)),
+        Approach: ApproachFields.KestrelApproach,
         Field: new(
             PlanetPosition: new PlanarVector(14.0, 0.0),
             StellarFlow: new PlanarVector(0.0, 1.75),
@@ -121,7 +139,9 @@ internal sealed record SpaceTuning(
             StarSpacing: 12.0f,
             StarHeight: -0.65f,
             StarDiameter: 0.16f,
-            StarColor: new Color(0.82f, 0.90f, 1.0f, 1.0f)),
+            StarColor: new Color(0.82f, 0.90f, 1.0f, 1.0f),
+            WreckColor: new Color(0.44f, 0.40f, 0.37f, 1.0f),
+            BoulderColor: new Color(0.58f, 0.52f, 0.46f, 1.0f)),
         // A couple of seconds of reading ahead: long enough that the swift band
         // above the spawn line is on the player's line before the hull reaches it,
         // short enough that the line stays a fair reading of a present that keeps
@@ -151,7 +171,13 @@ internal sealed record SpaceTuning(
             DebugMarkerSize: 0.26f,
             DebugHeight: 0.16f,
             DebugColor: new Color(1.0f, 0.45f, 0.90f, 0.95f),
-            DebugCenterColor: new Color(0.98f, 0.94f, 0.35f, 0.95f)),
+            DebugCenterColor: new Color(0.98f, 0.94f, 0.35f, 0.95f),
+            // A contact leaves something on the hull worth seeing: a mark a hull
+            // wide enough to matter, that grows with how hard it arrived.
+            StruckMarkSize: 0.34f,
+            StruckMarkPerUnitImpulse: 0.05f,
+            StruckMarkHeight: 0.34f,
+            StruckMarkColor: new Color(1.0f, 0.34f, 0.24f, 0.92f)),
         Trajectory: new(SampleCount: 10, TicksPerSample: 9),
         Camera: new(
             PitchDegrees: -55.0,
@@ -172,6 +198,8 @@ internal sealed record SpaceTuning(
         Coupling = Coupling.Validate(),
         FlightBody = FlightBody.Validate(),
         Ship = Ship.Validate(),
+        Damage = Damage.Validate(),
+        Approach = Approach.Validate(),
         Field = Field.Validate(),
         Orbital = Orbital.Validate(),
         GentleCurrent = GentleCurrent.Validate(),

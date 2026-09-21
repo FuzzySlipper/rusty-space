@@ -30,13 +30,15 @@ public class FlightTelemetryTests
             SampledCoupling,
             3UL,
             1U,
-            FixedStep);
+            FixedStep,
+            NoStrike);
 
         Assert.Equal(SampledCoupling, telemetry.Current.Coupling, 12);
         Assert.Equal(2.5, telemetry.Current.FieldLoad, 12);
     }
 
     private static readonly TimeSpan FixedStep = TimeSpan.FromSeconds(1.0 / 60.0);
+    private static readonly HullStrike NoStrike = new(HullImpact.None, null);
 
     // A fixed step is carried as a TimeSpan, so it lands on a whole number of
     // 100ns ticks; derived rates can only be compared to that resolution.
@@ -57,7 +59,8 @@ public class FlightTelemetryTests
             SampledCoupling,
             7UL,
             1U,
-            FixedStep);
+            FixedStep,
+            NoStrike);
 
         // The ship points along +Z and the velocity change is purely along
         // world +X, so all of it reads as lateral and none as forward.
@@ -80,7 +83,8 @@ public class FlightTelemetryTests
             SampledCoupling,
             1UL,
             1U,
-            FixedStep);
+            FixedStep,
+            NoStrike);
 
         Assert.Equal(0.0, telemetry.Current.ForwardAcceleration, 12);
         Assert.Equal(0.0, telemetry.Current.LateralAcceleration, 12);
@@ -102,7 +106,8 @@ public class FlightTelemetryTests
             SampledCoupling,
             2UL,
             2U,
-            FixedStep);
+            FixedStep,
+            NoStrike);
 
         // The same change spread over one admitted step would read 120; the
         // window is the admitted steps, not a single fixed step.
@@ -130,7 +135,8 @@ public class FlightTelemetryTests
             SampledCoupling,
             3UL,
             1U,
-            FixedStep);
+            FixedStep,
+            NoStrike);
 
         Assert.Equal(0.75, telemetry.Current.DriveEffort, 12);
         Assert.Equal(0.4, telemetry.Current.SteeringEffort, 12);
@@ -153,7 +159,8 @@ public class FlightTelemetryTests
             SampledCoupling,
             1UL,
             1U,
-            FixedStep);
+            FixedStep,
+            NoStrike);
 
         Assert.Equal(4.0, telemetry.Current.FieldLoad, 12);
     }
@@ -171,7 +178,8 @@ public class FlightTelemetryTests
             SampledCoupling,
             9UL,
             1U,
-            FixedStep);
+            FixedStep,
+            NoStrike);
 
         telemetry.Reset();
 
@@ -200,7 +208,8 @@ public class FlightTelemetryTests
             SampledCoupling,
             1UL,
             1U,
-            TimeSpan.FromSeconds(2.0 / 60.0));
+            TimeSpan.FromSeconds(2.0 / 60.0),
+            NoStrike);
         double coarse = telemetry.Current.ForwardAcceleration;
 
         telemetry.Capture(
@@ -212,7 +221,8 @@ public class FlightTelemetryTests
             SampledCoupling,
             2UL,
             1U,
-            FixedStep);
+            FixedStep,
+            NoStrike);
         double fine = telemetry.Current.ForwardAcceleration;
 
         Assert.Equal(fine / 2.0, coarse, RateTolerance);

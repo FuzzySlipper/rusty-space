@@ -133,10 +133,40 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
 
     private readonly ServiceFaults faults = faults;
     private Quaternion createdAttitude = Quaternion.Identity;
+    private ulong nextHandle = 1UL;
     private DynamicsBodyProperties? appliedProperties;
 
     internal List<DynamicsStepRequest> Steps { get; } = [];
+
+    /// <summary>
+    /// The angular blocks the product asked the Engine to stand up, in the order it
+    /// asked for them, so a test can check what an authored chart put in the world
+    /// without reaching past the Engine's own create lane to do it.
+    /// </summary>
+    internal List<DynamicsCuboidBodyConfig> CreatedBlocks { get; } = [];
+
+    /// <summary>The round masses, on the shape-typed lane that carries them.</summary>
+    internal List<DynamicsSphereBodyPropertiesConfig> CreatedBoulders { get; } = [];
+
+    /// <summary>
+    /// What the next read reports about the body it is asked about: how many
+    /// contacts it was in, and the push they amounted to for it.
+    /// </summary>
+    internal uint ContactCount { get; set; }
+
+    /// <summary>The contact fact a read reports as the body's own.</summary>
+    internal DynamicsContactFact HullContact { get; set; }
+
+    /// <summary>
+    /// The world's contact list, as the Engine would report it: which bodies each
+    /// contact was between, and the pair's impulse.
+    /// </summary>
+    internal List<DynamicsContactAtReceipt> WorldContacts { get; } = [];
+
     internal int Reads { get; private set; }
+
+    /// <summary>How many times the world's own readout has been asked for.</summary>
+    internal int WorldReads { get; private set; }
     internal int BodyUpdates { get; private set; }
 
     /// <summary>
@@ -158,7 +188,7 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
     {
         BodyCreates++;
         createdAttitude = arg0.Body.Transform.Rotation;
-        return new DynamicsBody(default, RecordBodyRelease);
+        return OpenBody();
     }
 
     public DynamicsStepReceipt Step(DynamicsStepRequest arg0)
@@ -183,17 +213,25 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
                 : DynamicsMassPolicyKind.DeriveFromShapeAndMass,
             CenterOfMass: Vector3.Zero,
             PrincipalInertiaLocalFrame: Quaternion.Identity),
-        ContactCount: 0U,
-        FirstContact: default);
+        ContactCount: ContactCount,
+        FirstContact: HullContact);
 
     public DynamicsBody CreateSphereBody(DynamicsCreateSphereBodyRequest arg0)
         => throw new NotSupportedException();
 
     public DynamicsBody CreateCuboidBody(DynamicsCreateCuboidBodyRequest arg0)
-        => throw new NotSupportedException();
+    {
+        BodyCreates++;
+        CreatedBlocks.Add(arg0.Body);
+        return OpenBody();
+    }
 
     public DynamicsBody CreateSphereBodyWithProperties(DynamicsCreateSphereBodyPropertiesRequest arg0)
-        => throw new NotSupportedException();
+    {
+        BodyCreates++;
+        CreatedBoulders.Add(arg0.Body);
+        return OpenBody();
+    }
 
     public DynamicsBody CreateCapsuleBody(DynamicsCreateCapsuleBodyRequest arg0)
         => throw new NotSupportedException();
@@ -217,13 +255,20 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
     }
 
     public DynamicsWorldReadout ReadWorld(DynamicsWorldReadRequest arg0)
-        => throw new NotSupportedException();
+    {
+        WorldReads++;
+        return new(
+            Generation: (ulong)Steps.Count,
+            EntityRevision: 0UL,
+            BodyCount: (uint)BodyCreates,
+            ContactCount: (uint)WorldContacts.Count);
+    }
 
     public DynamicsBodyAtReceipt ReadBodyAt(DynamicsBodyAtRequest arg0)
         => throw new NotSupportedException();
 
-    public DynamicsContactAtReceipt ReadContactAt(DynamicsContactAtRequest arg0)
-        => throw new NotSupportedException();
+    public DynamicsContactAtReceipt ReadContactAt(DynamicsContactAtRequest arg0) =>
+        arg0.Index < (uint)WorldContacts.Count ? WorldContacts[(int)arg0.Index] : default;
 
     public DynamicsBody ReplaceBody(DynamicsReplaceBodyRequest arg0)
         => throw new NotSupportedException();
@@ -251,6 +296,10 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
         BodyReleases++;
         faults.RecordRelease("body");
     }
+
+    // Bodies are named apart: a product that has to say which authored rock a
+    // contact was between cannot do it if every body it opened answers to zero.
+    private DynamicsBody OpenBody() => new(new DynamicsBodyHandle(nextHandle++), RecordBodyRelease);
 }
 
 /// <summary>

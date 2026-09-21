@@ -21,11 +21,13 @@ internal sealed class SpaceProductComposition : IDisposable
             Tuning.Coupling,
             Tuning.FlightBody,
             Tuning.Ship,
+            Tuning.Damage,
             Tuning.Field,
             Tuning.Orbital,
             Tuning.GentleCurrent,
             Tuning.SwiftCurrent,
-            Tuning.Trajectory);
+            Tuning.Trajectory,
+            Tuning.Approach);
         SpacePresentation? presentation = null;
         TrackingCamera? camera = null;
         try
@@ -34,6 +36,7 @@ internal sealed class SpaceProductComposition : IDisposable
                 Engine.Graphics,
                 Engine.Ui,
                 flight.Environment,
+                flight.Approach,
                 Tuning.Presentation,
                 Tuning.Overlay);
             camera = new TrackingCamera(

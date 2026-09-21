@@ -1,3 +1,4 @@
+using System.Numerics;
 using System.Text;
 using Rusty.Engine;
 using Rusty.Space.Product.Engine.Tests;
@@ -122,12 +123,16 @@ public class SpaceFlightTests
         RecordingDynamics dynamics = new();
         SpaceFlight flight = Flight(dynamics);
 
-        Assert.Equal(1, dynamics.BodyCreates);
+        // The chart the hull flies is opened in the same world, so its authored
+        // bodies are released with the flight as well: everything the flight
+        // opened in the Engine, exactly once, and the world last.
+        int authoredObstacles = SpaceTuning.Defaults.Approach.Obstacles.Count;
+        Assert.Equal(1 + authoredObstacles, dynamics.BodyCreates);
 
         flight.Dispose();
         flight.Dispose();
 
-        Assert.Equal(1, dynamics.BodyReleases);
+        Assert.Equal(1 + authoredObstacles, dynamics.BodyReleases);
         Assert.Equal(1, dynamics.WorldReleases);
     }
 
@@ -150,7 +155,10 @@ public class SpaceFlightTests
 
         flight.ResetFlight();
 
-        Assert.Equal(2, dynamics.BodyCreates);
+        // A reset replaces the hull and nothing else: the chart the hull flies is
+        // left standing, so the only bodies opened and put down are the hull's.
+        int chartBodies = SpaceTuning.Defaults.Approach.Obstacles.Count;
+        Assert.Equal(2 + chartBodies, dynamics.BodyCreates);
         Assert.Equal(1, dynamics.BodyReleases);
     }
 
@@ -164,11 +172,13 @@ public class SpaceFlightTests
         SpaceTuning.Defaults.Coupling,
         SpaceTuning.Defaults.FlightBody with { SpawnHeadingRadians = spawnHeadingRadians },
         loadout ?? SpaceTuning.Defaults.Ship,
+        SpaceTuning.Defaults.Damage,
         SpaceTuning.Defaults.Field,
         SpaceTuning.Defaults.Orbital,
         SpaceTuning.Defaults.GentleCurrent,
         SpaceTuning.Defaults.SwiftCurrent,
-        SpaceTuning.Defaults.Trajectory);
+        SpaceTuning.Defaults.Trajectory,
+        SpaceTuning.Defaults.Approach);
 
     [Fact]
     public void ACouplingPointFittedForwardTurnsTheHullHarderThanOneOnTheCenter()
@@ -206,6 +216,117 @@ public class SpaceFlightTests
         // The Engine turns the other way about +Y, so the heading-positive yaw the
         // product asked for is the negation of what was recorded.
         return -dynamics.Steps[^1].Actions.Span[0].Torque.Y;
+    }
+
+    [Fact]
+    public void AContactTheEngineReportsReachesTheInstrumentsWithSizeAndName()
+    {
+        // The Engine is the one that says the hull arrived at something and how
+        // hard. The spine's job is to carry that to the instruments and to name
+        // the part of the hull that took it, without deciding anything of its own
+        // about whether the two bodies have met.
+        RecordingDynamics dynamics = new();
+        SpaceFlight flight = Flight(dynamics);
+
+        // The hull is the first body the flight opens, so the obstacle authored
+        // first on the chart answers to the handle after it.
+        dynamics.ContactCount = 1U;
+        dynamics.HullContact = new DynamicsContactFact(
+            Present: true,
+            Environment: false,
+            Impulse: new Vector3(0.0f, 0.0f, -3.0f),
+            ImpulseMagnitude: 3.0f);
+        dynamics.WorldContacts.Add(new DynamicsContactAtReceipt(
+            Present: true,
+            Environment: false,
+            First: new DynamicsBodyReference(1UL),
+            Second: new DynamicsBodyReference(2UL),
+            Impulse: new Vector3(0.0f, 0.0f, -3.0f),
+            ImpulseMagnitude: 3.0f));
+
+        flight.Admit(Update(admittedSteps: 1, fixedDeltaSeconds: 1.0 / 60.0));
+
+        Assert.Equal(1UL, flight.ImpactCount);
+        Assert.True(flight.LastStrike.Impact.Present);
+        Assert.Equal(3.0, flight.Telemetry.CollisionMagnitude, 6);
+        Assert.Equal(-3.0, flight.Telemetry.CollisionImpulse.Z, 6);
+        Assert.Equal(SpaceTuning.Defaults.Ship.StarboardStabilizer.Id, flight.Telemetry.StruckPart);
+        Assert.Equal(SpaceTuning.Defaults.Approach.Obstacles[0].Id, flight.LastStrike.Impact.Struck);
+
+        // An arrival is counted once, not once per step spent against the rock.
+        flight.Admit(Update(admittedSteps: 2, fixedDeltaSeconds: 1.0 / 60.0));
+
+        Assert.Equal(1UL, flight.ImpactCount);
+    }
+
+    [Fact]
+    public void AContactsPushIsLeftWithTheEngineThatGaveIt()
+    {
+        // The product hands the integrator the push it resolved itself: drive,
+        // vanes, and what the field takes off them. A contact impulse is not
+        // handed back on top of the Engine's own resolution of the same contact,
+        // which would double it and put the hull somewhere the chart never did.
+        RecordingDynamics dynamics = new();
+        SpaceFlight flight = Flight(dynamics);
+        dynamics.ContactCount = 1U;
+        dynamics.HullContact = new DynamicsContactFact(
+            Present: true,
+            Environment: false,
+            Impulse: new Vector3(0.0f, 0.0f, -12.0f),
+            ImpulseMagnitude: 12.0f);
+        dynamics.WorldContacts.Add(new DynamicsContactAtReceipt(
+            Present: true,
+            Environment: false,
+            First: new DynamicsBodyReference(1UL),
+            Second: new DynamicsBodyReference(2UL),
+            Impulse: new Vector3(0.0f, 0.0f, -12.0f),
+            ImpulseMagnitude: 12.0f));
+
+        flight.Admit(Update(admittedSteps: 1, fixedDeltaSeconds: 1.0 / 60.0));
+
+        Assert.True(flight.LastStrike.Impact.Present);
+        Vector3 handed = dynamics.Steps[^1].Actions.Span[0].Force;
+
+        Assert.Equal((float)flight.Contributions.Total.Force.X, handed.X, 5);
+        Assert.Equal((float)flight.Contributions.Total.Force.Z, handed.Z, 5);
+    }
+
+    [Fact]
+    public void AHoldOnThePatchLetsAJammedEffectorGoAgain()
+    {
+        // The crew's answer to a jammed effector is time spent on it, asked for
+        // through the same input lane as every other control.
+        RecordingDynamics dynamics = new();
+        SpaceFlight flight = Flight(dynamics);
+        dynamics.ContactCount = 1U;
+        dynamics.HullContact = new DynamicsContactFact(
+            Present: true,
+            Environment: false,
+            Impulse: new Vector3(0.0f, 0.0f, -9.0f),
+            ImpulseMagnitude: 9.0f);
+        dynamics.WorldContacts.Add(new DynamicsContactAtReceipt(
+            Present: true,
+            Environment: false,
+            First: new DynamicsBodyReference(1UL),
+            Second: new DynamicsBodyReference(2UL),
+            Impulse: new Vector3(0.0f, 0.0f, -9.0f),
+            ImpulseMagnitude: 9.0f));
+
+        flight.Admit(Update(admittedSteps: 1, fixedDeltaSeconds: 1.0 / 60.0));
+
+        Assert.True(flight.Ship.StarboardStabilizer.OutOfTrim);
+
+        dynamics.ContactCount = 0U;
+        dynamics.HullContact = default;
+        int patchedTurns = (int)Math.Ceiling(
+            SpaceTuning.Defaults.Damage.RepairTime.TotalSeconds * 60.0) + 4;
+        for (int turn = 0; turn < patchedTurns; turn++)
+        {
+            flight.Admit(Turn(1, 1.0 / 60.0, [Digital("space.flight.repair")]));
+        }
+
+        Assert.True(flight.LastCommand.RepairHeld);
+        Assert.False(flight.Ship.StarboardStabilizer.OutOfTrim);
     }
 
     private static ProductUpdate Update(uint admittedSteps, double fixedDeltaSeconds) =>

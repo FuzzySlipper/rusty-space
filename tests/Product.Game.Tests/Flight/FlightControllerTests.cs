@@ -249,7 +249,8 @@ public class FlightControllerTests
                 Turn: 0.0,
                 CouplingTrim: 0.0,
                 StabilizerEnabled: false,
-                EmergencyUncouple: false),
+                EmergencyUncouple: false,
+                    RepairHeld: false),
             momentOfInertia: 2.0,
             FixedStep);
 
@@ -284,7 +285,8 @@ public class FlightControllerTests
                 Turn: 1.0,
                 CouplingTrim: 0.0,
                 StabilizerEnabled: false,
-                EmergencyUncouple: false),
+                EmergencyUncouple: false,
+                    RepairHeld: false),
             momentOfInertia: 2.0,
             FixedStep);
 
@@ -332,5 +334,6 @@ public class FlightControllerTests
         turn,
         CouplingTrim: 0.0,
         StabilizerEnabled: true,
-        EmergencyUncouple: false);
+        EmergencyUncouple: false,
+            RepairHeld: false);
 }

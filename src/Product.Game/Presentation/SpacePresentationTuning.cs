@@ -26,7 +26,13 @@ internal sealed record SpacePresentationTuning(
     float StarSpacing,
     float StarHeight,
     float StarDiameter,
-    Color StarColor)
+    Color StarColor,
+    // Authored approach geometry. A wreck block and a boulder are drawn on the
+    // terms the Engine will meet them on: an angular block in one color and a
+    // round mass in another, so the shape a line has to avoid is the shape that
+    // stops the hull.
+    Color WreckColor,
+    Color BoulderColor)
 {
     private const int MinimumStarGridRadius = 1;
     private const float MinimumPositiveMagnitude = 0.0f;
@@ -59,6 +65,8 @@ internal sealed record SpacePresentationTuning(
         ValidateFinite(StarHeight, nameof(StarHeight));
         ValidatePositiveFinite(StarDiameter, nameof(StarDiameter));
         ValidateColor(StarColor, nameof(StarColor));
+        ValidateColor(WreckColor, nameof(WreckColor));
+        ValidateColor(BoulderColor, nameof(BoulderColor));
         return this;
     }
 

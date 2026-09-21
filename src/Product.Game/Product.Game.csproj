@@ -52,6 +52,7 @@
     <RustyEngineProductInputIntent Include="space.flight.uncouple" Value="digital" />
     <RustyEngineProductInputIntent Include="space.flight.emergency-uncouple" Value="digital" />
     <RustyEngineProductInputIntent Include="space.flight.stabilizer" Value="digital" />
+    <RustyEngineProductInputIntent Include="space.flight.repair" Value="digital" />
     <RustyEngineProductInputIntent Include="space.camera.zoom" Value="axis" />
     <RustyEngineProductInputMapping Include="space.flight.thrust-held" Intent="space.flight.thrust" Trigger="key:key-w:held" />
     <RustyEngineProductInputMapping Include="space.flight.thrust-released" Intent="space.flight.thrust" Trigger="key:key-w:released" />
@@ -68,6 +69,10 @@
     <RustyEngineProductInputMapping Include="space.flight.emergency-uncouple-held" Intent="space.flight.emergency-uncouple" Trigger="key:key-x:held" />
     <RustyEngineProductInputMapping Include="space.flight.emergency-uncouple-released" Intent="space.flight.emergency-uncouple" Trigger="key:key-x:released" />
     <RustyEngineProductInputMapping Include="space.flight.stabilizer-pressed" Intent="space.flight.stabilizer" Trigger="key:key-t:pressed" />
+    <RustyEngineProductInputMapping Include="space.flight.patch-held" Intent="space.flight.repair" Trigger="key:key-g:held" />
+    <RustyEngineProductInputMapping Include="space.flight.patch-released" Intent="space.flight.repair" Trigger="key:key-g:released" />
+    <RustyEngineProductInputMapping Include="space.flight.patch-controller-held" Intent="space.flight.repair" Trigger="controller-button:button-9:held" />
+    <RustyEngineProductInputMapping Include="space.flight.patch-controller-released" Intent="space.flight.repair" Trigger="controller-button:button-9:released" />
     <RustyEngineProductInputMapping Include="space.flight.turn-left-controller-held" Intent="space.flight.turn-left-controller" Trigger="controller-button:button-4:held" />
     <RustyEngineProductInputMapping Include="space.flight.turn-left-controller-released" Intent="space.flight.turn-left-controller" Trigger="controller-button:button-4:released" />
     <RustyEngineProductInputMapping Include="space.flight.turn-right-controller-held" Intent="space.flight.turn-right-controller" Trigger="controller-button:button-5:held" />

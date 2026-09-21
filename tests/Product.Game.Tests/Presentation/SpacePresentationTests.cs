@@ -1,6 +1,7 @@
 using System.Numerics;
 using System.Text;
 using Rusty.Engine;
+using Rusty.Space.Product.Approach;
 using Rusty.Space.Product.Engine.Tests;
 using Rusty.Space.Product.Field;
 using Rusty.Space.Product.Flight;
@@ -212,7 +213,7 @@ public class SpacePresentationTests
             .Select(node => Encoding.UTF8.GetString(names, (int)node.KeyOffset, (int)node.KeyLen))];
 
         Assert.Equal(
-            ["heading", "speed", "thrust", "accel", "turn", "coupling", "flow", "asym"],
+            ["heading", "speed", "thrust", "accel", "turn", "coupling", "flow", "asym", "impact"],
             keyed);
         Assert.Equal(nodes.Length - 1, keyed.Length);
     }
@@ -222,6 +223,83 @@ public class SpacePresentationTests
             .Where(fact => fact.ObjectId >= FirstFlowPointId && fact.ObjectId < FirstDebugVectorId)
             .OrderBy(fact => fact.ObjectId)
             .Select(fact => fact.Transform.Translation)];
+
+    [Fact]
+    public void TheChartTheHullFliesIsDrawnWhereItWasAuthored()
+    {
+        // The rocks a careful line goes between have to be on the screen as well
+        // as in the world the Engine steps, at the places they were authored and
+        // with the shapes that will stop the hull.
+        RecordingEngine engine = new();
+        IReadOnlyList<ObstacleDefinition> authored = SpaceTuning.Defaults.Approach.Obstacles;
+
+        AppearanceFact[] facts = Publish(engine, AtRest());
+
+        for (int index = 0; index < authored.Count; index++)
+        {
+            AppearanceFact drawn = Fact(facts, FirstObstacleObjectId + (ulong)index);
+            Assert.True(drawn.Visible);
+            Assert.Equal(authored[index].Position.X, drawn.Transform.Translation.X, 4);
+            Assert.Equal(authored[index].Position.Z, drawn.Transform.Translation.Z, 4);
+        }
+
+        // Round masses are drawn round and wreck blocks angular, so the shape a
+        // line has to clear is the shape that will stop it.
+        int boulder = IndexOfFirst<Boulder>(authored);
+        int block = IndexOfFirst<WreckBlock>(authored);
+
+        Assert.Equal(
+            Fact(facts, FirstObstacleObjectId + (ulong)boulder).Appearance,
+            Fact(facts, FirstObstacleObjectId + (ulong)IndexOfLast<Boulder>(authored)).Appearance);
+        Assert.NotEqual(
+            Fact(facts, FirstObstacleObjectId + (ulong)boulder).Appearance,
+            Fact(facts, FirstObstacleObjectId + (ulong)IndexOfLast<WreckBlock>(authored)).Appearance);
+    }
+
+    [Fact]
+    public void AContactLeavesAMarkOnThePartThatCaughtIt()
+    {
+        RecordingEngine engine = new();
+        Assert.False(Fact(Publish(engine, AtRest()), StruckMarkObjectId).Visible);
+
+        StabilizerDefinition starboard = SpaceTuning.Defaults.Ship.StarboardStabilizer;
+        HullStrike struck = new(
+            new HullImpact(true, new PlanarVector(0.0, -3.0), new PlanarVector(0.0, -3.0), 3.0, null),
+            new HullDamage(starboard.Id, new PlanarVector(0.0, -1.0), 0.072, KnockedOutOfTrim: true));
+
+        AppearanceFact mark = Fact(Publish(engine, AtRest(), FlightTelemetrySnapshot.Neutral,
+            FlightPath.None, struck), StruckMarkObjectId);
+
+        Assert.True(mark.Visible);
+
+        // At rest and facing downrange, the mark sits at the mount of the effector
+        // on the quarter that was struck: out on the starboard side, aft of the
+        // centerline with the vane that has something jammed in it.
+        Assert.Equal(starboard.Mount.X, mark.Transform.Translation.X, 4);
+        Assert.Equal(starboard.Mount.Z, mark.Transform.Translation.Z, 4);
+
+        // A harder arrival leaves a bigger mark.
+        HullStrike harder = new(
+            new HullImpact(true, new PlanarVector(0.0, -12.0), new PlanarVector(0.0, -12.0), 12.0, null),
+            new HullDamage(starboard.Id, new PlanarVector(0.0, -1.0), 0.432, KnockedOutOfTrim: true));
+
+        Assert.True(Fact(Publish(engine, AtRest(), FlightTelemetrySnapshot.Neutral, FlightPath.None,
+            harder), StruckMarkObjectId).Transform.Scale.X
+            > mark.Transform.Scale.X);
+    }
+
+    // The chart's obstacles are published first at their own end of the id range,
+    // followed by the mark a contact leaves on the hull.
+    private const ulong FirstObstacleObjectId = 5_000UL;
+    private const ulong StruckMarkObjectId = 6_000UL;
+
+    private static int IndexOfFirst<T>(IReadOnlyList<ObstacleDefinition> authored)
+        where T : ObstacleDefinition =>
+        Enumerable.Range(0, authored.Count).First(index => authored[index] is T);
+
+    private static int IndexOfLast<T>(IReadOnlyList<ObstacleDefinition> authored)
+        where T : ObstacleDefinition =>
+        Enumerable.Range(0, authored.Count).Last(index => authored[index] is T);
 
     private static AppearanceFact Fact(AppearanceFact[] facts, ulong objectId) =>
         facts.Single(fact => fact.ObjectId == objectId);
@@ -242,7 +320,15 @@ public class SpacePresentationTests
         RecordingEngine engine,
         FlightReadout readout,
         FlightTelemetrySnapshot telemetry,
-        FlightPath path)
+        FlightPath path) => Publish(
+            engine, readout, telemetry, path, new HullStrike(HullImpact.None, null));
+
+    private static AppearanceFact[] Publish(
+        RecordingEngine engine,
+        FlightReadout readout,
+        FlightTelemetrySnapshot telemetry,
+        FlightPath path,
+        HullStrike strike)
     {
         SpaceTuning tuning = SpaceTuning.Defaults;
         SpacePresentation presentation = new(
@@ -252,6 +338,7 @@ public class SpacePresentationTests
                 new StellarField(tuning.Field),
                 new DriftCurrent(tuning.GentleCurrent),
                 new DriftCurrent(tuning.SwiftCurrent)),
+            new ApproachField(engine.Dynamics, engine.Dynamics.CreateWorld(default), tuning.Approach),
             tuning.Presentation,
             tuning.Overlay);
         presentation.Publish(
@@ -259,7 +346,8 @@ public class SpacePresentationTests
             telemetry,
             FlightForces.Zero,
             path,
-            new InstalledShip(tuning.Ship, tuning.Flight.MaximumThrust));
+            strike,
+            new InstalledShip(tuning.Ship, tuning.Flight.MaximumThrust, tuning.Damage));
         return engine.Graphics.LastSnapshot;
     }
 

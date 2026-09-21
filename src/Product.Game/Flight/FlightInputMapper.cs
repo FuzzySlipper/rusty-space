@@ -34,6 +34,7 @@ internal sealed class FlightInputMapper
     private static ReadOnlySpan<byte> UncoupleIntent => "space.flight.uncouple"u8;
     private static ReadOnlySpan<byte> EmergencyUncoupleIntent => "space.flight.emergency-uncouple"u8;
     private static ReadOnlySpan<byte> StabilizerIntent => "space.flight.stabilizer"u8;
+    private static ReadOnlySpan<byte> RepairIntent => "space.flight.repair"u8;
     private static ReadOnlySpan<byte> ResetIntent => "space.flight.reset"u8;
     private static ReadOnlySpan<byte> AbortIntent => "space.flight.abort"u8;
 
@@ -118,6 +119,13 @@ internal sealed class FlightInputMapper
             else if (intent.SequenceEqual(EmergencyUncoupleIntent))
             {
                 state = state with { EmergencyUncoupleHeld = IsDigitalActive(inputEvent) };
+            }
+            else if (intent.SequenceEqual(RepairIntent))
+            {
+                // A patch is held, not tapped: the crew stays on a latched effector
+                // for as long as the player keeps the demand up, and gives up the
+                // work done so far the moment they let go.
+                state = state with { RepairHeld = IsDigitalActive(inputEvent) };
             }
             else if (intent.SequenceEqual(StabilizerIntent))
             {
@@ -205,7 +213,8 @@ internal sealed class FlightInputMapper
             turn,
             digitalTrim != NeutralCommandIntent ? digitalTrim : value.AnalogCouplingTrim,
             value.StabilizerEnabled,
-            value.EmergencyUncoupleHeld);
+            value.EmergencyUncoupleHeld,
+            value.RepairHeld);
     }
 
     private static double DigitalTurn(bool leftHeld, bool rightHeld) => leftHeld == rightHeld
@@ -225,7 +234,8 @@ internal readonly record struct FlightInputState(
     bool CoupleHeld,
     bool UncoupleHeld,
     bool EmergencyUncoupleHeld,
-    bool StabilizerEnabled)
+    bool StabilizerEnabled,
+    bool RepairHeld)
 {
     /// <summary>
     /// What the controls read before anything is touched. The attitude hold is
@@ -244,7 +254,8 @@ internal readonly record struct FlightInputState(
         CoupleHeld: false,
         UncoupleHeld: false,
         EmergencyUncoupleHeld: false,
-        StabilizerEnabled: true);
+        StabilizerEnabled: true,
+        RepairHeld: false);
 }
 
 /// <summary>

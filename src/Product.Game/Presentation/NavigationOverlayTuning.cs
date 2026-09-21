@@ -58,7 +58,13 @@ internal sealed record NavigationOverlayTuning(
     float DebugMarkerSize,
     float DebugHeight,
     Color DebugColor,
-    Color DebugCenterColor)
+    Color DebugCenterColor,
+    // Where the last contact left its mark: at the mount of the part that took it,
+    // grown by how hard the hull arrived there.
+    float StruckMarkSize,
+    float StruckMarkPerUnitImpulse,
+    float StruckMarkHeight,
+    Color StruckMarkColor)
 {
     private const int MinimumGridRadius = 1;
     private const int MaximumGridRadius = 8;
@@ -104,6 +110,10 @@ internal sealed record NavigationOverlayTuning(
         ValidateFinite(DebugHeight, nameof(DebugHeight));
         ValidateColor(DebugColor, nameof(DebugColor));
         ValidateColor(DebugCenterColor, nameof(DebugCenterColor));
+        ValidatePositiveFinite(StruckMarkSize, nameof(StruckMarkSize));
+        ValidatePositiveFinite(StruckMarkPerUnitImpulse, nameof(StruckMarkPerUnitImpulse));
+        ValidateFinite(StruckMarkHeight, nameof(StruckMarkHeight));
+        ValidateColor(StruckMarkColor, nameof(StruckMarkColor));
         return this;
     }
 

@@ -54,6 +54,11 @@ Product owners, one mutable state family each:
   call-local kinematic lane, over whole fixed steps. It owns no integrator, no
   accumulator, and no clock; the line it hands the view is a `FlightPath` of
   points and the interval between them.
+- `Approach/ApproachField` — one authored approach chart stood up in the
+  Engine's world: which obstacles, in which shapes, at which places, and the
+  identity each opened body answers to. It opens those bodies and releases them
+  with the flight, and holds them on the chart with locked translation axes. It
+  never asks whether two bodies have met.
 - `Field/StellarField` — the authored environment sample at a position:
   local flow, intensity, gradient, turbulence.
 - `Field/FieldResponse` — how the hull converts slip against that sample into
@@ -61,6 +66,11 @@ Product owners, one mutable state family each:
 - `Field/DriftCurrent` — one finite drift band, under the same coupling gate.
   It reports the flow it puts at a point and its own shape, so a view that has
   to draw the current asks for it instead of re-deriving the falloff.
+- `Flight/HullContacts` — what the Engine's contact reports amounted to for the
+  hull this step, and which authored obstacle the hardest of them was against.
+  It reads the hull's own readout and, only when that says something, the
+  world's contact list to put a name on it. It decides nothing about whether two
+  bodies have met and hands back no push.
 - `Field/OrbitalGravity` — the planet's mass well, deliberately outside that
   gate: a mass relation is not a flow the hull can decline.
 - `ShipSystems/InstalledShip` — the hardware fitted to the hull: which parts,
@@ -68,7 +78,13 @@ Product owners, one mutable state family each:
   what each part's actuator actually reached. It is the owner of the ship's
   several centers — center of mass, main thrust, field coupling, steering
   authority, stabilization — and of nothing else. It never integrates the hull
-  and never issues an Engine action.
+  and never issues an Engine action. What the hull has been through reaches this
+  owner as impacts, and it passes each one to the part that caught it.
+- `ShipSystems/InstalledPart` — one fitted part's live state: temperature, where
+  its actuator got to, how much of its rating is left, and whether something is
+  jammed off where it belongs. A latch holds until the crew has spent time on it
+  and survives a reset, because a reset rebuilds what the Engine simulates and
+  does not send anyone out with a patch kit.
 - `ShipSystems/ActuatorResponse` — the second-order response every part's
   actuator is built from: `response'' + 2·ζ·ω·response' + ω²·response =
   ω²·command`. Frequency is how fast a part gets where it is told; damping
@@ -180,6 +196,53 @@ camera rule experiments. Those stay in
 [`ideas/navigation_view_reconstruction_ideas.md`](ideas/navigation_view_reconstruction_ideas.md)
 until a phase asks for them.
 
+## What the hull arrives at
+
+Approach geometry is authored by the product and stood up in the Engine's
+Dynamics world, and that is where the boundary runs. `Approach/ApproachField`
+puts each authored block and boulder down on the Engine's shape-typed create
+lanes; whether the hull and a rock have met, and what that push amounts to, is
+the Engine's answer. There is no product collision grid, no swept test, and no
+overlap test written in C#, and none is planned: the hull's body readout
+carries how many contacts it was in and the impulse they amounted to for it,
+and the world's contact list carries which bodies each contact was between.
+
+`Flight/HullContacts` walks that list only to put a name on the hardest contact
+the hull is in, asking `ApproachField` which authored obstacle a body answers
+to. What comes back is a `HullImpact`: how big it was, the push in the plane's
+axes, the same push in the hull's own frame so that "the starboard quarter"
+means something, and what was struck. It reaches the P0 instruments as the
+impact reading beside heading and coupling, and it reaches the hardware as a
+`HullDamage` against the part that caught it.
+
+Consequences run through the hardware rather than through a hull-wide
+percentage. A contact costs the part whose mount the impact points away from,
+and a part with less rating delivers less of what it is asked for. Hard enough
+leaves an effector jammed off centre, and a vane held off centre pulls the hull
+about the keel with nothing asked of it: a fault felt in the stick and
+attributable to the side that took it, which is the point of routing it through
+the mount rather than through a number on a panel. The latch holds until the
+patch control has been held on it long enough, letting go of the control
+abandons the work done so far, and what a hit cost in rating stays cost.
+
+All of it stays recoverable, because a mistake about geometry is meant to open a
+situation and not end one. A brush at or below the glancing threshold is a push
+and nothing else. Health stops falling somewhere above zero, so the controls of
+a badly worked-over hull still answer. And a chart is authored with gaps that
+reward a careful line, so the way out is usually a line and not a repair.
+
+Two facts about the Engine at the adopted pair shape how all this is built. A
+body with no mass is refused outright, so a rock that has to stay on the chart
+is a body with its translation axes locked rather than a massless one. And the
+Engine's contact list is bounded: a step that would exceed its cap is an error
+rather than a truncated read, which is why an approach field is a handful of
+separate substantial bodies and not a dense scatter of small ones.
+
+The product hands the integrator only the push it resolved itself — drive,
+vanes, and what the field takes off them. A contact impulse is never added back
+on top of the Engine's own resolution of the same contact, which would double
+it and put the hull somewhere the chart never did.
+
 ## Time is admitted, not assumed
 
 The Engine hands each update its facts: mode, lifecycle state, generation,
@@ -196,9 +259,11 @@ and is not how a turn is measured.
 The product manifest declares what the pilot can touch: every intent and every
 mapping from a physical control to it. Keyboard covers thrust, left and right
 turn, couple, uncouple, and emergency uncouple as held-or-released, and reset,
-abort, and the attitude-hold switch as presses. The controller contributes the
-bumper turns, the trigger's analog thrust, the stick's turn and trim axes, and
-the reset press. The wheel arrives as `space.camera.zoom`.
+abort, and the attitude-hold switch as presses. The patch the crew holds on a
+jammed effector is held-or-released on both keyboard and controller: it means
+time spent on something, and time spent is never a single press. The controller
+contributes the bumper turns, the trigger's analog thrust, the stick's turn and
+trim axes, and the reset press. The wheel arrives as `space.camera.zoom`.
 
 The Engine maps physical controls onto those names and admits the result. Space
 reads names and holds no vocabulary of physical labels: there is no second path
