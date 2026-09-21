@@ -68,6 +68,9 @@ internal sealed class HullForceModel
 
         return new FlightForces(
             MainDrive: AtPoint(effort.DriveForce, thrustCenter),
+            // The effector pair's yaw, worn pull and jammed vane included: those
+            // are inside what the pair's actuators reached, so naming them again
+            // here would bill the hull twice for work already counted.
             Steering: new FlightWrench(PlanarVector.Zero, effort.HeadingTorque),
             Field: AtPoint(
                 fieldResponse.Resolve(body, fieldSample, couplingLevel, mass).Force,
@@ -86,11 +89,7 @@ internal sealed class HullForceModel
                     mass,
                     couplingLevel).Force,
                 couplingCenter),
-            OrbitalPull: gravity.Resolve(body.Position, mass),
-            // What the worn side of the effector pair pulls for itself, split
-            // out of the steering so the instruments can name which of the two
-            // the ship is fighting.
-            DamageBias: new FlightWrench(PlanarVector.Zero, effort.WearPull));
+            OrbitalPull: gravity.Resolve(body.Position, mass));
     }
 
     /// <summary>

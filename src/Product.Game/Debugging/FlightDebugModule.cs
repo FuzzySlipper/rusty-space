@@ -37,7 +37,6 @@ public sealed class FlightDebugModule : IDebugCommandModule
             gentle      force ({forces.GentleCurrent.Force.X:F3}, {forces.GentleCurrent.Force.Z:F3})  torque {forces.GentleCurrent.YawTorque:F3}
             swift       force ({forces.SwiftCurrent.Force.X:F3}, {forces.SwiftCurrent.Force.Z:F3})  torque {forces.SwiftCurrent.YawTorque:F3}
             orbital     force ({forces.OrbitalPull.Force.X:F3}, {forces.OrbitalPull.Force.Z:F3})  torque {forces.OrbitalPull.YawTorque:F3}
-            damage      force ({forces.DamageBias.Force.X:F3}, {forces.DamageBias.Force.Z:F3})  torque {forces.DamageBias.YawTorque:F3}
             total       force ({forces.Total.Force.X:F3}, {forces.Total.Force.Z:F3})  torque {forces.Total.YawTorque:F3}
             """);
     }
@@ -155,7 +154,7 @@ public sealed class FlightDebugModule : IDebugCommandModule
             accel       forward {telemetry.ForwardAcceleration:F3}  lateral {telemetry.LateralAcceleration:F3}  yaw {telemetry.YawAcceleration:F3}
             coupling    {telemetry.Coupling:F3}
             field load  {telemetry.FieldLoad:F3}
-            impulse     ({telemetry.CollisionImpulse.X:F3}, {telemetry.CollisionImpulse.Z:F3})
+            last hit    ({telemetry.CollisionImpulse.X:F3}, {telemetry.CollisionImpulse.Z:F3})
             """);
     }
 
@@ -188,7 +187,6 @@ public sealed class FlightDebugModule : IDebugCommandModule
             gentle      {Row(first.GentleCurrent)}  {Row(last.GentleCurrent)}
             swift       {Row(first.SwiftCurrent)}  {Row(last.SwiftCurrent)}
             orbital     {Row(first.OrbitalPull)}  {Row(last.OrbitalPull)}
-            damage      {Row(first.DamageBias)}  {Row(last.DamageBias)}
             total       {Row(first.Total)}  {Row(last.Total)}
             """);
     }

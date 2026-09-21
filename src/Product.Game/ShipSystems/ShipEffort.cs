@@ -15,10 +15,13 @@ namespace Rusty.Space.Product.ShipSystems;
 /// quietly ignores its controller.
 /// </para>
 /// <para>
-/// <see cref="WearPull"/> is the part of that yaw that came from worn hardware
+/// <see cref="WearPull"/> names how much of that yaw came from worn hardware
 /// rather than from any demand — the standing pull a tired side puts on the bow
-/// while it is loaded. It is reported separately so a player's instruments can
-/// say which of the two the ship is fighting.
+/// while it is loaded. It is an observation and nothing more: the pull is already
+/// inside <see cref="HeadingTorque"/>, because it reached the hull as work through
+/// the actuator that produced it. It is reported separately so a player's
+/// instruments can say which of the two the ship is fighting, and adding it to the
+/// hull a second time anywhere would be a bug.
 /// </para>
 /// <para>
 /// <see cref="Coupling"/> is the coupling the hull actually feels: the actuator's

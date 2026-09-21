@@ -260,6 +260,58 @@ public class SpaceFlightTests
     }
 
     [Fact]
+    public void AnArrivalStaysReadableAfterTheHullComesOffIt()
+    {
+        // A glancing contact can be over in the single frame that produced it, and
+        // an instrument that reports it for that frame alone reports nothing a
+        // player or a tuning pass can act on. So the last arrival stays what the
+        // instruments report — same magnitude, same place, same part — until a
+        // newer one replaces it or the hull is rebuilt.
+        RecordingDynamics dynamics = new();
+        SpaceFlight flight = Flight(dynamics);
+        dynamics.ContactCount = 1U;
+        dynamics.HullContact = new DynamicsContactFact(
+            Present: true,
+            Environment: false,
+            Impulse: new Vector3(0.0f, 0.0f, -3.0f),
+            ImpulseMagnitude: 3.0f);
+        dynamics.WorldContacts.Add(new DynamicsContactAtReceipt(
+            Present: true,
+            Environment: false,
+            First: new DynamicsBodyReference(1UL),
+            Second: new DynamicsBodyReference(2UL),
+            Impulse: new Vector3(0.0f, 0.0f, -3.0f),
+            ImpulseMagnitude: 3.0f));
+
+        flight.Admit(Update(admittedSteps: 1, fixedDeltaSeconds: 1.0 / 60.0));
+
+        Assert.True(flight.LastStrike.StillTouching);
+
+        dynamics.ContactCount = 0U;
+        dynamics.HullContact = default;
+        dynamics.WorldContacts.Clear();
+        flight.Admit(Update(admittedSteps: 3, fixedDeltaSeconds: 1.0 / 60.0));
+
+        Assert.False(flight.LastStrike.StillTouching);
+        Assert.True(flight.LastStrike.Impact.Present);
+        Assert.Equal(3.0, flight.LastStrike.Impact.Magnitude, 6);
+        Assert.Equal(SpaceTuning.Defaults.Approach.Obstacles[0].Id, flight.LastStrike.Impact.Struck);
+        Assert.Equal(3.0, flight.Telemetry.CollisionMagnitude, 6);
+        Assert.Equal(1UL, flight.ImpactCount);
+
+        // Rebuilt, this hull has arrived at nothing. The next turn reports nothing
+        // rather than the previous hull's business.
+        flight.ResetFlight();
+
+        Assert.False(flight.LastStrike.Impact.Present);
+
+        flight.Admit(Update(admittedSteps: 1, fixedDeltaSeconds: 1.0 / 60.0));
+
+        Assert.Equal(0.0, flight.Telemetry.CollisionMagnitude, 6);
+        Assert.Null(flight.Telemetry.StruckPart);
+    }
+
+    [Fact]
     public void AContactsPushIsLeftWithTheEngineThatGaveIt()
     {
         // The product hands the integrator the push it resolved itself: drive,

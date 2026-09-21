@@ -33,13 +33,15 @@ public class InstalledShipTests
     private const double DriveAuthority = 6.0;
     private const double StockAddedMass = 0.38;
     private const double StockAddedYawInertia = 0.06375;
-    private const double HalfScale = 0.5;
     private const double WornHealth = 0.9;
     private const double NominalTrim = 0.6;
     private const double FullTrim = 1.0;
     private const double NoDemand = 0.0;
     private const double StockOversizedEmitterMount = 0.85;
     private const double WornPullAtFullLoad = 0.60;
+    private const double RatedSideAuthority = 5.0;
+    private const double DemandingTurn = 6.0;
+    private const double WreckingImpulse = 24.0;
 
     [Fact]
     public void AFitWeighsWhatIsMountedOnIt()
@@ -85,13 +87,15 @@ public class InstalledShipTests
     {
         // The demand does not get met, and nothing hides that by asking the other
         // side for more than it has either: what the pair can put on the keel is
-        // the sum of what the two of them can actually reach, and the panel says
-        // so.
-        ShipLoadout halfASide = ShipLoadouts.Stock with
-        {
-            StarboardStabilizer = ShipLoadouts.Stock.StarboardStabilizer with { Health = HalfScale },
-        };
-        InstalledShip limping = new(halfASide, DriveAuthority, SpaceTuning.Defaults.Damage);
+        // the sum of what the two of them can actually put there, and the panel
+        // says so. A side that has had its rating knocked off by a contact is what
+        // a shortfall looks like on this hull; the stop each side is built against
+        // stays its rated authority.
+        InstalledShip limping = new(
+            ShipLoadouts.Stock,
+            DriveAuthority,
+            SpaceTuning.Defaults.Damage);
+        limping.TakeImpact(new PlanarVector(0.0, -1.0), WreckingImpulse);
 
         ShipEffort delivered = Drive(limping, demandedHeadingTorque: 6.0, NominalTrim, Calm, steps: 240);
 
@@ -125,6 +129,40 @@ public class InstalledShipTests
         Assert.True(
             underLoad.HeadingTorque > WornPullAtFullLoad - 0.01,
             $"expected the worn side's pull to arrive through its actuator, got {underLoad.HeadingTorque}");
+    }
+
+    [Fact]
+    public void AWornSideStillReachesTheSameStopAHealthyOneDoes()
+    {
+        // What makes a tired side a different maneuver is how it gets where it is
+        // told and what it pulls on the way, not a ceiling clipped below what it is
+        // rated for. Asked for more than either has, the worn side arrives at the
+        // same stop a healthy one arrives at — later, and ringing on the way.
+        InstalledShip healthy = new(ShipLoadouts.Stock, DriveAuthority, SpaceTuning.Defaults.Damage);
+        InstalledShip worn = new(ShipLoadouts.DamagedStabilizer, DriveAuthority, SpaceTuning.Defaults.Damage);
+
+        // Part way through the move the tired side is still behind, which is the
+        // wear a player feels and the reason the fit is called worn.
+        Drive(healthy, DemandingTurn, FullTrim, HardFlow, steps: 12);
+        Drive(worn, DemandingTurn, FullTrim, HardFlow, steps: 12);
+        Assert.True(
+            Math.Abs(healthy.StarboardStabilizer.ActuatorValue)
+                > Math.Abs(worn.StarboardStabilizer.ActuatorValue) + 0.2,
+            $"expected the tired side to lag on the way to the stop, got "
+                + $"{worn.StarboardStabilizer.ActuatorValue} against "
+                + $"{healthy.StarboardStabilizer.ActuatorValue}");
+
+        // Sustained at maximum demand, both are at the stop and it is the same stop.
+        Drive(healthy, DemandingTurn, FullTrim, HardFlow, steps: 300);
+        Drive(worn, DemandingTurn, FullTrim, HardFlow, steps: 300);
+
+        Assert.Equal(RatedSideAuthority, healthy.StarboardStabilizer.ActuatorLimit, 9);
+        Assert.Equal(RatedSideAuthority, worn.StarboardStabilizer.ActuatorLimit, 9);
+        Assert.True(healthy.StarboardStabilizer.Saturated && worn.StarboardStabilizer.Saturated);
+        Assert.Equal(
+            Math.Abs(healthy.StarboardStabilizer.ActuatorValue),
+            Math.Abs(worn.StarboardStabilizer.ActuatorValue),
+            9);
     }
 
     [Fact]

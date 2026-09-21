@@ -225,6 +225,58 @@ public class SpacePresentationTests
             .Select(fact => fact.Transform.Translation)];
 
     [Fact]
+    public void TheHullIsDrawnAsSomethingWithABow()
+    {
+        // Which way the hull is pointed is one of the two readings this view exists
+        // to make visible, and a cube carries it badly: turned through any angle it
+        // is the same silhouette, so the rotation a fact carries has nothing to
+        // turn. The hull is drawn as the authored dart, nose along local +X.
+        RecordingEngine engine = new();
+
+        AppearanceFact hull = Fact(Publish(engine, AtRest()), (ulong)SpaceAppearanceObject.Ship);
+
+        Assert.True(hull.Visible);
+        Assert.True(
+            engine.Graphics.ContentMeshes.TryGetValue(hull.Appearance.Handle.Value, out string? drawn),
+            "expected the hull to be drawn from authored mesh content, not a primitive");
+        Assert.Equal(ShipMeshContentPath, drawn);
+    }
+
+    [Fact]
+    public void AMarkStaysOnAJammedEffectorUntilTheCrewHaveHadTimeOnIt()
+    {
+        // Where the hull was struck is worth showing while it is still against the
+        // thing, and after that for exactly as long as the part it struck is still
+        // held out of where it belongs: that is the side fighting the player, and
+        // the mark is how they find it without opening an instrument. Once the
+        // latch is off the mark goes, and what is left of the part is something the
+        // instruments carry instead.
+        RecordingEngine engine = new();
+        SpaceTuning tuning = SpaceTuning.Defaults;
+        InstalledShip ship = new(tuning.Ship, tuning.Flight.MaximumThrust, tuning.Damage);
+        HullDamage struck = ship.TakeImpact(new PlanarVector(0.0, -1.0), HardArrival);
+        HullStrike contact = new(
+            new HullImpact(true, new PlanarVector(0.0, -3.0), new PlanarVector(0.0, -3.0), 3.0, null),
+            struck,
+            StillTouching: true);
+
+        Assert.True(ship.StarboardStabilizer.OutOfTrim);
+        Assert.True(Mark(Publish(engine, AtRest(), contact, ship)).Visible);
+
+        HullStrike offTheRock = contact with { StillTouching = false };
+        Assert.True(Mark(Publish(engine, AtRest(), offTheRock, ship)).Visible);
+
+        int patched = (int)Math.Ceiling(tuning.Damage.RepairTime.TotalSeconds * 60.0) + 1;
+        for (int step = 0; step < patched; step++)
+        {
+            ship.AdvanceRepairs(patchHeld: true, RepairStep);
+        }
+
+        Assert.False(ship.StarboardStabilizer.OutOfTrim);
+        Assert.False(Mark(Publish(engine, AtRest(), offTheRock, ship)).Visible);
+    }
+
+    [Fact]
     public void TheChartTheHullFliesIsDrawnWhereItWasAuthored()
     {
         // The rocks a careful line goes between have to be on the screen as well
@@ -265,7 +317,8 @@ public class SpacePresentationTests
         StabilizerDefinition starboard = SpaceTuning.Defaults.Ship.StarboardStabilizer;
         HullStrike struck = new(
             new HullImpact(true, new PlanarVector(0.0, -3.0), new PlanarVector(0.0, -3.0), 3.0, null),
-            new HullDamage(starboard.Id, new PlanarVector(0.0, -1.0), 0.072, KnockedOutOfTrim: true));
+            new HullDamage(starboard.Id, new PlanarVector(0.0, -1.0), 0.072, KnockedOutOfTrim: true),
+            StillTouching: true);
 
         AppearanceFact mark = Fact(Publish(engine, AtRest(), FlightTelemetrySnapshot.Neutral,
             FlightPath.None, struck), StruckMarkObjectId);
@@ -281,7 +334,8 @@ public class SpacePresentationTests
         // A harder arrival leaves a bigger mark.
         HullStrike harder = new(
             new HullImpact(true, new PlanarVector(0.0, -12.0), new PlanarVector(0.0, -12.0), 12.0, null),
-            new HullDamage(starboard.Id, new PlanarVector(0.0, -1.0), 0.432, KnockedOutOfTrim: true));
+            new HullDamage(starboard.Id, new PlanarVector(0.0, -1.0), 0.432, KnockedOutOfTrim: true),
+            StillTouching: true);
 
         Assert.True(Fact(Publish(engine, AtRest(), FlightTelemetrySnapshot.Neutral, FlightPath.None,
             harder), StruckMarkObjectId).Transform.Scale.X
@@ -292,6 +346,9 @@ public class SpacePresentationTests
     // followed by the mark a contact leaves on the hull.
     private const ulong FirstObstacleObjectId = 5_000UL;
     private const ulong StruckMarkObjectId = 6_000UL;
+    private const string ShipMeshContentPath = "meshes/ship.json";
+    private const double HardArrival = 8.0;
+    private static readonly TimeSpan RepairStep = TimeSpan.FromSeconds(1.0 / 60.0);
 
     private static int IndexOfFirst<T>(IReadOnlyList<ObstacleDefinition> authored)
         where T : ObstacleDefinition =>
@@ -300,6 +357,9 @@ public class SpacePresentationTests
     private static int IndexOfLast<T>(IReadOnlyList<ObstacleDefinition> authored)
         where T : ObstacleDefinition =>
         Enumerable.Range(0, authored.Count).Last(index => authored[index] is T);
+
+    private static AppearanceFact Mark(AppearanceFact[] facts) =>
+        Fact(facts, StruckMarkObjectId);
 
     private static AppearanceFact Fact(AppearanceFact[] facts, ulong objectId) =>
         facts.Single(fact => fact.ObjectId == objectId);
@@ -317,6 +377,10 @@ public class SpacePresentationTests
             engine, readout, FlightTelemetrySnapshot.Neutral, path);
 
     private static AppearanceFact[] Publish(
+        RecordingEngine engine, FlightReadout readout, HullStrike strike, InstalledShip ship) => Publish(
+            engine, readout, FlightTelemetrySnapshot.Neutral, FlightPath.None, strike, ship);
+
+    private static AppearanceFact[] Publish(
         RecordingEngine engine,
         FlightReadout readout,
         FlightTelemetrySnapshot telemetry,
@@ -328,7 +392,8 @@ public class SpacePresentationTests
         FlightReadout readout,
         FlightTelemetrySnapshot telemetry,
         FlightPath path,
-        HullStrike strike)
+        HullStrike strike,
+        InstalledShip? ship = null)
     {
         SpaceTuning tuning = SpaceTuning.Defaults;
         SpacePresentation presentation = new(
@@ -347,7 +412,7 @@ public class SpacePresentationTests
             FlightForces.Zero,
             path,
             strike,
-            new InstalledShip(tuning.Ship, tuning.Flight.MaximumThrust, tuning.Damage));
+            ship ?? new InstalledShip(tuning.Ship, tuning.Flight.MaximumThrust, tuning.Damage));
         return engine.Graphics.LastSnapshot;
     }
 

@@ -376,6 +376,14 @@ internal sealed class RecordingGraphics(ServiceFaults faults) : IGraphicsService
     /// </summary>
     internal AppearanceFact[] LastSnapshot { get; private set; } = [];
 
+    /// <summary>
+    /// What each appearance handle handed out was built from, for the ones made
+    /// from authored content: handle to content path. A test that needs to know
+    /// whether something is drawn as a shape with a bow in it asks here, because a
+    /// primitive cube carries the same silhouette however it is turned.
+    /// </summary>
+    internal Dictionary<ulong, string> ContentMeshes { get; } = [];
+
     public Appearance CreatePrimitive(PrimitiveAppearanceRequest arg0)
     {
         faults.FailIf(nameof(CreatePrimitive));
@@ -385,7 +393,9 @@ internal sealed class RecordingGraphics(ServiceFaults faults) : IGraphicsService
     public Appearance CreateStaticMeshFromContent(StaticMeshContentAppearanceRequest arg0)
     {
         faults.FailIf(nameof(CreateStaticMeshFromContent));
-        return new Appearance(new AppearanceHandle(NextAppearanceHandle()), RecordAppearanceRelease);
+        ulong handle = NextAppearanceHandle();
+        ContentMeshes[handle] = arg0.Path;
+        return new Appearance(new AppearanceHandle(handle), RecordAppearanceRelease);
     }
 
     // A handle of its own per created appearance, so a test can tell which

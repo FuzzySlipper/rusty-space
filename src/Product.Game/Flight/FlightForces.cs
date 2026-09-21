@@ -12,11 +12,9 @@ internal readonly record struct FlightForces(
     FlightWrench Field,
     FlightWrench GentleCurrent,
     FlightWrench SwiftCurrent,
-    FlightWrench OrbitalPull,
-    FlightWrench DamageBias)
+    FlightWrench OrbitalPull)
 {
     internal static FlightForces Zero { get; } = new(
-        FlightWrench.Zero,
         FlightWrench.Zero,
         FlightWrench.Zero,
         FlightWrench.Zero,
@@ -25,14 +23,18 @@ internal readonly record struct FlightForces(
         FlightWrench.Zero);
 
     /// <summary>
-    /// The single join of every source. Damage bias is a named channel that no
-    /// owner fills yet; it exists so a fault can add push without a second sum.
+    /// The single join of every source. What the effector pair's wear pulls for
+    /// itself, and what a vane jammed off centre holds the hull against, are
+    /// already inside <see cref="Steering"/>: they arrive as work those actuators
+    /// reached. A source with an owner that puts it on the hull has no business in
+    /// this sum a second time, and the second copy would reach the hull without the
+    /// response, damping, and stop the hardware that produced it is supposed to
+    /// pass it through.
     /// </summary>
     internal FlightWrench Total => MainDrive
         + Steering
         + Field
         + GentleCurrent
         + SwiftCurrent
-        + OrbitalPull
-        + DamageBias;
+        + OrbitalPull;
 }

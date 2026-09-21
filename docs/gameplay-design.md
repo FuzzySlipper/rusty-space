@@ -139,9 +139,14 @@ character:
 Wear is authored the same way. A tired side keeps its rated peak authority but
 answers more slowly, rings past a load threshold instead of settling, and adds
 a standing pull proportional to the load it is carrying — all continuous in the
-load, so the onset is somewhere a player can find and remember. Nothing about
-the response is random: no white-noise torque, and no dependence on how the
-turn happened to be admitted.
+load, so the onset is somewhere a player can find and remember. The pull reaches
+the hull once, as work through the actuator that produces it: the instruments
+report it apart so it is clear which of the two the ship is fighting, but it is
+inside the steering the force model resolves and never a second channel summed
+on top of it — the same rule that keeps the fit's leverage from being billed
+twice
+to the center of mass. Nothing about the response is random: no white-noise
+torque, and no dependence on how the turn happened to be admitted.
 
 The fit's weight and turn inertia go to the Engine through its body-update
 lane, with authored mass properties: the hull is created with mass derived
@@ -173,6 +178,10 @@ to be legible, so each reading is drawn as its own thing:
   coupling off. On that trim the band will not catch the hull, and the view
   says so rather than leaving the player to remember the gate.
 - the line the hull is on is drawn ahead of it, one marker per sample.
+
+The hull itself is drawn as the authored dart, nose along local +X, rather than
+a primitive: a cube is the same silhouette at whatever heading it is turned to,
+so it cannot carry the one reading everything else here is arranged around.
 
 The line is held to the same accounting as the hull, because a player who aims
 by it is betting the ship on it. It is walked on the Engine's kinematic lane
@@ -214,6 +223,14 @@ axes, the same push in the hull's own frame so that "the starboard quarter"
 means something, and what was struck. It reaches the P0 instruments as the
 impact reading beside heading and coupling, and it reaches the hardware as a
 `HullDamage` against the part that caught it.
+
+The reading outlives the contact. An arrival that lasted a single contact frame
+is still what the panel shows and `space.impacts` answers with — same
+magnitude, same place, same part — until a newer arrival replaces it or the hull
+is rebuilt. Whether the hull is against it right now is carried apart from it,
+and that is
+what decides how long the mark is drawn: while it is still touching, and after
+that for as long as the part it struck is still held jammed.
 
 Consequences run through the hardware rather than through a hull-wide
 percentage. A contact costs the part whose mount the impact points away from,

@@ -14,5 +14,16 @@ namespace Rusty.Space.Product.Flight;
 /// it cost that part, and whether anything is now held where it was not told to
 /// be. Nothing was struck means nothing was answered, so the answer is absent
 /// rather than invented.
+/// <para>
+/// <see cref="StillTouching"/> separates the event from the state: a glancing
+/// arrival can be over in the single contact frame that produced it, and the
+/// instruments still have to be able to say what happened. So a strike outlives
+/// the contact that caused it, carrying the magnitude and the place until a newer
+/// arrival replaces it or the hull is rebuilt, while this says whether the hull is
+/// against it right now.
+/// </para>
 /// </remarks>
-internal readonly record struct HullStrike(HullImpact Impact, HullDamage? Damage);
+internal readonly record struct HullStrike(
+    HullImpact Impact,
+    HullDamage? Damage,
+    bool StillTouching = false);

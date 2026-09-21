@@ -11,11 +11,13 @@ namespace Rusty.Space.Product.ShipSystems;
 /// <para>
 /// A stabilizer is rated for the force it can put on the keel
 /// (<see cref="ForceAuthority"/>) and for how fast and how exactly it delivers it
-/// (<see cref="Response"/>). What it is fitted with today can be less than what
-/// it was rated for: <see cref="Health"/> is the fraction of the rating the part
-/// can still put up, and it is the only place wear reaches the ship's force
-/// budget. Repair, heat limits, and how damage accumulates belong to the health
-/// and thermal phase, not here.
+/// (<see cref="Response"/>). The rated peak is what the stop is built against:
+/// worn hardware is worn in the <see cref="Response"/> — slower to get there, and
+/// ringing once the load is hard enough to make it ring — not in a ceiling clipped
+/// below what it is rated for. <see cref="Health"/> is the condition the part is in
+/// today: how much of its own punishment it has left room for, which is what a
+/// contact spends. Repair, heat limits, and how damage accumulates belong to the
+/// health and thermal phase, not here.
 /// </para>
 /// <para>
 /// Worn hardware does not simply get weaker, it answers differently. Below
@@ -49,8 +51,13 @@ internal sealed record StabilizerDefinition(
     private const double FullLoad = 1.0;
     private const double MinimumDampingRatio = 0.0;
 
-    /// <summary>The most force this side can put on the keel as fitted today.</summary>
-    internal double DeliveredAuthority => ForceAuthority * Health;
+    /// <summary>
+    /// The stop this side's actuator is built against: its rated authority, which
+    /// a tired side still reaches — eventually, and not without ringing on the way.
+    /// What a part can still put up once something has struck it is the installed
+    /// part's own business, applied to what these stops let through.
+    /// </summary>
+    internal double DeliveredAuthority => ForceAuthority;
 
     /// <summary>
     /// How much of this side's wear is showing at a given field load: nothing

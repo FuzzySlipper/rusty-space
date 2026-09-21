@@ -10,11 +10,13 @@ namespace Rusty.Space.Product.Flight;
 /// the effector pair agreed about it.
 /// </summary>
 /// <remarks>
-/// <see cref="CollisionImpulse"/> is what the Engine's contacts gave the hull on
-/// the turn this was captured from, stated in the hull's own frame the same way
-/// every other value here is: the push is the Engine's answer about a body, and
-/// this is that answer put where the ship's instruments can read it. A turn with
-/// no contact reports nothing.
+/// <see cref="CollisionImpulse"/>, <see cref="CollisionMagnitude"/>, and
+/// <see cref="StruckPart"/> are the most recent impact the hull has taken, stated
+/// in the hull's own frame the same way every other value here is — not only the
+/// contact that happened to be alive during this turn. The push is the Engine's
+/// answer about a body, and an arrival that lasted one contact frame is still
+/// something a player's panel has to be able to show afterwards. A hull that has
+/// struck nothing since it was built reports nothing.
 /// </remarks>
 internal readonly record struct FlightTelemetrySnapshot(
     ulong FixedStepCount,

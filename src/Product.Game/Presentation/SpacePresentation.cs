@@ -130,7 +130,7 @@ internal sealed class SpacePresentation : IDisposable
         // this constructor deliberately does not issue individual release
         // calls that could desynchronize generated lease wrappers from a
         // later transaction rollback.
-        shipAppearance = CreateCube(this.tuning.ShipColor);
+        shipAppearance = CreateShipMesh(this.tuning.ShipColor);
         planetAppearance = CreateSphere(this.tuning.PlanetColor);
         wakeAppearance = CreateCube(this.tuning.WakeColor);
         gentleAppearance = CreateCube(this.tuning.GentleCurrentColor);
@@ -300,9 +300,21 @@ internal sealed class SpacePresentation : IDisposable
                 PlanarFrame.ToEngineAttitude(readout.HeadingRadians),
                 new Vector3(checked((float)size))),
             struckMarkAppearance,
-            Visible: strike.Impact.Present,
+            Visible: MarkIsVisible(strike, ship),
             RenderLayer.Scene);
     }
+
+    // The mark says where the hull most recently arrived at something: while it is
+    // still against it, and after that for as long as the part it struck is still
+    // jammed, which is the case where knowing which side of the ship to expect to
+    // pull the wrong way is worth something. Once the crew have had their time on
+    // the latch the mark goes, and what is left of the part is something the
+    // instruments carry instead.
+    private static bool MarkIsVisible(HullStrike strike, InstalledShip ship) =>
+        strike.Impact.Present
+        && (strike.StillTouching
+            || (strike.Damage is HullDamage struck
+                && ship.PartWithId(struck.Part) is { OutOfTrim: true }));
 
     private static Vector3 AuthoredExtent(ObstacleDefinition authored) => authored switch
     {
@@ -621,6 +633,14 @@ internal sealed class SpacePresentation : IDisposable
         appearance.PublishSnapshot(ReadOnlySpan<AppearanceFact>.Empty);
         retainedSnapshotRetired = true;
     }
+
+    // The authored dart, nose along local +X: the one appearance on the hull that
+    // says which way it is pointed. A cube is drawn identically at every heading,
+    // so it cannot carry that reading, and the navigation view is built on the
+    // hull's heading and the hull's motion being two things a player can tell apart
+    // at a glance.
+    private Appearance CreateShipMesh(Color color) => appearance.CreateStaticMeshFromContent(
+        new StaticMeshContentAppearanceRequest(ShipMeshPath, color));
 
     private Appearance CreateCube(Color color) => appearance.CreatePrimitive(
         new PrimitiveAppearanceRequest(PrimitiveGeometry.Cube, Wireframe: false, color));

@@ -299,7 +299,7 @@ internal sealed class SpaceFlight : IDisposable
                 HullDamage struck = ship.TakeImpact(contact.LocalImpulse, contact.Magnitude);
                 if (contact.Magnitude >= strike.Impact.Magnitude)
                 {
-                    strike = new HullStrike(contact, struck);
+                    strike = new HullStrike(contact, struck, StillTouching: true);
                 }
             }
             else
@@ -312,6 +312,15 @@ internal sealed class SpaceFlight : IDisposable
             forces = substepForces;
         }
 
+        // The most recent arrival stays what the instruments report until a newer
+        // one replaces it or the hull is rebuilt. An impact that lasted one contact
+        // frame is still something the panel can show and a tuning pass can query
+        // afterwards, which is the whole point of reading it at all; what the
+        // contact ended or not is carried apart from it.
+        HullStrike reported = strike.Impact.Present
+            ? strike
+            : lastStrike with { StillTouching = false };
+
         telemetry.Capture(
             turnStart,
             currentReadout,
@@ -322,7 +331,7 @@ internal sealed class SpaceFlight : IDisposable
             nextFixedStepCount,
             stepCount,
             turn.FixedStep,
-            strike);
+            reported);
         // The line the navigation view draws is walked from the state this turn
         // actually left the ship in, with the hardware's last reached effort held,
         // so what the player reads ahead is the same rule that moved the hull.
@@ -334,7 +343,7 @@ internal sealed class SpaceFlight : IDisposable
             turn.FixedStep);
         contributions = forces;
         firstSubstepContributions = turnStartForces;
-        lastStrike = strike;
+        lastStrike = reported;
         lastFieldSample = fieldSample;
         command = input.Command;
         readout = currentReadout;

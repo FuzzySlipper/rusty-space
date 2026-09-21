@@ -44,9 +44,10 @@ internal sealed class FlightTelemetry
             coupling,
             forces.Field.Force.Magnitude,
             ship.HeadingAsymmetry,
-            // What the Engine's contacts gave the hull, reported in the hull's own
-            // frame: the same push the body already answers to, stated where the
-            // ship's instruments can read it.
+            // What the Engine's contacts gave the hull, in the hull's own frame:
+            // the same push the body already answers to, stated where the ship's
+            // instruments can read it. The strike handed in is the last one the hull
+            // took, so the reading outlives the contact that caused it.
             strike.Impact.LocalImpulse,
             strike.Impact.Magnitude,
             strike.Damage?.Part);
