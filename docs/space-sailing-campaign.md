@@ -199,14 +199,21 @@ generated product-facing debug command catalog.
 
 Continuous collision reaches the managed surface as
 `DynamicsBodyProperties.ContinuousCollision`, with the per-step motion limit
-widening for bodies that opt in. Spatial collision shapes also become fixed
-bodies when a session is bound to a dynamics world, so a collision space
-needs no new Engine mechanism. The asymmetry this campaign filed between the
-generic and shape-typed create paths is closed on the adopted pair: the
-generic `DynamicsBodyConfig` carries the same properties bag, and the generic
-create path applies all of it, so selecting damping, collision filtering, or
-continuous collision no longer needs a follow-up update or a different create
-path.
+widening for bodies that opt in, and the body-update request carries that
+whole bag. Spatial collision shapes also become fixed bodies when a session
+is bound to a dynamics world, so a collision space needs no new Engine
+mechanism. What the adopted pair does not do is select those options on the
+generic create path: there `DynamicsBodyConfig` carries transform,
+half-extents, mass, mass policy, axis locks, and gravity scale, and nothing
+else. Damping, friction, restitution, collision filtering, and continuous
+collision reach a body there through a shape-typed create request or through
+a follow-up body update — the same lane fitted part mass and inertia travel
+on. The narrow Engine request that closes this asymmetry landed one Engine
+revision past the adopted pair, so it arrives with the next pair adopted and
+not before. Reading a capability off an Engine checkout is not the same as
+having it on the pair the product is pinned to: the pin is what a phase may
+build against, and a fix that has not been adopted is a reason to keep the
+workaround, not a reason to drop it.
 
 Handles the product opens come back down in the reverse of the order that
 opened them, and the Engine's lease wrappers are what make that safe: a release
