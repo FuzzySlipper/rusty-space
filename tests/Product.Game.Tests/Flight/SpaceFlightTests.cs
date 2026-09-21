@@ -159,6 +159,7 @@ public class SpaceFlightTests
         double spawnHeadingRadians = 0.0,
         ShipLoadout? loadout = null) => new(
         dynamics,
+        new RecordingKinematic(),
         SpaceTuning.Defaults.Flight,
         SpaceTuning.Defaults.Coupling,
         SpaceTuning.Defaults.FlightBody with { SpawnHeadingRadians = spawnHeadingRadians },
@@ -166,7 +167,8 @@ public class SpaceFlightTests
         SpaceTuning.Defaults.Field,
         SpaceTuning.Defaults.Orbital,
         SpaceTuning.Defaults.GentleCurrent,
-        SpaceTuning.Defaults.SwiftCurrent);
+        SpaceTuning.Defaults.SwiftCurrent,
+        SpaceTuning.Defaults.Trajectory);
 
     [Fact]
     public void ACouplingPointFittedForwardTurnsTheHullHarderThanOneOnTheCenter()

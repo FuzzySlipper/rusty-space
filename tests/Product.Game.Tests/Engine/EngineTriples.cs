@@ -65,6 +65,7 @@ internal sealed class RecordingEngine : IEngineContext
     public ServiceFaults Faults { get; } = new();
 
     public RecordingDynamics Dynamics { get; }
+    public RecordingKinematic Kinematic { get; }
     public RecordingGraphics Graphics { get; }
     public RecordingUi Ui { get; }
     public RecordingCameraView CameraView { get; }
@@ -72,6 +73,7 @@ internal sealed class RecordingEngine : IEngineContext
     public RecordingEngine()
     {
         Dynamics = new RecordingDynamics(Faults);
+        Kinematic = new RecordingKinematic();
         Graphics = new RecordingGraphics(Faults);
         Ui = new RecordingUi(Faults);
         CameraView = new RecordingCameraView(Faults);
@@ -81,7 +83,7 @@ internal sealed class RecordingEngine : IEngineContext
     public IDiagnosticsService Diagnostics => Absent<IDiagnosticsService>();
     IDynamicsService IEngineContext.Dynamics => Dynamics;
     public IMotionService Motion => Absent<IMotionService>();
-    public IKinematicService Kinematic => Absent<IKinematicService>();
+    IKinematicService IEngineContext.Kinematic => Kinematic;
     public ISpatialService Spatial => Absent<ISpatialService>();
     public IPerceptionService Perception => Absent<IPerceptionService>();
     public IWorldOriginService WorldOrigin => Absent<IWorldOriginService>();
@@ -255,28 +257,96 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
 /// The render side of the same seam: it hands out appearance leases a test can
 /// watch being released and refuses the surface Space never asks for.
 /// </summary>
+/// <summary>
+/// The Engine call-local kinematic integrator, stood up as a plain semi-implicit
+/// stepper over the ticks the caller asked for. A test asserts on the requests
+/// the product hands this lane — the accelerations it feeds and the interval it
+/// walks — which is the product's side of the seam; where the line actually lands
+/// is checked against a live hull, not against a double's arithmetic.
+/// </summary>
+internal sealed class RecordingKinematic : IKinematicService
+{
+    internal List<KinematicIntegrationRequest> Integrations { get; } = [];
+
+    /// <summary>
+    /// What each request came back with, so a test can check that a caller handed
+    /// the next step the Engine's answer rather than its own arithmetic.
+    /// </summary>
+    internal List<IntegrationResult> Results { get; } = [];
+
+    public IntegrationResult Integrate(KinematicIntegrationRequest request)
+    {
+        Integrations.Add(request);
+        IntegrationResult stepped = IntegrateByHand(request);
+        Results.Add(stepped);
+        return stepped;
+    }
+
+    private static IntegrationResult IntegrateByHand(KinematicIntegrationRequest request)
+    {
+        Vector3 position = request.Body.Position;
+        Vector3 velocity = request.Body.Velocity;
+        Vector3 acceleration = request.Body.Acceleration
+            + (request.Settings.Gravity * request.Body.GravityScale);
+        float secondsPerTick = request.Step.SecondsPerTick;
+        for (ulong tick = 0; tick < request.Step.Ticks; tick++)
+        {
+            velocity += acceleration * secondsPerTick;
+            position += velocity * secondsPerTick;
+        }
+
+        return new IntegrationResult(
+            request.Body.Position,
+            position,
+            request.Body.Velocity,
+            velocity,
+            secondsPerTick * request.Step.Ticks,
+            BlockedX: false,
+            BlockedY: false,
+            BlockedZ: false);
+    }
+
+    public IntegrationResult IntegrateSpatial(KinematicSpatialIntegrationRequest arg0) =>
+        throw new NotSupportedException("Space does not integrate a spatial body.");
+
+    public KinematicMotionLeaseReceipt RunMotion(KinematicMotionRequest arg0) =>
+        throw new NotSupportedException("Space does not run kinematic motion.");
+}
+
 internal sealed class RecordingGraphics(ServiceFaults faults) : IGraphicsService
 {
     private readonly ServiceFaults faults = faults;
+    private ulong nextAppearanceHandle;
 
     internal int AppearanceReleases { get; private set; }
     internal int SnapshotPublications { get; private set; }
 
+    /// <summary>
+    /// The facts the last snapshot carried, so a test can read what the view
+    /// actually published rather than only that something was published.
+    /// </summary>
+    internal AppearanceFact[] LastSnapshot { get; private set; } = [];
+
     public Appearance CreatePrimitive(PrimitiveAppearanceRequest arg0)
     {
         faults.FailIf(nameof(CreatePrimitive));
-        return new Appearance(default, RecordAppearanceRelease);
+        return new Appearance(new AppearanceHandle(NextAppearanceHandle()), RecordAppearanceRelease);
     }
 
     public Appearance CreateStaticMeshFromContent(StaticMeshContentAppearanceRequest arg0)
     {
         faults.FailIf(nameof(CreateStaticMeshFromContent));
-        return new Appearance(default, RecordAppearanceRelease);
+        return new Appearance(new AppearanceHandle(NextAppearanceHandle()), RecordAppearanceRelease);
     }
+
+    // A handle of its own per created appearance, so a test can tell which
+    // appearance a fact was published with rather than only that it carried one.
+    private ulong NextAppearanceHandle() => ++nextAppearanceHandle;
 
     public void PublishSnapshot(ReadOnlySpan<AppearanceFact> values)
     {
         faults.FailIf(nameof(PublishSnapshot));
+        LastSnapshot = values.ToArray();
         SnapshotPublications++;
     }
 
@@ -376,6 +446,12 @@ internal sealed class RecordingUi(ServiceFaults faults) : IUiService
 
     internal int StreamReleases { get; private set; }
 
+    /// <summary>
+    /// The last projection handed the panel, so a test can read the value and the
+    /// names on it rather than only that something was published.
+    /// </summary>
+    internal UiProjection? LastProjection { get; private set; }
+
     public UiStream OpenStream(UiStreamRequest arg0)
     {
         faults.FailIf(nameof(OpenStream));
@@ -384,6 +460,7 @@ internal sealed class RecordingUi(ServiceFaults faults) : IUiService
 
     public void PublishProjection(UiProjection arg0)
     {
+        LastProjection = arg0;
     }
 
     private void RecordStreamRelease()

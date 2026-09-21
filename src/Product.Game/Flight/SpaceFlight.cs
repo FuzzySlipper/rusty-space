@@ -32,10 +32,8 @@ internal sealed class SpaceFlight : IDisposable
     private readonly FieldCoupling coupling;
     private readonly FlightTelemetry telemetry = new();
     private readonly StellarField field;
-    private readonly FieldResponse fieldResponse;
-    private readonly OrbitalGravity gravity;
-    private readonly DriftCurrent gentleCurrent;
-    private readonly DriftCurrent swiftCurrent;
+    private readonly HullForceModel forceModel;
+    private readonly TrajectoryProjection trajectory;
     private readonly FlightBodyTuning bodyTuning;
     private readonly InstalledShip ship;
     private readonly FlightInputMapper inputMapper = new();
@@ -45,6 +43,7 @@ internal sealed class SpaceFlight : IDisposable
     private FlightForces contributions = FlightForces.Zero;
     private FlightForces firstSubstepContributions = FlightForces.Zero;
     private FieldSample lastFieldSample;
+    private FlightPath projectedPath = FlightPath.None;
     private ulong fixedStepCount;
     private ulong updateSequence;
     private ulong resetCount;
@@ -52,6 +51,7 @@ internal sealed class SpaceFlight : IDisposable
 
     internal SpaceFlight(
         IDynamicsService dynamics,
+        IKinematicService kinematic,
         FlightTuning flightTuning,
         CouplingTuning couplingTuning,
         FlightBodyTuning bodyTuning,
@@ -59,7 +59,8 @@ internal sealed class SpaceFlight : IDisposable
         FieldTuning fieldTuning,
         OrbitalGravityTuning orbitalTuning,
         DriftCurrentTuning gentleCurrentTuning,
-        DriftCurrentTuning swiftCurrentTuning)
+        DriftCurrentTuning swiftCurrentTuning,
+        TrajectoryTuning trajectoryTuning)
     {
         this.dynamics = dynamics ?? throw new ArgumentNullException(nameof(dynamics));
         this.bodyTuning = bodyTuning;
@@ -67,10 +68,20 @@ internal sealed class SpaceFlight : IDisposable
         controller = new FlightController(flightTuning);
         coupling = new FieldCoupling(couplingTuning);
         field = new StellarField(fieldTuning);
-        fieldResponse = new FieldResponse(fieldTuning);
-        gravity = new OrbitalGravity(orbitalTuning);
-        gentleCurrent = new DriftCurrent(gentleCurrentTuning);
-        swiftCurrent = new DriftCurrent(swiftCurrentTuning);
+        DriftCurrent gentle = new(gentleCurrentTuning);
+        DriftCurrent swift = new(swiftCurrentTuning);
+        // The same environment instances the hull is resolved against, handed out
+        /// so the navigation view reads exactly what the ship feels rather than a
+        /// second copy of the same field.
+        Environment = new FlightEnvironment(field, gentle, swift);
+        // One rule turns a hull state into push, used both for the substep the
+        // Engine integrates and for the line the view draws ahead of the ship.
+        forceModel = new HullForceModel(
+            new FieldResponse(fieldTuning),
+            gentle,
+            swift,
+            new OrbitalGravity(orbitalTuning));
+        trajectory = new TrajectoryProjection(kinematic, forceModel, field, trajectoryTuning);
         world = this.dynamics.CreateWorld(new DynamicsWorldConfig(Vector3.Zero));
 
         DynamicsBody? initialBody = null;
@@ -98,6 +109,12 @@ internal sealed class SpaceFlight : IDisposable
     /// </summary>
     internal InstalledShip Ship => ship;
 
+    /// <summary>
+    /// The environment this flight's hull is resolved against, handed to the view
+    /// so both read one field.
+    /// </summary>
+    internal FlightEnvironment Environment { get; }
+
     internal FlightCommand LastCommand => command;
 
     /// <summary>
@@ -122,6 +139,12 @@ internal sealed class SpaceFlight : IDisposable
     internal FieldSample LastFieldSample => lastFieldSample;
 
     internal FlightTelemetrySnapshot Telemetry => telemetry.Current;
+
+    /// <summary>
+    /// Where the hull is on its way to from here, sampled forward on the Engine's
+    /// kinematic lane. Rebuilt from the ship's real state every admitted turn.
+    /// </summary>
+    internal FlightPath ProjectedPath => projectedPath;
 
     internal ulong FixedStepCount => fixedStepCount;
 
@@ -193,8 +216,9 @@ internal sealed class SpaceFlight : IDisposable
                 coupling.Level,
                 fieldSample,
                 turn.FixedStep);
-            FlightForces substepForces = ResolveForces(
+            FlightForces substepForces = forceModel.Resolve(
                 bodyState,
+                ship,
                 fieldSample,
                 substepEffort,
                 currentReadout.Mass);
@@ -226,6 +250,15 @@ internal sealed class SpaceFlight : IDisposable
             nextFixedStepCount,
             stepCount,
             turn.FixedStep);
+        // The line the navigation view draws is walked from the state this turn
+        // actually left the ship in, with the hardware's last reached effort held,
+        // so what the player reads ahead is the same rule that moved the hull.
+        projectedPath = trajectory.Project(
+            ToBodyState(currentReadout),
+            ship,
+            effort,
+            currentReadout.Mass,
+            turn.FixedStep);
         contributions = forces;
         firstSubstepContributions = turnStartForces;
         lastFieldSample = fieldSample;
@@ -246,6 +279,11 @@ internal sealed class SpaceFlight : IDisposable
         try
         {
             candidate = CreateSpawnBody();
+            // A reset builds a fresh hull, and a fresh hull is bare until the
+            // fitted hardware is put on it: the same fit the spawn applies, or
+            // the ship silently loses its mounted weight every time the player
+            // puts it back on the line.
+            FitHull(candidate);
             FlightReadout candidateReadout = MapReadout(
                 dynamics.Read(new DynamicsReadRequest(candidate)));
             DynamicsBody previous = body;
@@ -256,6 +294,7 @@ internal sealed class SpaceFlight : IDisposable
             contributions = FlightForces.Zero;
             firstSubstepContributions = FlightForces.Zero;
             lastFieldSample = field.Sample(readout.Position);
+            projectedPath = FlightPath.None;
             controller.Reset();
             coupling.Reset();
             ship.Reset();
@@ -305,45 +344,6 @@ internal sealed class SpaceFlight : IDisposable
     /// itself.
     /// </para>
     /// </remarks>
-    private FlightForces ResolveForces(
-        FlightBodyState bodyState,
-        FieldSample fieldSample,
-        ShipEffort effort,
-        double mass)
-    {
-        PlanarVector couplingCenter = ship.FieldCouplingCenter(bodyState.HeadingRadians);
-        PlanarVector thrustCenter = ship.MainThrustCenter(bodyState.HeadingRadians);
-        double couplingLevel = effort.Coupling;
-
-        return new FlightForces(
-            MainDrive: AtPoint(effort.DriveForce, thrustCenter),
-            Steering: new FlightWrench(PlanarVector.Zero, effort.HeadingTorque),
-            Field: AtPoint(
-                fieldResponse.Resolve(bodyState, fieldSample, couplingLevel, mass).Force,
-                couplingCenter),
-            GentleCurrent: AtPoint(
-                gentleCurrent.Resolve(
-                    bodyState.Position,
-                    bodyState.LinearVelocity,
-                    mass,
-                    couplingLevel).Force,
-                couplingCenter),
-            SwiftCurrent: AtPoint(
-                swiftCurrent.Resolve(
-                    bodyState.Position,
-                    bodyState.LinearVelocity,
-                    mass,
-                    couplingLevel).Force,
-                couplingCenter),
-            // A mass well pulls on the hull where the hull's mass is, so it has
-            // no lever about the center of mass and no mount to be fitted to.
-            OrbitalPull: gravity.Resolve(bodyState.Position, mass),
-            // What the worn side of the effector pair pulls for itself, split out
-            // of the steering so the instruments can name which of the two the
-            // ship is fighting.
-            DamageBias: new FlightWrench(PlanarVector.Zero, effort.WearPull));
-    }
-
     /// <summary>
     /// The same push, with the turn it causes because it lands away from the
     /// center of mass.

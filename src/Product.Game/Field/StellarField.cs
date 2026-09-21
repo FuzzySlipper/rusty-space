@@ -21,6 +21,13 @@ internal sealed class StellarField
         this.tuning = tuning;
     }
 
+    /// <summary>
+    /// The authored environment's own shape, reported by its owner so a view that
+    /// has to draw the planet and its wake does not carry a second copy of the
+    /// tuning and drift out of step with the field the hull actually feels.
+    /// </summary>
+    internal FieldTuning Shape => tuning;
+
     internal FieldSample Sample(PlanarVector position)
     {
         double wake = WakeWeight(position);

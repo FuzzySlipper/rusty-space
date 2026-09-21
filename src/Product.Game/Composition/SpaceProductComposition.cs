@@ -16,6 +16,7 @@ internal sealed class SpaceProductComposition : IDisposable
         Tuning = SpaceTuning.Defaults.Validate();
         SpaceFlight flight = new(
             Engine.Dynamics,
+            Engine.Kinematic,
             Tuning.Flight,
             Tuning.Coupling,
             Tuning.FlightBody,
@@ -23,7 +24,8 @@ internal sealed class SpaceProductComposition : IDisposable
             Tuning.Field,
             Tuning.Orbital,
             Tuning.GentleCurrent,
-            Tuning.SwiftCurrent);
+            Tuning.SwiftCurrent,
+            Tuning.Trajectory);
         SpacePresentation? presentation = null;
         TrackingCamera? camera = null;
         try
@@ -31,10 +33,9 @@ internal sealed class SpaceProductComposition : IDisposable
             presentation = new SpacePresentation(
                 Engine.Graphics,
                 Engine.Ui,
-                Tuning.Field,
-                Tuning.GentleCurrent,
-                Tuning.SwiftCurrent,
-                Tuning.Presentation);
+                flight.Environment,
+                Tuning.Presentation,
+                Tuning.Overlay);
             camera = new TrackingCamera(
                 Engine.CameraView,
                 Tuning.Camera,

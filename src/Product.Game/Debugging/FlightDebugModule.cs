@@ -55,6 +55,28 @@ public sealed class FlightDebugModule : IDebugCommandModule
             """);
     }
 
+    [DebugCommand("space.path", Description = "Shows the line the navigation view projects ahead of the hull, and what it is being built from.")]
+    public string Path()
+    {
+        FlightPath path = flight.ProjectedPath;
+        if (path.IsEmpty)
+        {
+            return "path        nothing projected yet";
+        }
+
+        PlanarVector[] points = path.Points.ToArray();
+        PlanarVector position = flight.Readout.Position;
+        PlanarVector last = points[^1];
+        return FormattableString.Invariant(
+            $"""
+            projected   {points.Length} points {path.SampleInterval.TotalSeconds:F3}s apart
+            now         ({position.X:F2}, {position.Z:F2})   speed {flight.Readout.LinearVelocity.Magnitude:F3}
+            ahead       ({last.X:F2}, {last.Z:F2})   {(last - position).Magnitude:F2} out
+            coupling    {flight.Telemetry.Coupling:F3}
+            points      {PointList(points)}
+            """);
+    }
+
     [DebugCommand("space.hardware", Description = "Shows the fitted parts, where each one pushes on the hull, and what its actuator reached.")]
     public string Hardware()
     {
@@ -151,6 +173,10 @@ public sealed class FlightDebugModule : IDebugCommandModule
             total       {Row(first.Total)}  {Row(last.Total)}
             """);
     }
+
+    private static string PointList(PlanarVector[] points) => string.Join(
+        "  ",
+        points.Select(point => $"({point.X:F1},{point.Z:F1})"));
 
     private static string Part(string role, InstalledPart part) =>
         FormattableString.Invariant(

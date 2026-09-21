@@ -45,11 +45,22 @@ Product owners, one mutable state family each:
   emergency dump, cradle setting.
 - `Flight/FlightInputMapper` — admitted named intents in, one closed
   `FlightCommand` out. Held control state lives here and nowhere else.
+- `Flight/HullForceModel` — how a hull at one state turns the environment and
+  its fitted hardware into the push the Engine is asked to integrate, naming
+  which source lands at which center. The admitted substep and the projected
+  line both resolve through it, so a line on the screen cannot drift away from
+  the hull it claims to predict.
+- `Flight/TrajectoryProjection` — walks the hull's line forward on the Engine's
+  call-local kinematic lane, over whole fixed steps. It owns no integrator, no
+  accumulator, and no clock; the line it hands the view is a `FlightPath` of
+  points and the interval between them.
 - `Field/StellarField` — the authored environment sample at a position:
   local flow, intensity, gradient, turbulence.
 - `Field/FieldResponse` — how the hull converts slip against that sample into
   push, scaled by coupling and by the body's real mass.
 - `Field/DriftCurrent` — one finite drift band, under the same coupling gate.
+  It reports the flow it puts at a point and its own shape, so a view that has
+  to draw the current asks for it instead of re-deriving the falloff.
 - `Field/OrbitalGravity` — the planet's mass well, deliberately outside that
   gate: a mass relation is not a flow the hull can decline.
 - `ShipSystems/InstalledShip` — the hardware fitted to the hull: which parts,
@@ -70,8 +81,10 @@ Product owners, one mutable state family each:
 - `Viewing/TrackingCamera` — framing policy around the Engine camera service:
   smoothed chase position, zoom, camera cut on reset.
 - `Presentation/SpacePresentation` — product readouts out to Engine
-  appearance and UI facts; retains the current snapshot and retires it before
-  the terminal runtime reclaims resources.
+  appearance and UI facts, including the navigation reading described below;
+  retains the current snapshot and retires it before the terminal runtime
+  reclaims resources. It reads the environment through its owners and
+  re-derives nothing.
 - `Debugging/FlightDebugModule` — read-only product debug commands.
 - `Tuning/SpaceTuning` — the single composition-root aggregate of the
   per-owner tuning records, admitted once at composition.
@@ -125,6 +138,47 @@ update lane actually does: it replaces the whole property set rather than
 merging into it, so an update carries the hull's current velocities as just
 read, its locks, damping, and collision filtering. That is why a fit is
 applied where the hull is freshly built, not opportunistically mid-flight.
+
+## What the view says before the ship gets there
+
+A hull that coasts is not a hull that stops, and a bow pointed one way with the
+ship going another is two facts, not one. The navigation view is where that has
+to be legible, so each reading is drawn as its own thing:
+
+- which way the hull points is the hull. Which way it is going is a rod beside
+  it, aimed along its actual velocity, and the two disagree when they should.
+- local flow is shown on a lattice anchored to the world, not to the ship, so a
+  reading a line is picked by stays where it was left. Each rod points where
+  the flow at its point would carry a coupled hull, and length — not color —
+  carries how strong that flow is, because lengths compare at a glance.
+- every band is drawn twice: a wide faint region for the authority it actually
+  has, which reaches past the slab that marks its core, and the core itself in
+  the band's own color, or in the declined color when the hull has wound its
+  coupling off. On that trim the band will not catch the hull, and the view
+  says so rather than leaving the player to remember the gate.
+- the line the hull is on is drawn ahead of it, one marker per sample.
+
+The line is held to the same accounting as the hull, because a player who aims
+by it is betting the ship on it. It is walked on the Engine's kinematic lane
+over whole fixed steps, resolving the same `HullForceModel` the admitted
+substep uses. The controls are held exactly as they are — throttle at what the
+drive is delivering, bow at its heading, coupling at its trim — while the
+environment is re-read at every point the line reaches. That is what makes the
+line bend toward a current the ship has not entered yet, which is the whole
+point of drawing it.
+And nothing in it slows the ship that is not a force the hull would actually
+feel: the projected path is a reading of the present extended forward, rebuilt
+from where the hull really is every admitted turn, never a promise the product
+keeps to itself.
+
+The tuning-only readings — each source's push and each center of force the hull
+has — go on the Engine's debug render layer, so a handling pass can see them
+without a player ever having to.
+
+What this is deliberately not: sensor uncertainty, FTL representation, or
+camera rule experiments. Those stay in
+[`ideas/navigation_view_reconstruction_ideas.md`](ideas/navigation_view_reconstruction_ideas.md)
+until a phase asks for them.
 
 ## Time is admitted, not assumed
 

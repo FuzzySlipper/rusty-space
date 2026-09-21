@@ -15,6 +15,14 @@ namespace Rusty.Space.Product.Tests;
 /// </summary>
 public class SpaceProductCompositionTests
 {
+    // Every appearance handle the navigation projection opens at construction:
+    // the hull, the planet, the wake, both band cores, both band authority
+    // regions, the declined band, the velocity reading, the projected path, the
+    // flow lattice, the tuning-only push vectors, the centers of force, and the
+    // star field. A teardown that leaves any of them open is a leak this count
+    // catches.
+    private const int ProjectionHandleCount = 14;
+
     [Fact]
     public void AComposedProductPutsDownEveryOwnerItOpened()
     {
@@ -40,7 +48,7 @@ public class SpaceProductCompositionTests
 
         Assert.Equal(0, engine.CameraView.CameraReleases);
         Assert.Equal(1, engine.Ui.StreamReleases);
-        Assert.Equal(6, engine.Graphics.AppearanceReleases);
+        Assert.Equal(ProjectionHandleCount, engine.Graphics.AppearanceReleases);
         Assert.Equal(1, engine.Dynamics.BodyReleases);
         Assert.Equal(1, engine.Dynamics.WorldReleases);
         AssertReleasedDeepestFirst(engine);
@@ -49,7 +57,8 @@ public class SpaceProductCompositionTests
     [Fact]
     public void AProjectionThatFailsToOpenItsStreamReleasesTheFlight()
     {
-        // The projection's constructor opens six appearances and then fails on
+        // The projection's constructor opens its whole set of appearances and
+        // then fails on
         // its stream, so the projection was never a held owner: the flight is
         // what the composition has to put down.
         RecordingEngine engine = new();
@@ -77,7 +86,7 @@ public class SpaceProductCompositionTests
 
         Assert.Equal(1, engine.CameraView.CameraReleases);
         Assert.Equal(1, engine.Ui.StreamReleases);
-        Assert.Equal(6, engine.Graphics.AppearanceReleases);
+        Assert.Equal(ProjectionHandleCount, engine.Graphics.AppearanceReleases);
         Assert.Equal(1, engine.Dynamics.BodyReleases);
         Assert.Equal(1, engine.Dynamics.WorldReleases);
         Assert.Equal(["camera", "ui", "appearance", "body", "world"], engine.Faults.OwnersReleasedInOrder());

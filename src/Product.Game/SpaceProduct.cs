@@ -136,7 +136,10 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
 
     private void PublishFlight() => composition.Presentation.Publish(
         composition.Flight.Readout,
-        composition.Flight.Telemetry);
+        composition.Flight.Telemetry,
+        composition.Flight.Contributions,
+        composition.Flight.ProjectedPath,
+        composition.Flight.Ship);
 
     private void FollowCamera(ReadOnlySpan<ProductInputEvent> input, TimeSpan turnDuration)
         => composition.Camera.Follow(

@@ -19,6 +19,8 @@ internal sealed record SpaceTuning(
     DriftCurrentTuning GentleCurrent,
     DriftCurrentTuning SwiftCurrent,
     SpacePresentationTuning Presentation,
+    NavigationOverlayTuning Overlay,
+    TrajectoryTuning Trajectory,
     CameraTuning Camera)
 {
     internal static SpaceTuning Defaults { get; } = new(
@@ -120,6 +122,37 @@ internal sealed record SpaceTuning(
             StarHeight: -0.65f,
             StarDiameter: 0.16f,
             StarColor: new Color(0.82f, 0.90f, 1.0f, 1.0f)),
+        // A couple of seconds of reading ahead: long enough that the swift band
+        // above the spawn line is on the player's line before the hull reaches it,
+        // short enough that the line stays a fair reading of a present that keeps
+        // moving. Each point walks nine fixed steps on the Engine's kinematic lane.
+        Overlay: new(
+            VelocityIndicatorThickness: 0.24f,
+            VelocityIndicatorLengthPerUnitSpeed: 0.85f,
+            VelocityIndicatorHeight: 0.06f,
+            VelocityIndicatorColor: new Color(1.0f, 0.78f, 0.20f, 0.92f),
+            PathMarkerSize: 0.30f,
+            PathMarkerHeight: 0.04f,
+            PathColor: new Color(0.86f, 0.95f, 1.0f, 0.78f),
+            FlowLatticeRadius: 2,
+            FlowLatticeSpacing: 7.0f,
+            FlowRodThickness: 0.12f,
+            FlowRodLengthPerUnitSpeed: 0.62f,
+            FlowHeight: -0.14f,
+            FlowColor: new Color(0.55f, 0.85f, 0.92f, 0.60f),
+            // A band's Gaussian authority is still worth reading at about twice
+            // its core width; past that it has nothing left to say.
+            AuthorityWidthFactor: 1.85f,
+            GentleAuthorityColor: new Color(0.35f, 0.95f, 0.60f, 0.22f),
+            SwiftAuthorityColor: new Color(1.0f, 0.38f, 0.18f, 0.22f),
+            DeclinedColor: new Color(0.42f, 0.46f, 0.50f, 0.45f),
+            DebugVectorThickness: 0.10f,
+            DebugVectorLengthPerUnitForce: 0.35f,
+            DebugMarkerSize: 0.26f,
+            DebugHeight: 0.16f,
+            DebugColor: new Color(1.0f, 0.45f, 0.90f, 0.95f),
+            DebugCenterColor: new Color(0.98f, 0.94f, 0.35f, 0.95f)),
+        Trajectory: new(SampleCount: 10, TicksPerSample: 9),
         Camera: new(
             PitchDegrees: -55.0,
             YawDegrees: 90.0,
@@ -144,6 +177,8 @@ internal sealed record SpaceTuning(
         GentleCurrent = GentleCurrent.Validate(),
         SwiftCurrent = SwiftCurrent.Validate(),
         Presentation = Presentation.Validate(),
+        Overlay = Overlay.Validate(),
+        Trajectory = Trajectory.Validate(),
         Camera = Camera.Validate(),
     };
 }
