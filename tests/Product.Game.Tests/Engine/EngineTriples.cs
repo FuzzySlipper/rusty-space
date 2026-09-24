@@ -56,7 +56,7 @@ internal sealed class ServiceFaults
 }
 
 /// <summary>
-/// An <see cref="IEngineContext"/> whose four services Space actually composes
+/// An <see cref="IEngineContext"/> whose six services Space actually composes
 /// against are recording doubles; every other service is absent, so a product
 /// change that reaches for one fails at once instead of quietly working.
 /// </summary>
@@ -69,6 +69,7 @@ internal sealed class RecordingEngine : IEngineContext
     public RecordingGraphics Graphics { get; }
     public RecordingUi Ui { get; }
     public RecordingCameraView CameraView { get; }
+    public RecordingImplicitSurfaces ImplicitSurfaces { get; }
 
     public RecordingEngine()
     {
@@ -77,9 +78,10 @@ internal sealed class RecordingEngine : IEngineContext
         Graphics = new RecordingGraphics(Faults);
         Ui = new RecordingUi(Faults);
         CameraView = new RecordingCameraView(Faults);
+        ImplicitSurfaces = new RecordingImplicitSurfaces(Faults);
     }
 
-    public IImplicitSurfacesService ImplicitSurfaces => Absent<IImplicitSurfacesService>();
+    IImplicitSurfacesService IEngineContext.ImplicitSurfaces => ImplicitSurfaces;
     public IDiagnosticsService Diagnostics => Absent<IDiagnosticsService>();
     IDynamicsService IEngineContext.Dynamics => Dynamics;
     public IMotionService Motion => Absent<IMotionService>();
@@ -366,8 +368,12 @@ internal sealed class RecordingGraphics(ServiceFaults faults) : IGraphicsService
 {
     private readonly ServiceFaults faults = faults;
     private ulong nextAppearanceHandle;
+    private ulong nextLightHandle;
+    private ulong nextMaterialHandle;
 
     internal int AppearanceReleases { get; private set; }
+    internal int LightReleases { get; private set; }
+    internal int MaterialReleases { get; private set; }
     internal int SnapshotPublications { get; private set; }
 
     /// <summary>
@@ -402,6 +408,10 @@ internal sealed class RecordingGraphics(ServiceFaults faults) : IGraphicsService
     // appearance a fact was published with rather than only that it carried one.
     private ulong NextAppearanceHandle() => ++nextAppearanceHandle;
 
+    private ulong NextLightHandle() => ++nextLightHandle;
+
+    private ulong NextMaterialHandle() => ++nextMaterialHandle;
+
     public void PublishSnapshot(ReadOnlySpan<AppearanceFact> values)
     {
         faults.FailIf(nameof(PublishSnapshot));
@@ -417,7 +427,11 @@ internal sealed class RecordingGraphics(ServiceFaults faults) : IGraphicsService
     public Appearance CreateStaticMeshFromContentReference(StaticMeshContentReferenceRequest arg0)
         => throw new NotSupportedException();
 
-    public Material CreateMaterial(MaterialRequest arg0) => throw new NotSupportedException();
+    public Material CreateMaterial(MaterialRequest arg0)
+    {
+        faults.FailIf(nameof(CreateMaterial));
+        return new Material(new MaterialHandle(NextMaterialHandle()), RecordMaterialRelease);
+    }
 
     public void UpdateMaterial(MaterialUpdateRequest arg0) => throw new NotSupportedException();
 
@@ -428,7 +442,11 @@ internal sealed class RecordingGraphics(ServiceFaults faults) : IGraphicsService
 
     public MeshResource CreateMeshResource(MeshResourceCreateRequest arg0) => throw new NotSupportedException();
 
-    public Appearance CreateMeshAppearance(MeshResource arg0) => throw new NotSupportedException();
+    public Appearance CreateMeshAppearance(MeshResource arg0)
+    {
+        faults.FailIf(nameof(CreateMeshAppearance));
+        return new Appearance(new AppearanceHandle(NextAppearanceHandle()), RecordAppearanceRelease);
+    }
 
     public MeshPartition PartitionMesh(MeshPartitionRequest arg0) => throw new NotSupportedException();
 
@@ -479,7 +497,11 @@ internal sealed class RecordingGraphics(ServiceFaults faults) : IGraphicsService
 
     public SpritePlaybackReadout ReadSpritePlayback(SpritePlayback arg0) => throw new NotSupportedException();
 
-    public Light CreateLight(LightRequest arg0) => throw new NotSupportedException();
+    public Light CreateLight(LightRequest arg0)
+    {
+        faults.FailIf(nameof(CreateLight));
+        return new Light(new LightHandle(NextLightHandle()), RecordLightRelease);
+    }
 
     public void UpdateLight(LightUpdateRequest arg0) => throw new NotSupportedException();
 
@@ -496,6 +518,18 @@ internal sealed class RecordingGraphics(ServiceFaults faults) : IGraphicsService
     {
         AppearanceReleases++;
         faults.RecordRelease("appearance");
+    }
+
+    private void RecordLightRelease()
+    {
+        LightReleases++;
+        faults.RecordRelease("light");
+    }
+
+    private void RecordMaterialRelease()
+    {
+        MaterialReleases++;
+        faults.RecordRelease("material");
     }
 }
 
@@ -568,4 +602,105 @@ internal sealed class RecordingCameraView(ServiceFaults faults) : ICameraViewSer
     public void SetSkyBackground(RenderResource arg0) => throw new NotSupportedException();
 
     public void ClearSkyBackground(ClearSkyBackgroundRequest arg0) => throw new NotSupportedException();
+}
+
+/// <summary>
+/// The implicit-surface side of the same seam: it hands out authoring fields
+/// and nodes a recipe can compose, and one mesh resource per extraction a test
+/// can watch being released. Anything the bridge recipe never calls is refused
+/// loudly, so a change that starts reaching for another path is a test failure
+/// rather than a silent widening of the seam.
+/// </summary>
+/// <remarks>
+/// Authoring fields are construction-scoped temporaries the recipe releases as
+/// each extraction returns, so their releases are not recorded: only the
+/// scene-lifetime mesh resources the set retains are watched.
+/// </remarks>
+internal sealed class RecordingImplicitSurfaces(ServiceFaults faults) : IImplicitSurfacesService
+{
+    private readonly ServiceFaults faults = faults;
+    private ulong nextNode = 1UL;
+    private ulong nextMesh = 1UL;
+
+    internal int MeshReleases { get; private set; }
+
+    /// <summary>How many extractions the recipe asked for, in emit order.</summary>
+    internal int GenerationCount { get; private set; }
+
+    public ImplicitField CreateField() => new(new ImplicitFieldHandle(NextNode()), static () => { });
+
+    public ImplicitNode AddBox(ImplicitBoxRequest arg0) => Next();
+
+    public ImplicitNode AddCapsule(ImplicitCapsuleRequest arg0) => Next();
+
+    public ImplicitNode AddEllipsoid(ImplicitEllipsoidRequest arg0) => Next();
+
+    public ImplicitNode AddFrustum(ImplicitFrustumRequest arg0) => Next();
+
+    public ImplicitNode AddPlane(ImplicitPlaneRequest arg0) => Next();
+
+    public ImplicitNode AddSphere(ImplicitSphereRequest arg0) => Next();
+
+    public ImplicitNode Union(ImplicitBinaryRequest arg0) => Next();
+
+    public ImplicitNode Intersection(ImplicitBinaryRequest arg0) => Next();
+
+    public ImplicitNode Difference(ImplicitBinaryRequest arg0) => Next();
+
+    public ImplicitNode Transform(ImplicitTransformRequest arg0) => Next();
+
+    public ImplicitNode Offset(ImplicitOffsetRequest arg0) => Next();
+
+    public ImplicitNode SmoothUnion(ImplicitBlendRequest arg0) => Next();
+
+    public ImplicitNode DisplaceWaves(ImplicitWaveRequest arg0) => Next();
+
+    public MeshResource Generate(ImplicitGenerateRequest arg0)
+    {
+        faults.FailIf(nameof(Generate));
+        GenerationCount++;
+        return new MeshResource(new MeshResourceHandle(nextMesh++), RecordMeshRelease);
+    }
+
+    private ImplicitNode Next() => new(NextNode());
+
+    private ulong NextNode() => nextNode++;
+
+    private void RecordMeshRelease()
+    {
+        MeshReleases++;
+        faults.RecordRelease("mesh");
+    }
+
+    public void CaptureAuditPiece(ImplicitAuditPieceRequest arg0) => throw new NotSupportedException();
+
+    public ImplicitAudit CreateAudit() => throw new NotSupportedException();
+
+    public SampledVolume CreateSampledVolume(SampledVolumeCreateRequest arg0) => throw new NotSupportedException();
+
+    public SampledVolumeDescriptor DescribeSampledVolume(SampledVolume arg0) => throw new NotSupportedException();
+
+    public MeshResource GenerateSampledVolume(SampledVolumeGenerateRequest arg0) => throw new NotSupportedException();
+
+    public void RasterizeSampledVolume(SampledVolumeRasterizeRequest arg0) => throw new NotSupportedException();
+
+    public ImplicitAuditReportLeaseReceipt ReadAudit(ImplicitAuditRequest arg0) => throw new NotSupportedException();
+
+    public ImplicitAnalysisReportLeaseReceipt ReadEnclosure(ImplicitEnclosureRequest arg0) => throw new NotSupportedException();
+
+    public ImplicitAnalysisReportLeaseReceipt ReadExpectedJoin(ImplicitJoinRequest arg0) => throw new NotSupportedException();
+
+    public ImplicitGenerationReadout ReadGeneration(ImplicitField arg0) => throw new NotSupportedException();
+
+    public ImplicitAnalysisReportLeaseReceipt ReadMeshIntegrity(ImplicitIntegrityRequest arg0) => throw new NotSupportedException();
+
+    public DensitySnapshotLeaseReceipt ReadSampledVolume(SampledVolumeReadRequest arg0) => throw new NotSupportedException();
+
+    public ImplicitGenerationReadout ReadSampledVolumeGeneration(SampledVolume arg0) => throw new NotSupportedException();
+
+    public ImplicitSample Sample(ImplicitSampleRequest arg0) => throw new NotSupportedException();
+
+    public DensitySample SampleSampledVolume(SampledVolumeSampleRequest arg0) => throw new NotSupportedException();
+
+    public void WriteSampledVolume(SampledVolumeWriteRequest arg0) => throw new NotSupportedException();
 }

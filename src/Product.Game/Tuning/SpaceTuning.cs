@@ -1,6 +1,7 @@
 using System;
 using Rusty.Engine;
 using Rusty.Space.Product.Approach;
+using Rusty.Space.Product.Bridge;
 using Rusty.Space.Product.Field;
 using Rusty.Space.Product.Flight;
 using Rusty.Space.Product.Navigation;
@@ -24,6 +25,7 @@ internal sealed record SpaceTuning(
     SpacePresentationTuning Presentation,
     NavigationOverlayTuning Overlay,
     TrajectoryTuning Trajectory,
+    BridgeLayout Bridge,
     CameraTuning Camera)
 {
     internal static SpaceTuning Defaults { get; } = new(
@@ -179,6 +181,7 @@ internal sealed record SpaceTuning(
             StruckMarkHeight: 0.34f,
             StruckMarkColor: new Color(1.0f, 0.34f, 0.24f, 0.92f)),
         Trajectory: new(SampleCount: 10, TicksPerSample: 9),
+        Bridge: BridgeLayout.Defaults,
         Camera: new(
             PitchDegrees: -55.0,
             YawDegrees: 90.0,
@@ -207,6 +210,7 @@ internal sealed record SpaceTuning(
         Presentation = Presentation.Validate(),
         Overlay = Overlay.Validate(),
         Trajectory = Trajectory.Validate(),
+        Bridge = Bridge.Validate(),
         Camera = Camera.Validate(),
     };
 }

@@ -1,4 +1,5 @@
 using Rusty.Engine;
+using Rusty.Space.Product.Bridge;
 using Rusty.Space.Product.Debugging;
 using Rusty.Space.Product.Field;
 using Rusty.Space.Product.Flight;
@@ -28,15 +29,24 @@ internal sealed class SpaceProductComposition : IDisposable
             Tuning.SwiftCurrent,
             Tuning.Trajectory,
             Tuning.Approach);
+        BridgeSet? bridge = null;
         SpacePresentation? presentation = null;
         TrackingCamera? camera = null;
         try
         {
+            // The set stages its meshes once here and retains them for the
+            // scene lifetime; the projection below only republishes its
+            // precomputed stationary facts each turn.
+            bridge = new BridgeSet(
+                Engine.Graphics,
+                Engine.ImplicitSurfaces,
+                Tuning.Bridge);
             presentation = new SpacePresentation(
                 Engine.Graphics,
                 Engine.Ui,
                 flight.Environment,
                 flight.Approach,
+                bridge,
                 Tuning.Presentation,
                 Tuning.Overlay);
             camera = new TrackingCamera(
@@ -45,9 +55,11 @@ internal sealed class SpaceProductComposition : IDisposable
                 flight.Readout,
                 flight.ResetCount);
             Flight = flight;
+            Bridge = bridge;
             Presentation = presentation;
             Camera = camera;
             Debug = new FlightDebugModule(flight);
+            BridgeDebug = new BridgeDebugModule(bridge);
         }
         catch
         {
@@ -56,6 +68,7 @@ internal sealed class SpaceProductComposition : IDisposable
             // partway leaves no owner holding a handle nobody can reach.
             camera?.Dispose();
             presentation?.Dispose();
+            bridge?.Dispose();
             flight.Dispose();
             throw;
         }
@@ -67,21 +80,27 @@ internal sealed class SpaceProductComposition : IDisposable
 
     internal SpaceFlight Flight { get; }
 
+    internal BridgeSet Bridge { get; }
+
     internal SpacePresentation Presentation { get; }
 
     internal TrackingCamera Camera { get; }
 
     internal FlightDebugModule Debug { get; }
 
+    internal BridgeDebugModule BridgeDebug { get; }
+
     /// <summary>
     /// Puts the composed owners down in the reverse of the order that built
     /// them: the camera frames the flight it reads and the projection publishes
-    /// facts about it, so each is released before what it depends on.
+    /// facts about the flight and the set, so each is released before what it
+    /// depends on.
     /// </summary>
     public void Dispose()
     {
         Camera.Dispose();
         Presentation.Dispose();
+        Bridge.Dispose();
         Flight.Dispose();
     }
 }

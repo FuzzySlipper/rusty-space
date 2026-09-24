@@ -96,12 +96,29 @@ Product owners, one mutable state family each:
   part's local mount offset into the world axes.
 - `Viewing/TrackingCamera` — framing policy around the Engine camera service:
   smoothed chase position, zoom, camera cut on reset.
+- `Bridge/BridgeLayout` — the named dimensions, placements, palette, and
+  derived world-space attachment facts (seated/approach camera poses,
+  instrument faces, light/audio/prop pivots) for the one parametric bridge
+  set. Pure product meaning; carries no Engine handles.
+- `Bridge/BridgeRecipe` — the product-owned implicit composition the set is
+  authored from: room shell, helm console with recessed display and control
+  strip, side instrument housing, seat, and engineering corner, composed with
+  Engine boxes, unions, and differences. Per-piece bounded extraction regions
+  and sampling; no Engine mechanism recreated.
+- `Bridge/BridgeSet` — the owner that generates the recipe's meshes once at
+  construction, retains mesh resources, appearances, practical lights, and
+  the separately addressable screen/lamp/prop presentation objects for the
+  scene lifetime, and publishes their stationary facts. Reads and writes no
+  flight state; the parent theater owns every telemetry reaction.
 - `Presentation/SpacePresentation` — product readouts out to Engine
   appearance and UI facts, including the navigation reading described below;
   retains the current snapshot and retires it before the terminal runtime
   reclaims resources. It reads the environment through its owners and
-  re-derives nothing.
+  re-derives nothing. The bridge set's stationary facts ride this same
+  retained snapshot; the set stages no snapshot of its own.
 - `Debugging/FlightDebugModule` — read-only product debug commands.
+- `Debugging/BridgeDebugModule` — read-only `space.bridge` report of the
+  staged set: part names, addressable identities, and attachment placements.
 - `Tuning/SpaceTuning` — the single composition-root aggregate of the
   per-owner tuning records, admitted once at composition.
 

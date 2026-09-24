@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using Rusty.Engine;
 using Rusty.Space.Product.Approach;
+using Rusty.Space.Product.Bridge;
 using Rusty.Space.Product.Field;
 using Rusty.Space.Product.Flight;
 using Rusty.Space.Product.Navigation;
@@ -85,6 +86,7 @@ internal sealed class SpacePresentation : IDisposable
     private readonly DriftCurrent gentleCurrent;
     private readonly DriftCurrent swiftCurrent;
     private readonly ApproachField approach;
+    private readonly BridgeSet bridge;
     private readonly SpacePresentationTuning tuning;
     private readonly NavigationOverlayTuning overlay;
     private readonly Appearance shipAppearance;
@@ -114,6 +116,7 @@ internal sealed class SpacePresentation : IDisposable
         IUiService ui,
         FlightEnvironment environment,
         ApproachField approach,
+        BridgeSet bridge,
         SpacePresentationTuning tuning,
         NavigationOverlayTuning overlay)
     {
@@ -123,6 +126,7 @@ internal sealed class SpacePresentation : IDisposable
         gentleCurrent = environment.GentleCurrent;
         swiftCurrent = environment.SwiftCurrent;
         this.approach = approach ?? throw new ArgumentNullException(nameof(approach));
+        this.bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
         this.tuning = tuning;
         this.overlay = overlay.Validate();
 
@@ -176,9 +180,14 @@ internal sealed class SpacePresentation : IDisposable
         int starCount = checked(starWidth * starWidth);
         int flowWidth = checked((overlay.FlowLatticeRadius * 2) + 1);
         int flowCount = checked(flowWidth * flowWidth);
+        // The bridge set publishes its stationary facts through this same
+        // retained snapshot: one publisher owns the snapshot lifecycle, and a
+        // single combined room mesh never blocks the set's independent
+        // screen, lamp, and prop objects.
+        int bridgeCount = bridge.Facts.Length;
         AppearanceFact[] facts = new AppearanceFact[checked(
             FixedSceneFactCount + path.Points.Length + flowCount
-            + DebugVectorCount + CenterMarkerCount + approach.Obstacles.Count)];
+            + DebugVectorCount + CenterMarkerCount + approach.Obstacles.Count + bridgeCount)];
         facts[0] = new AppearanceFact(
                 (ulong)SpaceAppearanceObject.Ship,
                 false,
@@ -247,6 +256,8 @@ internal sealed class SpacePresentation : IDisposable
         index = PublishFlowLattice(facts, index, readout);
         index = PublishDebugVectors(facts, index, readout, contributions, ship);
         PublishCenterMarkers(facts, index, readout.HeadingRadians, ship);
+        index += CenterMarkerCount;
+        bridge.Facts.CopyTo(facts.AsSpan(index));
         appearance.PublishSnapshot(facts);
     }
 

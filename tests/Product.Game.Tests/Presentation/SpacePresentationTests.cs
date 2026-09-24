@@ -2,6 +2,7 @@ using System.Numerics;
 using System.Text;
 using Rusty.Engine;
 using Rusty.Space.Product.Approach;
+using Rusty.Space.Product.Bridge;
 using Rusty.Space.Product.Engine.Tests;
 using Rusty.Space.Product.Field;
 using Rusty.Space.Product.Flight;
@@ -396,6 +397,7 @@ public class SpacePresentationTests
         InstalledShip? ship = null)
     {
         SpaceTuning tuning = SpaceTuning.Defaults;
+        using BridgeSet bridge = new(engine.Graphics, engine.ImplicitSurfaces, tuning.Bridge);
         SpacePresentation presentation = new(
             engine.Graphics,
             engine.Ui,
@@ -404,6 +406,7 @@ public class SpacePresentationTests
                 new DriftCurrent(tuning.GentleCurrent),
                 new DriftCurrent(tuning.SwiftCurrent)),
             new ApproachField(engine.Dynamics, engine.Dynamics.CreateWorld(default), tuning.Approach),
+            bridge,
             tuning.Presentation,
             tuning.Overlay);
         presentation.Publish(

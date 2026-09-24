@@ -45,6 +45,7 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
     {
         ArgumentNullException.ThrowIfNull(registrar);
         registrar.Register(composition.Debug);
+        registrar.Register(composition.BridgeDebug);
     }
 
     public void Start()
