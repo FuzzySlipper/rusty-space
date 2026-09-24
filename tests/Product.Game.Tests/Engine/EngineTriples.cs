@@ -56,7 +56,7 @@ internal sealed class ServiceFaults
 }
 
 /// <summary>
-/// An <see cref="IEngineContext"/> whose six services Space actually composes
+/// An <see cref="IEngineContext"/> whose eight services Space actually composes
 /// against are recording doubles; every other service is absent, so a product
 /// change that reaches for one fails at once instead of quietly working.
 /// </summary>
@@ -70,6 +70,7 @@ internal sealed class RecordingEngine : IEngineContext
     public RecordingUi Ui { get; }
     public RecordingCameraView CameraView { get; }
     public RecordingImplicitSurfaces ImplicitSurfaces { get; }
+    public RecordingAudio Audio { get; }
 
     public RecordingEngine()
     {
@@ -79,6 +80,7 @@ internal sealed class RecordingEngine : IEngineContext
         Ui = new RecordingUi(Faults);
         CameraView = new RecordingCameraView(Faults);
         ImplicitSurfaces = new RecordingImplicitSurfaces(Faults);
+        Audio = new RecordingAudio(Faults);
     }
 
     IImplicitSurfacesService IEngineContext.ImplicitSurfaces => ImplicitSurfaces;
@@ -97,7 +99,7 @@ internal sealed class RecordingEngine : IEngineContext
     IGraphicsService IEngineContext.Graphics => Graphics;
     public IPresentationService Presentation => Absent<IPresentationService>();
     public IAnimationService Animation => Absent<IAnimationService>();
-    public IAudioService Audio => Absent<IAudioService>();
+    IAudioService IEngineContext.Audio => Audio;
     ICameraViewService IEngineContext.CameraView => CameraView;
     public IRandomService Random => Absent<IRandomService>();
     public IPersistenceService Persistence => Absent<IPersistenceService>();
@@ -375,6 +377,13 @@ internal sealed class RecordingGraphics(ServiceFaults faults) : IGraphicsService
     internal int LightReleases { get; private set; }
     internal int MaterialReleases { get; private set; }
     internal int SnapshotPublications { get; private set; }
+    internal int LightUpdates { get; private set; }
+
+    /// <summary>
+    /// The last intensity staged per light handle, so a test can read dimming
+    /// and brownout rather than only that a light was touched.
+    /// </summary>
+    internal Dictionary<ulong, float> LightLevels { get; } = [];
 
     /// <summary>
     /// The facts the last snapshot carried, so a test can read what the view
@@ -503,7 +512,12 @@ internal sealed class RecordingGraphics(ServiceFaults faults) : IGraphicsService
         return new Light(new LightHandle(NextLightHandle()), RecordLightRelease);
     }
 
-    public void UpdateLight(LightUpdateRequest arg0) => throw new NotSupportedException();
+    public void UpdateLight(LightUpdateRequest arg0)
+    {
+        faults.FailIf(nameof(UpdateLight));
+        LightUpdates++;
+        LightLevels[arg0.Light.Handle.Value] = arg0.Replacement.Descriptor.Intensity;
+    }
 
     public Light ReplaceLight(LightUpdateRequest arg0) => throw new NotSupportedException();
 
@@ -566,16 +580,32 @@ internal sealed class RecordingUi(ServiceFaults faults) : IUiService
 internal sealed class RecordingCameraView(ServiceFaults faults) : ICameraViewService
 {
     private readonly ServiceFaults faults = faults;
+    private ulong nextCameraHandle = 1UL;
 
     internal int CameraReleases { get; private set; }
+
+    /// <summary>Handles in creation order: chart first, helm second.</summary>
+    internal List<ulong> CreatedCameras { get; } = [];
+
+    /// <summary>Which camera each activation addressed, in order.</summary>
+    internal List<ulong> ActiveCameras { get; } = [];
+
+    /// <summary>The last pose update per camera handle.</summary>
+    internal Dictionary<ulong, CameraDescriptor> CameraPoses { get; } = [];
 
     public Camera CreateCamera(CameraDescriptor arg0)
     {
         faults.FailIf(nameof(CreateCamera));
-        return new Camera(default, RecordCameraRelease);
+        ulong handle = nextCameraHandle++;
+        CreatedCameras.Add(handle);
+        return new Camera(new CameraHandle(handle), RecordCameraRelease);
     }
 
-    public void SetActiveCamera(Camera arg0) => faults.FailIf(nameof(SetActiveCamera));
+    public void SetActiveCamera(Camera arg0)
+    {
+        faults.FailIf(nameof(SetActiveCamera));
+        ActiveCameras.Add(arg0.Handle.Value);
+    }
 
     private void RecordCameraRelease()
     {
@@ -583,7 +613,11 @@ internal sealed class RecordingCameraView(ServiceFaults faults) : ICameraViewSer
         faults.RecordRelease("camera");
     }
 
-    public void UpdateCamera(CameraUpdateRequest arg0) => throw new NotSupportedException();
+    public void UpdateCamera(CameraUpdateRequest arg0)
+    {
+        faults.FailIf(nameof(UpdateCamera));
+        CameraPoses[arg0.Camera.Handle.Value] = arg0.Descriptor;
+    }
 
     public void UpdateCameraSample(CameraSampleRequest arg0) => throw new NotSupportedException();
 
@@ -703,4 +737,97 @@ internal sealed class RecordingImplicitSurfaces(ServiceFaults faults) : IImplici
     public DensitySample SampleSampledVolume(SampledVolumeSampleRequest arg0) => throw new NotSupportedException();
 
     public void WriteSampledVolume(SampledVolumeWriteRequest arg0) => throw new NotSupportedException();
+}
+
+/// <summary>
+/// The audio side of the same seam: it hands out clips and voices the theater
+/// can stage, and records the last pitch/volume per voice plus retrigger
+/// calls, so a test can read the hum following spool and the thud answering
+/// an impact. Buses are untouched by the product, so they stay refused.
+/// </summary>
+internal sealed class RecordingAudio(ServiceFaults faults) : IAudioService
+{
+    private readonly ServiceFaults faults = faults;
+    private ulong nextClip;
+    private ulong nextVoice;
+
+    internal int VoiceReleases { get; private set; }
+    internal int ClipReleases { get; private set; }
+    internal int VoiceUpdates { get; private set; }
+
+    /// <summary>The last descriptor staged per voice handle.</summary>
+    internal Dictionary<ulong, AudioSourceDescriptor> VoiceDescriptors { get; } = [];
+
+    /// <summary>Retrigger calls per voice handle, in order.</summary>
+    internal List<ulong> RetriggeredVoices { get; } = [];
+
+    /// <summary>Clip paths opened, in order: the hum loop, then the thud.</summary>
+    internal List<string> OpenedClipPaths { get; } = [];
+
+    public AudioClip OpenClip(AudioClipRequest arg0)
+    {
+        faults.FailIf(nameof(OpenClip));
+        OpenedClipPaths.Add(arg0.Path);
+        return new AudioClip(new AudioClipHandle(++nextClip), RecordClipRelease);
+    }
+
+    public AudioVoice CreateVoice(AudioSourceDescriptor arg0)
+    {
+        faults.FailIf(nameof(CreateVoice));
+        ulong handle = ++nextVoice;
+        VoiceDescriptors[handle] = arg0;
+        return new AudioVoice(new AudioVoiceHandle(handle), RecordVoiceRelease);
+    }
+
+    public void UpdateVoice(AudioVoiceUpdateRequest arg0)
+    {
+        faults.FailIf(nameof(UpdateVoice));
+        VoiceUpdates++;
+        VoiceDescriptors[arg0.Voice.Handle.Value] = arg0.Descriptor;
+    }
+
+    public void ControlVoice(AudioVoiceControlRequest arg0)
+    {
+        faults.FailIf(nameof(ControlVoice));
+        if (arg0.Control == AudioVoiceControl.Retrigger)
+        {
+            RetriggeredVoices.Add(arg0.Voice.Handle.Value);
+        }
+    }
+
+    private void RecordVoiceRelease()
+    {
+        VoiceReleases++;
+        faults.RecordRelease("voice");
+    }
+
+    private void RecordClipRelease()
+    {
+        ClipReleases++;
+        faults.RecordRelease("clip");
+    }
+
+    public AudioSignalHandle Emit(AudioEmitRequest arg0) => throw new NotSupportedException();
+
+    public AudioClip OpenClipFromContent(AudioClipFromContentRequest arg0) => throw new NotSupportedException();
+
+    public AudioOptionalPreloadReceipt PreloadOptional(AudioClipRequest arg0) => throw new NotSupportedException();
+
+    public AudioReadout Read() => throw new NotSupportedException();
+
+    public AudioBusReadout ReadBus(AudioBusReadRequest arg0) => throw new NotSupportedException();
+
+    public AudioDiagnosticAtReceipt ReadDiagnosticAt(AudioDiagnosticAtRequest arg0) => throw new NotSupportedException();
+
+    public AudioRealizationReadout ReadRealization() => throw new NotSupportedException();
+
+    public AudioRealizationFactAtReceipt ReadRealizationFactAt(AudioRealizationFactAtRequest arg0) => throw new NotSupportedException();
+
+    public AudioVoiceReadout ReadVoice(AudioVoiceReadRequest arg0) => throw new NotSupportedException();
+
+    public AudioVoice ReplaceVoice(AudioVoiceReplaceRequest arg0) => throw new NotSupportedException();
+
+    public void SetBusMuted(AudioBusMutedRequest arg0) => throw new NotSupportedException();
+
+    public void SetBusVolume(AudioBusVolumeRequest arg0) => throw new NotSupportedException();
 }

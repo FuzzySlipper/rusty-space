@@ -25,7 +25,7 @@ public class BridgeSetTests
         "engineering corner",
     ];
 
-    private const int PresentationPartCount = 9;
+    private const int PresentationPartCount = 12;
 
     [Fact]
     public void ConstructionExtractsEachSurfaceExactlyOnce()

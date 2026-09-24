@@ -99,6 +99,16 @@ internal sealed class TrackingCamera : IDisposable
         camera.Dispose();
     }
 
+    /// <summary>
+    /// Returns the chart view to the active lane after a helm visit. The helm
+    /// camera owns the matching half of the sit-at-helm toggle.
+    /// </summary>
+    internal void Activate()
+    {
+        ThrowIfDisposed();
+        cameraView.SetActiveCamera(camera);
+    }
+
     private Vector3 AnchorPosition(PlanarVector shipPosition) => AnchorPosition(shipPosition, zoomScale);
 
     private Vector3 AnchorPosition(PlanarVector shipPosition, double scale)

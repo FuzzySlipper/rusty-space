@@ -87,6 +87,7 @@ internal sealed class SpacePresentation : IDisposable
     private readonly DriftCurrent swiftCurrent;
     private readonly ApproachField approach;
     private readonly BridgeSet bridge;
+    private readonly BridgeTheater theater;
     private readonly SpacePresentationTuning tuning;
     private readonly NavigationOverlayTuning overlay;
     private readonly Appearance shipAppearance;
@@ -117,6 +118,7 @@ internal sealed class SpacePresentation : IDisposable
         FlightEnvironment environment,
         ApproachField approach,
         BridgeSet bridge,
+        BridgeTheater theater,
         SpacePresentationTuning tuning,
         NavigationOverlayTuning overlay)
     {
@@ -127,6 +129,7 @@ internal sealed class SpacePresentation : IDisposable
         swiftCurrent = environment.SwiftCurrent;
         this.approach = approach ?? throw new ArgumentNullException(nameof(approach));
         this.bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
+        this.theater = theater ?? throw new ArgumentNullException(nameof(theater));
         this.tuning = tuning;
         this.overlay = overlay.Validate();
 
@@ -183,7 +186,9 @@ internal sealed class SpacePresentation : IDisposable
         // The bridge set publishes its stationary facts through this same
         // retained snapshot: one publisher owns the snapshot lifecycle, and a
         // single combined room mesh never blocks the set's independent
-        // screen, lamp, and prop objects.
+        // screen, lamp, and prop objects. The driven strip lamps publish one
+        // twin visible and the other hidden, following the theater's lamp
+        // state for the turn.
         int bridgeCount = bridge.Facts.Length;
         AppearanceFact[] facts = new AppearanceFact[checked(
             FixedSceneFactCount + path.Points.Length + flowCount
@@ -257,8 +262,35 @@ internal sealed class SpacePresentation : IDisposable
         index = PublishDebugVectors(facts, index, readout, contributions, ship);
         PublishCenterMarkers(facts, index, readout.HeadingRadians, ship);
         index += CenterMarkerCount;
-        bridge.Facts.CopyTo(facts.AsSpan(index));
+        PublishBridgeFacts(facts.AsSpan(index));
         appearance.PublishSnapshot(facts);
+    }
+
+    /// <summary>
+    /// The set's staged facts with the driven strip lamps resolved: each
+    /// driven lamp publishes its lit twin visible and its resting twin hidden,
+    /// or the reverse, following the theater's lamp state for the turn.
+    /// </summary>
+    private void PublishBridgeFacts(Span<AppearanceFact> destination)
+    {
+        bridge.Facts.CopyTo(destination);
+        TheaterLampState lamps = theater.Lamps;
+        for (int index = 0; index < destination.Length; index++)
+        {
+            AppearanceFact fact = destination[index];
+            bool visible = fact.ObjectId switch
+            {
+                BridgeSet.FirstBridgeObjectId + (ulong)BridgePart.StripFaultLamp => !lamps.FaultLit,
+                BridgeSet.FirstBridgeObjectId + (ulong)BridgePart.FaultLampLit => lamps.FaultLit,
+                BridgeSet.FirstBridgeObjectId + (ulong)BridgePart.StripReadyLamp => !lamps.ReadyLit,
+                BridgeSet.FirstBridgeObjectId + (ulong)BridgePart.ReadyLampLit => lamps.ReadyLit,
+                _ => fact.Visible,
+            };
+            if (!visible)
+            {
+                destination[index] = fact with { Visible = false };
+            }
+        }
     }
 
     /// <summary>

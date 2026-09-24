@@ -42,6 +42,16 @@ internal sealed class BridgeSet : IDisposable
     // parent theater owns any fault reaction that lights it.
     private static readonly Color StripFaultColor = new(0.50f, 0.12f, 0.10f, 1.0f);
 
+    // Lit twins for the two driven strip lamps: the presentation publishes
+    // one twin visible and the other hidden, so a lamp changes state without
+    // replacing an appearance handle mid-life.
+    private static readonly Color FaultLampLitColor = new(1.0f, 0.25f, 0.18f, 1.0f);
+    private static readonly Color ReadyLampLitColor = new(0.75f, 1.0f, 0.95f, 1.0f);
+
+    // The load needle reads warm paper-white against the console body so the
+    // theater's repeater stays legible at a glance from the seat.
+    private static readonly Color NeedleColor = new(1.0f, 0.88f, 0.66f, 1.0f);
+
     private static readonly Vector3 NoEmissionVector = Vector3.Zero;
     private static readonly Color WhiteTint = new(1.0f, 1.0f, 1.0f, 1.0f);
     private const float MatteRoughness = 0.85f;
@@ -66,6 +76,9 @@ internal sealed class BridgeSet : IDisposable
         BridgePart.StripFaultLamp,
         BridgePart.EngineeringStatusLamp,
         BridgePart.EngineeringTaskLamp,
+        BridgePart.FaultLampLit,
+        BridgePart.ReadyLampLit,
+        BridgePart.LoadNeedle,
     ];
 
     private readonly IGraphicsService appearance;
@@ -76,6 +89,10 @@ internal sealed class BridgeSet : IDisposable
     private readonly List<Light> lights = [];
     private readonly List<string> partNames = [];
     private readonly AppearanceFact[] facts;
+    private LightRequest overheadRequest;
+    private LightRequest helmRequest;
+    private Transform propBase = BridgeRecipe.Identity;
+    private Transform needleBase = BridgeRecipe.Identity;
     private bool released;
 
     internal BridgeSet(IGraphicsService appearance, IImplicitSurfacesService implicitSurfaces, BridgeLayout layout)
@@ -215,13 +232,27 @@ internal sealed class BridgeSet : IDisposable
         primitiveAppearances.Add(appearance.CreatePrimitive(new PrimitiveAppearanceRequest(
             PrimitiveGeometry.Cube, Wireframe: false, palette.OverheadGlow)));
         partNames.Add("engineering task lamp");
+
+        // Lit twins for the driven strip lamps, then the load needle: the
+        // needle is a thin module below the side display whose fact rotation
+        // the theater sweeps with field load. Identities follow creation
+        // order, and only one lamp twin is ever published visible.
+        primitiveAppearances.Add(appearance.CreatePrimitive(new PrimitiveAppearanceRequest(
+            PrimitiveGeometry.Cube, Wireframe: false, FaultLampLitColor)));
+        partNames.Add("strip fault lamp (lit)");
+        primitiveAppearances.Add(appearance.CreatePrimitive(new PrimitiveAppearanceRequest(
+            PrimitiveGeometry.Cube, Wireframe: false, ReadyLampLitColor)));
+        partNames.Add("strip ready lamp (lit)");
+        primitiveAppearances.Add(appearance.CreatePrimitive(new PrimitiveAppearanceRequest(
+            PrimitiveGeometry.Cube, Wireframe: false, NeedleColor)));
+        partNames.Add("load needle");
     }
 
     private void CreatePracticalLights()
     {
         BridgePlacements placements = Layout.Placements;
         BridgePalette palette = Layout.Palette;
-        lights.Add(appearance.CreateLight(new LightRequest(
+        overheadRequest = new LightRequest(
             FirstBridgeLightId,
             HasParentObject: false,
             ParentObjectId: 0,
@@ -237,12 +268,11 @@ internal sealed class BridgeSet : IDisposable
                 Decay: 2.0f,
                 OuterAngleRadians: 0.0f,
                 Penumbra: 0.0f,
-                LightShadowIntent.Disabled))));
-        lights.Add(appearance.CreateLight(new LightRequest(
-            FirstBridgeLightId + 1,
-            HasParentObject: false,
-            ParentObjectId: 0,
-            new LightDescriptor(
+                LightShadowIntent.Disabled));
+        helmRequest = overheadRequest with
+        {
+            LogicalId = FirstBridgeLightId + 1,
+            Descriptor = new LightDescriptor(
                 LightKind.Point,
                 new Vector3(palette.HelmGlow.R, palette.HelmGlow.G, palette.HelmGlow.B),
                 Intensity: 1.0f,
@@ -254,7 +284,63 @@ internal sealed class BridgeSet : IDisposable
                 Decay: 2.0f,
                 OuterAngleRadians: 0.0f,
                 Penumbra: 0.0f,
-                LightShadowIntent.Disabled))));
+                LightShadowIntent.Disabled),
+        };
+        lights.Add(appearance.CreateLight(overheadRequest));
+        lights.Add(appearance.CreateLight(helmRequest));
+    }
+
+    /// <summary>
+    /// The theater's per-turn light levels as fractions of the staged base
+    /// intensities: dimming under load, brownout sag and flicker on faults.
+    /// </summary>
+    internal void UpdatePracticalLights(float overheadLevel, float helmLevel)
+    {
+        appearance.UpdateLight(new LightUpdateRequest(
+            lights[0],
+            overheadRequest with
+            {
+                Descriptor = overheadRequest.Descriptor with
+                {
+                    Intensity = overheadRequest.Descriptor.Intensity * overheadLevel,
+                },
+            }));
+        appearance.UpdateLight(new LightUpdateRequest(
+            lights[1],
+            helmRequest with
+            {
+                Descriptor = helmRequest.Descriptor with
+                {
+                    Intensity = helmRequest.Descriptor.Intensity * helmLevel,
+                },
+            }));
+    }
+
+    /// <summary>
+    /// Re-poses the loose prop about its pivot by rewriting its fact's
+    /// rotation. The mesh is never re-extracted; the next snapshot carries
+    /// the new transform.
+    /// </summary>
+    internal void SetPropSway(Quaternion sway)
+    {
+        int propIndex = meshes.Count;
+        facts[propIndex] = facts[propIndex] with
+        {
+            Transform = propBase with { Rotation = sway * propBase.Rotation },
+        };
+    }
+
+    /// <summary>
+    /// Sweeps the load needle about the housing face normal by rewriting its
+    /// fact's rotation, the same staged-fact lane as the prop.
+    /// </summary>
+    internal void SetNeedleRotation(Quaternion rotation)
+    {
+        int needleIndex = meshes.Count + (int)BridgePart.LoadNeedle - (int)BridgePart.PropSlate;
+        facts[needleIndex] = facts[needleIndex] with
+        {
+            Transform = needleBase with { Rotation = rotation * needleBase.Rotation },
+        };
     }
 
     private AppearanceFact[] BuildFacts(List<Transform> placements)
@@ -285,8 +371,16 @@ internal sealed class BridgeSet : IDisposable
                 RenderLayer.Scene);
         }
 
+        propBase = PartTransform(BridgePart.PropSlate);
+        needleBase = PartTransform(BridgePart.LoadNeedle);
         return built;
     }
+
+    /// <summary>Center of the load needle's sweep on the side housing face.</summary>
+    internal Vector3 NeedlePivot => Layout.ToWorld(new Vector3(
+        Layout.SideHousingFaceX - 0.04f,
+        0.45f,
+        Layout.SideHousingCenterZ));
 
     private Transform PartTransform(BridgePart part)
     {
@@ -325,6 +419,12 @@ internal sealed class BridgeSet : IDisposable
                 Placements.PropPivot,
                 BridgeRecipe.Identity.Rotation,
                 Layout.PropSize),
+            BridgePart.FaultLampLit => LampOnStrip(0.5f),
+            BridgePart.ReadyLampLit => LampOnStrip(-0.5f),
+            BridgePart.LoadNeedle => new Transform(
+                NeedlePivot,
+                BridgeRecipe.Identity.Rotation,
+                new Vector3(0.025f, 0.34f, 0.025f)),
             // The switch names every member; anything else is a programming
             // error the construction-time BuildFacts surfaces at once.
             _ => throw new ArgumentOutOfRangeException(nameof(part)),
@@ -420,4 +520,7 @@ internal enum BridgePart
     StripFaultLamp = 13,
     EngineeringStatusLamp = 14,
     EngineeringTaskLamp = 15,
+    FaultLampLit = 16,
+    ReadyLampLit = 17,
+    LoadNeedle = 18,
 }

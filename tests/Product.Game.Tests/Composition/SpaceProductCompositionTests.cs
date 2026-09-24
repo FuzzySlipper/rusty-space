@@ -7,13 +7,13 @@ namespace Rusty.Space.Product.Tests;
 
 /// <summary>
 /// What happens to what Space opened when a create dies partway through. The
-/// composition builds flight, then the bridge set, then the projection, then
-/// the camera, and the product publishes once the whole thing stands; each of
-/// those stages can fail, and the owners a failed construction had already
-/// opened cannot be left for a product nobody can reach. Handles whose own
-/// constructor never returned are a different matter: they belong to the
-/// create call, which the Engine discards whole, and these tests record that
-/// Space does not pretend to release them.
+/// composition builds flight, then the bridge set, then its theater, then the
+/// projection, then the cameras, and the product publishes once the whole
+/// thing stands; each of those stages can fail, and the owners a failed
+/// construction had already opened cannot be left for a product nobody can
+/// reach. Handles whose own constructor never returned are a different matter:
+/// they belong to the create call, which the Engine discards whole, and these
+/// tests record that Space does not pretend to release them.
 /// </summary>
 public class SpaceProductCompositionTests
 {
@@ -28,12 +28,15 @@ public class SpaceProductCompositionTests
 
     // Every appearance handle the bridge set opens at construction: one per
     // extracted implicit surface plus the separately addressable screens,
-    // lamps, and prop slate. Its lights, mesh resources, and materials are
-    // counted apart.
-    private const int BridgeAppearanceHandleCount = 16;
+    // lamps, prop slate, lit lamp twins, and load needle. Its lights, mesh
+    // resources, and materials are counted apart, as are the theater's
+    // voices and clips.
+    private const int BridgeAppearanceHandleCount = 19;
     private const int BridgeLightCount = 2;
     private const int BridgeMeshCount = 7;
     private const int BridgeMaterialCount = 6;
+    private const int TheaterVoiceCount = 2;
+    private const int TheaterClipCount = 2;
 
     // Every body the flight opens in the Engine: the hull, and one for each piece
     // of authored approach geometry the chart stands on.
@@ -52,8 +55,11 @@ public class SpaceProductCompositionTests
         Assert.Equal(BridgeLightCount, engine.Graphics.LightReleases);
         Assert.Equal(BridgeMeshCount, engine.ImplicitSurfaces.MeshReleases);
         Assert.Equal(BridgeMaterialCount, engine.Graphics.MaterialReleases);
+        Assert.Equal(TheaterVoiceCount, engine.Audio.VoiceReleases);
+        Assert.Equal(TheaterClipCount, engine.Audio.ClipReleases);
+        Assert.Equal(2, engine.CameraView.CameraReleases);
         Assert.Equal(
-            ["camera", "ui", "appearance", "light", "appearance", "mesh", "material", "body", "world"],
+            ["camera", "ui", "appearance", "voice", "clip", "light", "appearance", "mesh", "material", "body", "world"],
             engine.Faults.OwnersReleasedInOrder());
     }
 
@@ -61,8 +67,8 @@ public class SpaceProductCompositionTests
     public void ACameraThatFailsToActivateReleasesTheProjectionAndFlight()
     {
         // Camera creation precedes camera activation, so a failure at the second
-        // step means the product was holding a bridge set, a projection, and a
-        // flight and had only just failed to acquire a view.
+        // step means the product was holding a bridge set, its theater, a
+        // projection, and a flight and had only just failed to acquire a view.
         RecordingEngine engine = new();
         engine.Faults.FailOn = nameof(ICameraViewService.SetActiveCamera);
 
@@ -76,6 +82,8 @@ public class SpaceProductCompositionTests
         Assert.Equal(BridgeLightCount, engine.Graphics.LightReleases);
         Assert.Equal(BridgeMeshCount, engine.ImplicitSurfaces.MeshReleases);
         Assert.Equal(BridgeMaterialCount, engine.Graphics.MaterialReleases);
+        Assert.Equal(TheaterVoiceCount, engine.Audio.VoiceReleases);
+        Assert.Equal(TheaterClipCount, engine.Audio.ClipReleases);
         Assert.Equal(OpenedBodies, engine.Dynamics.BodyReleases);
         Assert.Equal(1, engine.Dynamics.WorldReleases);
         AssertReleasedDeepestFirst(engine);
@@ -86,9 +94,9 @@ public class SpaceProductCompositionTests
     {
         // The projection's constructor opens its whole set of appearances and
         // then fails on its stream, so the projection was never a held owner:
-        // the fully built bridge set and the flight are what the composition
-        // has to put down. The projection's own partial appearances belong to
-        // the failed create call, which the Engine discards whole.
+        // the fully built bridge set, its theater, and the flight are what the
+        // composition has to put down. The projection's own partial appearances
+        // belong to the failed create call, which the Engine discards whole.
         RecordingEngine engine = new();
         engine.Faults.FailOn = nameof(IUiService.OpenStream);
 
@@ -100,6 +108,8 @@ public class SpaceProductCompositionTests
         Assert.Equal(BridgeLightCount, engine.Graphics.LightReleases);
         Assert.Equal(BridgeMeshCount, engine.ImplicitSurfaces.MeshReleases);
         Assert.Equal(BridgeMaterialCount, engine.Graphics.MaterialReleases);
+        Assert.Equal(TheaterVoiceCount, engine.Audio.VoiceReleases);
+        Assert.Equal(TheaterClipCount, engine.Audio.ClipReleases);
         Assert.Equal(OpenedBodies, engine.Dynamics.BodyReleases);
         Assert.Equal(1, engine.Dynamics.WorldReleases);
     }
@@ -115,7 +125,7 @@ public class SpaceProductCompositionTests
 
         Assert.Throws<InjectedFault>(() => new SpaceProduct(ProductContexts.For(engine)));
 
-        Assert.Equal(1, engine.CameraView.CameraReleases);
+        Assert.Equal(2, engine.CameraView.CameraReleases);
         Assert.Equal(1, engine.Ui.StreamReleases);
         Assert.Equal(
             ProjectionHandleCount + BridgeAppearanceHandleCount,
@@ -123,10 +133,12 @@ public class SpaceProductCompositionTests
         Assert.Equal(BridgeLightCount, engine.Graphics.LightReleases);
         Assert.Equal(BridgeMeshCount, engine.ImplicitSurfaces.MeshReleases);
         Assert.Equal(BridgeMaterialCount, engine.Graphics.MaterialReleases);
+        Assert.Equal(TheaterVoiceCount, engine.Audio.VoiceReleases);
+        Assert.Equal(TheaterClipCount, engine.Audio.ClipReleases);
         Assert.Equal(OpenedBodies, engine.Dynamics.BodyReleases);
         Assert.Equal(1, engine.Dynamics.WorldReleases);
         Assert.Equal(
-            ["camera", "ui", "appearance", "light", "appearance", "mesh", "material", "body", "world"],
+            ["camera", "ui", "appearance", "voice", "clip", "light", "appearance", "mesh", "material", "body", "world"],
             engine.Faults.OwnersReleasedInOrder());
     }
 
@@ -147,6 +159,32 @@ public class SpaceProductCompositionTests
         Assert.Equal(0, engine.Graphics.LightReleases);
         Assert.Equal(1, engine.ImplicitSurfaces.MeshReleases);
         Assert.Equal(BridgeMaterialCount, engine.Graphics.MaterialReleases);
+        Assert.Equal(0, engine.Audio.VoiceReleases);
+        Assert.Equal(0, engine.Audio.ClipReleases);
+        Assert.Equal(OpenedBodies, engine.Dynamics.BodyReleases);
+        Assert.Equal(1, engine.Dynamics.WorldReleases);
+    }
+
+    [Fact]
+    public void ATheaterThatFailsItsFirstVoiceLeavesItsClipsToTheFailedCreate()
+    {
+        // The theater fails while staging its voices. Like the projection, it
+        // issues no releases for its half-built self: the clips belong to the
+        // failed create call, which the Engine discards whole. The composition
+        // puts down the fully built set and the flight it was holding.
+        RecordingEngine engine = new();
+        engine.Faults.FailOn = nameof(IAudioService.CreateVoice);
+
+        Assert.Throws<InjectedFault>(() => new SpaceProduct(ProductContexts.For(engine)));
+
+        Assert.Equal(0, engine.CameraView.CameraReleases);
+        Assert.Equal(0, engine.Ui.StreamReleases);
+        Assert.Equal(BridgeAppearanceHandleCount, engine.Graphics.AppearanceReleases);
+        Assert.Equal(BridgeLightCount, engine.Graphics.LightReleases);
+        Assert.Equal(BridgeMeshCount, engine.ImplicitSurfaces.MeshReleases);
+        Assert.Equal(BridgeMaterialCount, engine.Graphics.MaterialReleases);
+        Assert.Equal(0, engine.Audio.VoiceReleases);
+        Assert.Equal(0, engine.Audio.ClipReleases);
         Assert.Equal(OpenedBodies, engine.Dynamics.BodyReleases);
         Assert.Equal(1, engine.Dynamics.WorldReleases);
     }

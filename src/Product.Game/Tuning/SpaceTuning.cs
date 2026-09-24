@@ -26,6 +26,7 @@ internal sealed record SpaceTuning(
     NavigationOverlayTuning Overlay,
     TrajectoryTuning Trajectory,
     BridgeLayout Bridge,
+    TheaterTuning Theater,
     CameraTuning Camera)
 {
     internal static SpaceTuning Defaults { get; } = new(
@@ -182,6 +183,7 @@ internal sealed record SpaceTuning(
             StruckMarkColor: new Color(1.0f, 0.34f, 0.24f, 0.92f)),
         Trajectory: new(SampleCount: 10, TicksPerSample: 9),
         Bridge: BridgeLayout.Defaults,
+        Theater: TheaterTuning.Defaults,
         Camera: new(
             PitchDegrees: -55.0,
             YawDegrees: 90.0,
@@ -211,6 +213,7 @@ internal sealed record SpaceTuning(
         Overlay = Overlay.Validate(),
         Trajectory = Trajectory.Validate(),
         Bridge = Bridge.Validate(),
+        Theater = Theater.Validate(),
         Camera = Camera.Validate(),
     };
 }

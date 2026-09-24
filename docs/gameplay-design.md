@@ -107,9 +107,22 @@ Product owners, one mutable state family each:
   and sampling; no Engine mechanism recreated.
 - `Bridge/BridgeSet` — the owner that generates the recipe's meshes once at
   construction, retains mesh resources, appearances, practical lights, and
-  the separately addressable screen/lamp/prop presentation objects for the
-  scene lifetime, and publishes their stationary facts. Reads and writes no
-  flight state; the parent theater owns every telemetry reaction.
+  the separately addressable screen/lamp/prop/needle presentation objects for
+  the scene lifetime, and publishes their stationary facts. Reads and writes
+  no flight state; the theater below moves only what the set exposes lanes
+  for.
+- `Bridge/BridgeTheater` — the set's telemetry reactions, driven strictly
+  from the P0 telemetry stream and the fitted ship: low-pass filtered camera
+  lean (1 Hz), prop sway (2.5 Hz), spool/load smoothing for the drive hum and
+  dimming, deterministic admitted-time brownout flicker on faults, lamp twin
+  states, and the load needle sweep. Each reaction gated by its tuning
+  enable; all off means zero Engine calls. Never touches flight state.
+- `Bridge/TheaterTuning` — the stated cutoffs, gains, clamps, hum ranges,
+  dimming floor, and reaction enables. Stepped on admitted simulated time.
+- `Viewing/HelmCamera` — the seated helm camera around a second Engine-owned
+  camera. The C-key sit toggle (`space.bridge.sit`) switches it with the
+  chart camera through the Engine's active-camera lane; neither camera writes
+  flight state.
 - `Presentation/SpacePresentation` — product readouts out to Engine
   appearance and UI facts, including the navigation reading described below;
   retains the current snapshot and retires it before the terminal runtime

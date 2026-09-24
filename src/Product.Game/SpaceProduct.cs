@@ -66,6 +66,11 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
     public ProductUpdateResult Update(ProductUpdate update)
     {
         RequireState(SpaceLifecycleState.Running, nameof(Update));
+        if (SitTogglePressed(update.Input))
+        {
+            composition.SetSeated(!composition.Seated);
+        }
+
         FlightAdmission admission = composition.Flight.Admit(update);
         if (admission.FaultRequested)
         {
@@ -74,12 +79,29 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
             return ProductUpdateResult.ReportFault;
         }
 
+        // The theater reads the telemetry the turn admitted and stages its
+        // reactions before the projection republishes: filters always track,
+        // Engine calls happen only for enabled reactions on a published turn.
+        composition.Theater.Advance(
+            composition.Flight.Telemetry,
+            composition.Flight.Ship,
+            composition.Flight.ImpactCount,
+            admission.TurnDuration,
+            admission.Published);
         if (admission.Published)
         {
             PublishFlight();
         }
 
         FollowCamera(update.Input, admission.TurnDuration);
+        // The helm pose is published only while sat in it: at the chart the
+        // camera needs no upkeep, and with the reactions off nothing here may
+        // stage. Sitting recomputes the leaned pose on its first turn.
+        if (composition.Seated)
+        {
+            composition.Helm.Follow(composition.Theater.Lean);
+        }
+
         return ProductUpdateResult.None;
     }
 
@@ -87,8 +109,13 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
     {
         RequireState(SpaceLifecycleState.Running, nameof(Restart));
         composition.Flight.ResetFlight();
+        composition.Theater.Reset();
         PublishFlight();
         FollowCamera(ReadOnlySpan<ProductInputEvent>.Empty, TimeSpan.Zero);
+        if (composition.Seated)
+        {
+            composition.Helm.Follow(composition.Theater.Lean);
+        }
     }
 
     public void Pause()
@@ -149,6 +176,28 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
             turnDuration,
             composition.Flight.ResetCount,
             input);
+
+    /// <summary>
+    /// The sit-at-helm toggle (C): a pressed edge on the declared digital
+    /// intent, the same one-shot shape as the stabilizer switch. The flight
+    /// mapper ignores the intent; only the seat answers it.
+    /// </summary>
+    private static bool SitTogglePressed(ReadOnlySpan<ProductInputEvent> input)
+    {
+        foreach (ProductInputEvent inputEvent in input)
+        {
+            if (inputEvent.Kind == InputEventKind.MappedDigital
+                && inputEvent.Phase == InputPhase.Pressed
+                && inputEvent.Intent.Span.SequenceEqual(SitToggleIntent))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static ReadOnlySpan<byte> SitToggleIntent => "space.bridge.sit"u8;
 
     private void RequireState(SpaceLifecycleState expected, string operation)
     {

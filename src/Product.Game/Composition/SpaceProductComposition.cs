@@ -30,23 +30,31 @@ internal sealed class SpaceProductComposition : IDisposable
             Tuning.Trajectory,
             Tuning.Approach);
         BridgeSet? bridge = null;
+        BridgeTheater? theater = null;
         SpacePresentation? presentation = null;
         TrackingCamera? camera = null;
+        HelmCamera? helm = null;
         try
         {
             // The set stages its meshes once here and retains them for the
-            // scene lifetime; the projection below only republishes its
-            // precomputed stationary facts each turn.
+            // scene lifetime; the theater below only moves its lights, prop,
+            // voices, and repeater, and the projection republishes the
+            // resulting facts each turn.
             bridge = new BridgeSet(
                 Engine.Graphics,
                 Engine.ImplicitSurfaces,
                 Tuning.Bridge);
+            theater = new BridgeTheater(
+                Engine.Audio,
+                bridge,
+                Tuning.Theater);
             presentation = new SpacePresentation(
                 Engine.Graphics,
                 Engine.Ui,
                 flight.Environment,
                 flight.Approach,
                 bridge,
+                theater,
                 Tuning.Presentation,
                 Tuning.Overlay);
             camera = new TrackingCamera(
@@ -54,20 +62,26 @@ internal sealed class SpaceProductComposition : IDisposable
                 Tuning.Camera,
                 flight.Readout,
                 flight.ResetCount);
+            helm = new HelmCamera(Engine.CameraView, Tuning.Bridge);
             Flight = flight;
             Bridge = bridge;
+            Theater = theater;
             Presentation = presentation;
             Camera = camera;
+            Helm = helm;
+            Seated = false;
             Debug = new FlightDebugModule(flight);
-            BridgeDebug = new BridgeDebugModule(bridge);
+            BridgeDebug = new BridgeDebugModule(bridge, theater, () => Seated);
         }
         catch
         {
             // Whatever got as far as opening Engine handles is put back down in
             // the reverse of the order that opened it, so a create that fails
             // partway leaves no owner holding a handle nobody can reach.
+            helm?.Dispose();
             camera?.Dispose();
             presentation?.Dispose();
+            theater?.Dispose();
             bridge?.Dispose();
             flight.Dispose();
             throw;
@@ -82,24 +96,49 @@ internal sealed class SpaceProductComposition : IDisposable
 
     internal BridgeSet Bridge { get; }
 
+    internal BridgeTheater Theater { get; }
+
     internal SpacePresentation Presentation { get; }
 
     internal TrackingCamera Camera { get; }
+
+    internal HelmCamera Helm { get; }
+
+    internal bool Seated { get; private set; }
 
     internal FlightDebugModule Debug { get; }
 
     internal BridgeDebugModule BridgeDebug { get; }
 
     /// <summary>
+    /// The sit-at-helm toggle: sitting activates the helm camera, standing
+    /// returns to the chart. Cameras frame; they never write flight state.
+    /// </summary>
+    internal void SetSeated(bool seated)
+    {
+        Seated = seated;
+        if (seated)
+        {
+            Helm.Activate();
+        }
+        else
+        {
+            Camera.Activate();
+        }
+    }
+
+    /// <summary>
     /// Puts the composed owners down in the reverse of the order that built
-    /// them: the camera frames the flight it reads and the projection publishes
-    /// facts about the flight and the set, so each is released before what it
-    /// depends on.
+    /// them: the cameras frame the flight and the set they read, the
+    /// projection publishes about them, and the theater moves only what the
+    /// projection republishes, so each is released before what it depends on.
     /// </summary>
     public void Dispose()
     {
+        Helm.Dispose();
         Camera.Dispose();
         Presentation.Dispose();
+        Theater.Dispose();
         Bridge.Dispose();
         Flight.Dispose();
     }

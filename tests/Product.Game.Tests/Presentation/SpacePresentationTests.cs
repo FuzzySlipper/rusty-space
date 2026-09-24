@@ -343,10 +343,95 @@ public class SpacePresentationTests
             > mark.Transform.Scale.X);
     }
 
+    [Fact]
+    public void AJammedEffectorPublishesTheLitFaultLampAndHidesItsRestingTwin()
+    {
+        RecordingEngine engine = new();
+        SpaceTuning tuning = SpaceTuning.Defaults;
+        using BridgeSet bridge = new(engine.Graphics, engine.ImplicitSurfaces, tuning.Bridge);
+        using BridgeTheater theater = new(engine.Audio, bridge, tuning.Theater);
+        SpacePresentation presentation = new(
+            engine.Graphics,
+            engine.Ui,
+            new FlightEnvironment(
+                new StellarField(tuning.Field),
+                new DriftCurrent(tuning.GentleCurrent),
+                new DriftCurrent(tuning.SwiftCurrent)),
+            new ApproachField(engine.Dynamics, engine.Dynamics.CreateWorld(default), tuning.Approach),
+            bridge,
+            theater,
+            tuning.Presentation,
+            tuning.Overlay);
+        InstalledShip jammed = new InstalledShip(tuning.Ship, tuning.Flight.MaximumThrust, tuning.Damage);
+        jammed.TakeImpact(new PlanarVector(0.0, -1.0), HardArrival);
+        theater.Advance(
+            FlightTelemetrySnapshot.Neutral,
+            jammed,
+            0UL,
+            RepairStep,
+            published: true);
+        presentation.Publish(
+            AtRest(),
+            FlightTelemetrySnapshot.Neutral,
+            FlightForces.Zero,
+            FlightPath.None,
+            new HullStrike(HullImpact.None, null),
+            jammed);
+
+        AppearanceFact[] facts = engine.Graphics.LastSnapshot;
+        Assert.False(Fact(facts, FaultLampObjectId).Visible);
+        Assert.True(Fact(facts, FaultLampLitObjectId).Visible);
+    }
+
+    [Fact]
+    public void ASpoolingDrivePublishesTheLitReadyLampAndHidesItsRestingTwin()
+    {
+        RecordingEngine engine = new();
+        SpaceTuning tuning = SpaceTuning.Defaults;
+        using BridgeSet bridge = new(engine.Graphics, engine.ImplicitSurfaces, tuning.Bridge);
+        using BridgeTheater theater = new(engine.Audio, bridge, tuning.Theater);
+        SpacePresentation presentation = new(
+            engine.Graphics,
+            engine.Ui,
+            new FlightEnvironment(
+                new StellarField(tuning.Field),
+                new DriftCurrent(tuning.GentleCurrent),
+                new DriftCurrent(tuning.SwiftCurrent)),
+            new ApproachField(engine.Dynamics, engine.Dynamics.CreateWorld(default), tuning.Approach),
+            bridge,
+            theater,
+            tuning.Presentation,
+            tuning.Overlay);
+        InstalledShip ship = new InstalledShip(tuning.Ship, tuning.Flight.MaximumThrust, tuning.Damage);
+        FlightTelemetrySnapshot spooling = new(
+            0UL, 1U, 0.0, 0.0, 0.0, 1.0, 0.0, false, false, 0.6, 0.0, 0.0,
+            PlanarVector.Zero, 0.0, null);
+        for (int turn = 0; turn < 240; turn++)
+        {
+            theater.Advance(spooling, ship, 0UL, RepairStep, published: true);
+        }
+
+        presentation.Publish(
+            AtRest(),
+            FlightTelemetrySnapshot.Neutral,
+            FlightForces.Zero,
+            FlightPath.None,
+            new HullStrike(HullImpact.None, null),
+            ship);
+
+        AppearanceFact[] facts = engine.Graphics.LastSnapshot;
+        Assert.False(Fact(facts, ReadyLampObjectId).Visible);
+        Assert.True(Fact(facts, ReadyLampLitObjectId).Visible);
+    }
+
     // The chart's obstacles are published first at their own end of the id range,
     // followed by the mark a contact leaves on the hull.
     private const ulong FirstObstacleObjectId = 5_000UL;
     private const ulong StruckMarkObjectId = 6_000UL;
+    private const ulong FaultLampObjectId = 7_013UL;
+    private const ulong FaultLampLitObjectId = 7_016UL;
+    private const ulong ReadyLampObjectId = 7_011UL;
+    private const ulong ReadyLampLitObjectId = 7_017UL;
     private const string ShipMeshContentPath = "meshes/ship.json";
     private const double HardArrival = 8.0;
     private static readonly TimeSpan RepairStep = TimeSpan.FromSeconds(1.0 / 60.0);
@@ -398,6 +483,7 @@ public class SpacePresentationTests
     {
         SpaceTuning tuning = SpaceTuning.Defaults;
         using BridgeSet bridge = new(engine.Graphics, engine.ImplicitSurfaces, tuning.Bridge);
+        using BridgeTheater theater = new(engine.Audio, bridge, tuning.Theater);
         SpacePresentation presentation = new(
             engine.Graphics,
             engine.Ui,
@@ -407,6 +493,7 @@ public class SpacePresentationTests
                 new DriftCurrent(tuning.SwiftCurrent)),
             new ApproachField(engine.Dynamics, engine.Dynamics.CreateWorld(default), tuning.Approach),
             bridge,
+            theater,
             tuning.Presentation,
             tuning.Overlay);
         presentation.Publish(
