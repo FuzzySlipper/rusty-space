@@ -15,6 +15,17 @@ and host integration. If a needed mechanism is absent from the safe SDK,
 record the exact upstream request and stop that slice; do not add a local
 renderer, loop, bridge, or browser simulation.
 
+## Demo
+
+![A cyan hull under a chase camera flying toward an authored wreck and boulder cluster with a yellow station, its projected navigation path leading in, over the flight HUD](docs/images/rusty-space-approach.png)
+
+Flown and captured at 1280x720 on the GPU-backed browser playtest lane (remote
+Firefox driven by the crew playtest controller) against the development host
+described below, with the same `W` thrust control the game itself admits. The hull
+is approaching the authored wreck and boulder cluster on the `kestrel-approach`
+chart. The capture transport is a video stream of the browser window, so the image
+is not correlated to a specific Engine render submission.
+
 ## Repository shape
 
 ```text
