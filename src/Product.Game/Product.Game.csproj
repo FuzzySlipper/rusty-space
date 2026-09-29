@@ -32,7 +32,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Rusty.Engine" Version="$(RustyEnginePackageVersion)">
+    <PackageReference Include="Rusty.Engine" Version="[$(RustyEnginePackageVersion)]">
       <!-- An Engine contributor may explicitly supply a matching source
            project. The package remains the ordinary product default. -->
       <ExcludeAssets Condition="'$(RustyEngineUseSourceDevelopment)' == 'true'">compile;runtime</ExcludeAssets>
