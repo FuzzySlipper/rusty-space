@@ -11,7 +11,6 @@
     <!-- The immutable SDK owns the generated CoreCLR and NativeAOT
          composition below obj. Engine source use is an explicit contributor
          override, never an adjacent-checkout default. -->
-    <RustyEngineSdkPackageVersion>0.1.0-dev.681ec653ab6a</RustyEngineSdkPackageVersion>
     <RustyEngineProductEntryType>Rusty.Space.Product.SpaceProduct</RustyEngineProductEntryType>
     <RustyEngineProductId>rusty-space</RustyEngineProductId>
     <RustyEngineProductTitle>Rusty Space</RustyEngineProductTitle>
@@ -33,7 +32,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Rusty.Engine" Version="$(RustyEngineSdkPackageVersion)">
+    <PackageReference Include="Rusty.Engine" Version="$(RustyEnginePackageVersion)">
       <!-- An Engine contributor may explicitly supply a matching source
            project. The package remains the ordinary product default. -->
       <ExcludeAssets Condition="'$(RustyEngineUseSourceDevelopment)' == 'true'">compile;runtime</ExcludeAssets>

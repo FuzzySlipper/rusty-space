@@ -14,9 +14,8 @@ and progress live in Den under campaigns #8305 and #8366.
 
 One exact matched release pair: an SDK package version plus the runtime pack
 built from the same Engine revision. Its identity lives in machine
-configuration — `RustyEngineSdkPackageVersion` in `Product.Game.csproj`, the
-launch commands in `.den-serve.json` and `.den-playwright.json`, and the
-extracted pack under the ignored `.runtime/` tree — and is recorded on the
+configuration — `RustyEnginePackageVersion` in `Directory.Build.props`, which
+the `rusty` CLI installs and runs — and is recorded on the
 adopting Den task. Docs deliberately do not name it: a revision in guidance
 goes stale the moment a pair is superseded, and a stale revision reads like a
 supported capability.

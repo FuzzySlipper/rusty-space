@@ -17,10 +17,8 @@ src/ui/main.js (product-owned DOM UI)
 ```
 
 The product runs on one exact matched release pair, and this document does not
-name it. `RustyEngineSdkPackageVersion` in `Product.Game.csproj` carries the
-package version; `.den-serve.json` and `.den-playwright.json` name the
-installed runtime pack under the ignored `.runtime/` tree; the adopting Den
-task records the pair. Both halves come from one Engine revision and carry a
+name it. `RustyEnginePackageVersion` in `Directory.Build.props` is the one pin;
+the `rusty` CLI installs and runs that pair; the adopting Den task records it. Both halves come from one Engine revision and carry a
 matching generated ABI identity. Keep the pair together and let the host
 reject a mismatch; products do not add version negotiation, copied Engine
 assets, or handwritten interop. Adoption is the checksummed archive and
@@ -52,12 +50,10 @@ them from drifting into one another, is stated in
 
 ## Runtime lanes
 
-The standard launch path uses the installed runtime pack. `<runtime-pack>` is
-the pack path the launch configs name:
+The standard launch path runs the pinned pair through the Engine `rusty` CLI:
 
 ```bash
-./.runtime/<runtime-pack>/bin/rusty dev \
-  --runtime ./.runtime/<runtime-pack> \
+rusty dev \
   --project ./src/Product.Game/Product.Game.csproj \
   --live-debug --port 8787
 ```

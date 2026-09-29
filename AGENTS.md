@@ -52,23 +52,18 @@ infrastructure or fake proof.
 - `content/` is canonical product content and should be preserved when host
   or packaging files are cleaned up.
 
-The root `NuGet.Config` points at the installed local SDK feed. The product
-runs on one exact matched release pair: the SDK version pinned as
-`RustyEngineSdkPackageVersion` in `Product.Game.csproj`, and the runtime pack
-built from the same Engine revision installed under the ignored `.runtime/`
-tree. The launch commands in `.den-serve.json` and `.den-playwright.json`
-name the installed pack, and the adopting Den task records the pair. Keep the
-pair together, adopt a new one only as a checksummed pair artifact verified by
-its bundled verifier, and let the host reject a mismatch. Generated output,
+The product runs on one exact Engine SDK/runtime pair, pinned by
+`RustyEnginePackageVersion` in `Directory.Build.props`. The Engine `rusty` CLI
+installs it into its shared cache, supplies its SDK package source, runs it,
+and moves it only through `rusty update`; the adopting Den task records the
+pair. Let the host reject a mismatch. Generated output,
 staging directories, and other build residue belong under ignored paths and
 are disposable when they are not owned by a live service.
 
-Ordinary commands use the installed runtime pack directly. `<runtime-pack>`
-below is the pack path the launch configs name:
+Ordinary commands run through `rusty`:
 
 ```bash
-./.runtime/<runtime-pack>/bin/rusty dev \
-  --runtime ./.runtime/<runtime-pack> \
+rusty dev \
   --project ./src/Product.Game/Product.Game.csproj \
   --live-debug --bind-host 127.0.0.1 --port 8787
 ```

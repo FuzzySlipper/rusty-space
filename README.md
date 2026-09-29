@@ -33,35 +33,31 @@ src/
   Product.Game/     safe C# flight, field, presentation, and lifecycle code
   ui/               product-owned DOM UI only
 content/            canonical product content and authored assets
-.runtime/
-  runtime-pack-<revision>/  matching `rusty dev` runtime pack (ignored)
-  sdk-feed/             matching Rusty.Engine package feed (ignored)
+Directory.Build.props  the one Engine SDK/runtime pair pin
 docs/                current ownership and product design notes
 ```
 
-The product runs on one exact matched release pair: the SDK version pinned as
-`RustyEngineSdkPackageVersion` in `src/Product.Game/Product.Game.csproj` and
-the runtime pack built from the same Engine revision, named by the launch
-commands in `.den-serve.json` and `.den-playwright.json`. Keep the package and
-runtime pack matched; do not replace one with an older backup. Adopting a new
-pair means the checksummed archive and its bundled verifier, per the Engine's
-`docs/csharp-distribution.md`. Product content and the exploratory
+The product runs on one exact Engine SDK/runtime pair, pinned by
+`RustyEnginePackageVersion` in `Directory.Build.props`. The Engine's `rusty`
+command (bootstrap:
+`curl -fsSL https://raw.githubusercontent.com/FuzzySlipper/rusty-engine/main/scripts/install-rusty.sh | bash`)
+installs it (`rusty install`), runs it (`rusty dev`) and moves it
+(`rusty update`, which lists the release notes to read). Product content and the exploratory
 design notes under `docs/ideas/` are intentional provenance and should not be
 removed as host cleanup.
 
 ## Develop or use the Den service
 
-Use the installed runtime pack directly. `<runtime-pack>` is the pack path the
-launch configs name:
+Run the product on the pinned runtime:
 
 ```bash
-./.runtime/<runtime-pack>/bin/rusty dev \
-  --runtime ./.runtime/<runtime-pack> \
+rusty install
+rusty dev \
   --project ./src/Product.Game/Product.Game.csproj \
   --live-debug --bind-host 127.0.0.1 --port 8787
 ```
 
-`.den-serve.json` and `.den-playwright.json` use the same packaged command.
+`.den-serve.json` and `.den-playwright.json` use the same command.
 The host stages the product-owned DOM UI and content; Engine browser and
 renderer assets stay in the runtime pack. There is no downstream browser
 bundle generator, Cargo product host, or checked NativeProduct project.
