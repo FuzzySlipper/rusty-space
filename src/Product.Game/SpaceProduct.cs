@@ -130,9 +130,8 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
             return;
         }
 
-        // Shutdown arrives inside a staged Engine call, so the retained
-        // projection is retired here while the services it references are still
-        // reachable. The handles that snapshot pointed at are put down in
+        // Shutdown is a product call made while the Engine services are still
+        // reachable, so the retained projection is retired here. The handles that snapshot pointed at are put down in
         // Dispose, after it no longer reads them.
         composition.Presentation.RetireRetainedSnapshot();
         lifecycle = SpaceLifecycleState.Shutdown;
@@ -145,12 +144,8 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
             return;
         }
 
-        // The generated host completes its lease coordinator terminally before
-        // it calls this, and a lease handle released after that point drops its
-        // release rather than issuing one. So putting the composed owners down
-        // here cannot reach into a runtime that has already gone, while on any
-        // earlier path the same calls release through the staged call they are
-        // issued in.
+        // Each owner's Dispose releases its Engine resources immediately
+        // (Engine #8736); there is no call-scoped release to wait for.
         lifecycle = SpaceLifecycleState.Disposed;
         composition.Dispose();
     }
