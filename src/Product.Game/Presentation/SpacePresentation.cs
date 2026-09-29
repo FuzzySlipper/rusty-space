@@ -133,28 +133,34 @@ internal sealed class SpacePresentation : IDisposable
         this.tuning = tuning;
         this.overlay = overlay.Validate();
 
-        // A failed create callback is discarded by the staged Engine call, so
-        // this constructor deliberately does not issue individual release
-        // calls that could desynchronize generated lease wrappers from a
-        // later transaction rollback.
-        shipAppearance = CreateShipMesh(this.tuning.ShipColor);
-        planetAppearance = CreateSphere(this.tuning.PlanetColor);
-        wakeAppearance = CreateCube(this.tuning.WakeColor);
-        gentleAppearance = CreateCube(this.tuning.GentleCurrentColor);
-        swiftAppearance = CreateCube(this.tuning.SwiftCurrentColor);
-        gentleAuthorityAppearance = CreateCube(overlay.GentleAuthorityColor);
-        swiftAuthorityAppearance = CreateCube(overlay.SwiftAuthorityColor);
-        declinedAppearance = CreateCube(overlay.DeclinedColor);
-        velocityAppearance = CreateCube(overlay.VelocityIndicatorColor);
-        pathAppearance = CreateCube(overlay.PathColor);
-        flowAppearance = CreateCube(overlay.FlowColor);
-        debugVectorAppearance = CreateCube(overlay.DebugColor);
-        centerMarkerAppearance = CreateCube(overlay.DebugCenterColor);
-        starAppearance = CreateSphere(this.tuning.StarColor);
-        wreckAppearance = CreateCube(this.tuning.WreckColor);
-        boulderAppearance = CreateSphere(this.tuning.BoulderColor);
-        struckMarkAppearance = CreateCube(overlay.StruckMarkColor);
-        hudStream = this.ui.OpenStream(new UiStreamRequest(HudStreamName, HudContract));
+        // A failed call keeps what it did (Engine #8736), so a half-built
+        // presentation releases the appearances it already created.
+        try
+        {
+            shipAppearance = CreateShipMesh(this.tuning.ShipColor);
+            planetAppearance = CreateSphere(this.tuning.PlanetColor);
+            wakeAppearance = CreateCube(this.tuning.WakeColor);
+            gentleAppearance = CreateCube(this.tuning.GentleCurrentColor);
+            swiftAppearance = CreateCube(this.tuning.SwiftCurrentColor);
+            gentleAuthorityAppearance = CreateCube(overlay.GentleAuthorityColor);
+            swiftAuthorityAppearance = CreateCube(overlay.SwiftAuthorityColor);
+            declinedAppearance = CreateCube(overlay.DeclinedColor);
+            velocityAppearance = CreateCube(overlay.VelocityIndicatorColor);
+            pathAppearance = CreateCube(overlay.PathColor);
+            flowAppearance = CreateCube(overlay.FlowColor);
+            debugVectorAppearance = CreateCube(overlay.DebugColor);
+            centerMarkerAppearance = CreateCube(overlay.DebugCenterColor);
+            starAppearance = CreateSphere(this.tuning.StarColor);
+            wreckAppearance = CreateCube(this.tuning.WreckColor);
+            boulderAppearance = CreateSphere(this.tuning.BoulderColor);
+            struckMarkAppearance = CreateCube(overlay.StruckMarkColor);
+            hudStream = this.ui.OpenStream(new UiStreamRequest(HudStreamName, HudContract));
+        }
+        catch
+        {
+            Dispose();
+            throw;
+        }
     }
 
     internal void Publish(
@@ -643,24 +649,24 @@ internal sealed class SpacePresentation : IDisposable
         }
 
         released = true;
-        hudStream.Dispose();
-        struckMarkAppearance.Dispose();
-        boulderAppearance.Dispose();
-        wreckAppearance.Dispose();
-        starAppearance.Dispose();
-        centerMarkerAppearance.Dispose();
-        debugVectorAppearance.Dispose();
-        flowAppearance.Dispose();
-        pathAppearance.Dispose();
-        velocityAppearance.Dispose();
-        declinedAppearance.Dispose();
-        swiftAuthorityAppearance.Dispose();
-        gentleAuthorityAppearance.Dispose();
-        swiftAppearance.Dispose();
-        gentleAppearance.Dispose();
-        wakeAppearance.Dispose();
-        planetAppearance.Dispose();
-        shipAppearance.Dispose();
+        hudStream?.Dispose();
+        struckMarkAppearance?.Dispose();
+        boulderAppearance?.Dispose();
+        wreckAppearance?.Dispose();
+        starAppearance?.Dispose();
+        centerMarkerAppearance?.Dispose();
+        debugVectorAppearance?.Dispose();
+        flowAppearance?.Dispose();
+        pathAppearance?.Dispose();
+        velocityAppearance?.Dispose();
+        declinedAppearance?.Dispose();
+        swiftAuthorityAppearance?.Dispose();
+        gentleAuthorityAppearance?.Dispose();
+        swiftAppearance?.Dispose();
+        gentleAppearance?.Dispose();
+        wakeAppearance?.Dispose();
+        planetAppearance?.Dispose();
+        shipAppearance?.Dispose();
     }
 
     internal void RetireRetainedSnapshot()

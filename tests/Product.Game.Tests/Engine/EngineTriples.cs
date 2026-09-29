@@ -103,7 +103,9 @@ internal sealed class RecordingEngine : IEngineContext
     ICameraViewService IEngineContext.CameraView => CameraView;
     public IRandomService Random => Absent<IRandomService>();
     public IPersistenceService Persistence => Absent<IPersistenceService>();
-    public IContentStoreService ContentStore => Absent<IContentStoreService>();
+    public IInputService Input => Absent<IInputService>();
+    public IRenderOutputService RenderOutput => Absent<IRenderOutputService>();
+    public IVideoService Video => Absent<IVideoService>();
     IUiService IEngineContext.Ui => Ui;
 
     private static T Absent<T>() => throw new NotSupportedException(
@@ -165,7 +167,7 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
     /// The world's contact list, as the Engine would report it: which bodies each
     /// contact was between, and the pair's impulse.
     /// </summary>
-    internal List<DynamicsContactAtReceipt> WorldContacts { get; } = [];
+    internal List<DynamicsContact> WorldContacts { get; } = [];
 
     internal int Reads { get; private set; }
 
@@ -198,7 +200,9 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
     public DynamicsStepReceipt Step(DynamicsStepRequest arg0)
     {
         Steps.Add(arg0);
-        return new DynamicsStepReceipt((ulong)Steps.Count, 1U, 0U);
+        return new DynamicsStepReceipt(
+            RopeSubsteps: 0U, RopeIterations: 0U, RopeLinkCount: 0U, RopeSolverLinkSteps: 0U,
+            Generation: (ulong)Steps.Count, BodyCount: 1U, ContactCount: 0U);
     }
 
     public DynamicsReadout Read(DynamicsReadRequest arg0) => new(
@@ -243,10 +247,10 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
     public void BindWorldCollision(DynamicsWorldCollisionBindingRequest arg0)
         => throw new NotSupportedException();
 
-    public DynamicsRebaseWorldOriginReceipt RebaseWorldOrigin(DynamicsRebaseWorldOriginRequest arg0)
+    public void RebaseWorldOrigin(DynamicsRebaseWorldOriginRequest arg0)
         => throw new NotSupportedException();
 
-    public DynamicsStepAndReadLeaseReceipt StepAndRead(DynamicsStepAndReadRequest arg0)
+    public DynamicsStepAndReadResult StepAndRead(DynamicsStepAndReadRequest arg0)
         => throw new NotSupportedException();
 
     public void Reset(DynamicsResetRequest arg0) => throw new NotSupportedException();
@@ -258,21 +262,28 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
         BodyUpdates++;
     }
 
-    public DynamicsWorldReadout ReadWorld(DynamicsWorldReadRequest arg0)
+    public DynamicsWorldResult ReadWorld(DynamicsWorldReadRequest arg0)
     {
         WorldReads++;
         return new(
-            Generation: (ulong)Steps.Count,
-            EntityRevision: 0UL,
-            BodyCount: (uint)BodyCreates,
-            ContactCount: (uint)WorldContacts.Count);
+            Bodies: ReadOnlyMemory<DynamicsBodyFact>.Empty,
+            Contacts: WorldContacts.ToArray(),
+            Generation: (ulong)Steps.Count);
     }
 
-    public DynamicsBodyAtReceipt ReadBodyAt(DynamicsBodyAtRequest arg0)
-        => throw new NotSupportedException();
-
-    public DynamicsContactAtReceipt ReadContactAt(DynamicsContactAtRequest arg0) =>
-        arg0.Index < (uint)WorldContacts.Count ? WorldContacts[(int)arg0.Index] : default;
+    public void ConfigureRopes(DynamicsRopeSolverRequest arg0) => throw new NotSupportedException();
+    public void CreateBodyChain(DynamicsBodyChainRequest arg0) => throw new NotSupportedException();
+    public void CreateFixedChain(DynamicsFixedChainRequest arg0) => throw new NotSupportedException();
+    public DynamicsAnchorObservation ObserveAnchor(DynamicsObserveAnchorRequest arg0) => throw new NotSupportedException();
+    public DynamicsChainReadout ReadChain(DynamicsChainRequest arg0) => throw new NotSupportedException();
+    public DynamicsChainPointReadout ReadChainPoint(DynamicsChainPointRequest arg0) => throw new NotSupportedException();
+    public DynamicsTetherReadout ReadTether(DynamicsTetherRequest arg0) => throw new NotSupportedException();
+    public DynamicsChainReleaseReceipt RemoveChain(DynamicsChainRequest arg0) => throw new NotSupportedException();
+    public DynamicsTetherReleaseReceipt RemoveTether(DynamicsTetherRequest arg0) => throw new NotSupportedException();
+    public void SetBodyTether(DynamicsBodyTetherRequest arg0) => throw new NotSupportedException();
+    public void SetChainLength(DynamicsChainLengthRequest arg0) => throw new NotSupportedException();
+    public void SetFixedTether(DynamicsFixedTetherRequest arg0) => throw new NotSupportedException();
+    public DynamicsStepReceipt StepWithReactions(DynamicsStepWithReactionsRequest arg0) => throw new NotSupportedException();
 
     public DynamicsBody ReplaceBody(DynamicsReplaceBodyRequest arg0)
         => throw new NotSupportedException();
@@ -362,7 +373,7 @@ internal sealed class RecordingKinematic : IKinematicService
     public IntegrationResult IntegrateSpatial(KinematicSpatialIntegrationRequest arg0) =>
         throw new NotSupportedException("Space does not integrate a spatial body.");
 
-    public KinematicMotionLeaseReceipt RunMotion(KinematicMotionRequest arg0) =>
+    public KinematicMotionResult RunMotion(KinematicMotionRequest arg0) =>
         throw new NotSupportedException("Space does not run kinematic motion.");
 }
 
@@ -498,8 +509,12 @@ internal sealed class RecordingGraphics(ServiceFaults faults) : IGraphicsService
     public SpritePlaybackReadout SelectSpritePlaybackFrame(SpritePlaybackFrameSelectionRequest arg0)
         => throw new NotSupportedException();
 
-    public SpritePlaybackAdvanceLeaseReceipt AdvanceSpritePlayback(SpritePlaybackAdvanceRequest arg0)
+    public SpritePlaybackAdvanceResult AdvanceSpritePlayback(SpritePlaybackAdvanceRequest arg0)
         => throw new NotSupportedException();
+
+    public TextureResourceInfo ReadTextureInfo(RenderResource arg0) => throw new NotSupportedException();
+
+    public void PublishChanges(AppearanceChangesRequest arg0) => throw new NotSupportedException();
 
     public SpritePlaybackSample SampleSpritePlayback(SpritePlaybackSampleRequest arg0)
         => throw new NotSupportedException();
@@ -636,6 +651,10 @@ internal sealed class RecordingCameraView(ServiceFaults faults) : ICameraViewSer
     public void SetSkyBackground(RenderResource arg0) => throw new NotSupportedException();
 
     public void ClearSkyBackground(ClearSkyBackgroundRequest arg0) => throw new NotSupportedException();
+
+    public void SetBackgroundColor(SetBackgroundColorRequest arg0) => throw new NotSupportedException();
+
+    public void SetSkyBackgroundBlend(SkyBackgroundBlendRequest arg0) => throw new NotSupportedException();
 }
 
 /// <summary>
@@ -718,17 +737,17 @@ internal sealed class RecordingImplicitSurfaces(ServiceFaults faults) : IImplici
 
     public void RasterizeSampledVolume(SampledVolumeRasterizeRequest arg0) => throw new NotSupportedException();
 
-    public ImplicitAuditReportLeaseReceipt ReadAudit(ImplicitAuditRequest arg0) => throw new NotSupportedException();
+    public ImplicitAuditReportResult ReadAudit(ImplicitAuditRequest arg0) => throw new NotSupportedException();
 
-    public ImplicitAnalysisReportLeaseReceipt ReadEnclosure(ImplicitEnclosureRequest arg0) => throw new NotSupportedException();
+    public ImplicitAnalysisReportResult ReadEnclosure(ImplicitEnclosureRequest arg0) => throw new NotSupportedException();
 
-    public ImplicitAnalysisReportLeaseReceipt ReadExpectedJoin(ImplicitJoinRequest arg0) => throw new NotSupportedException();
+    public ImplicitAnalysisReportResult ReadExpectedJoin(ImplicitJoinRequest arg0) => throw new NotSupportedException();
 
     public ImplicitGenerationReadout ReadGeneration(ImplicitField arg0) => throw new NotSupportedException();
 
-    public ImplicitAnalysisReportLeaseReceipt ReadMeshIntegrity(ImplicitIntegrityRequest arg0) => throw new NotSupportedException();
+    public ImplicitAnalysisReportResult ReadMeshIntegrity(ImplicitIntegrityRequest arg0) => throw new NotSupportedException();
 
-    public DensitySnapshotLeaseReceipt ReadSampledVolume(SampledVolumeReadRequest arg0) => throw new NotSupportedException();
+    public DensitySnapshotResult ReadSampledVolume(SampledVolumeReadRequest arg0) => throw new NotSupportedException();
 
     public ImplicitGenerationReadout ReadSampledVolumeGeneration(SampledVolume arg0) => throw new NotSupportedException();
 
@@ -813,15 +832,11 @@ internal sealed class RecordingAudio(ServiceFaults faults) : IAudioService
 
     public AudioOptionalPreloadReceipt PreloadOptional(AudioClipRequest arg0) => throw new NotSupportedException();
 
-    public AudioReadout Read() => throw new NotSupportedException();
+    public AudioResult Read() => throw new NotSupportedException();
 
     public AudioBusReadout ReadBus(AudioBusReadRequest arg0) => throw new NotSupportedException();
 
-    public AudioDiagnosticAtReceipt ReadDiagnosticAt(AudioDiagnosticAtRequest arg0) => throw new NotSupportedException();
-
-    public AudioRealizationReadout ReadRealization() => throw new NotSupportedException();
-
-    public AudioRealizationFactAtReceipt ReadRealizationFactAt(AudioRealizationFactAtRequest arg0) => throw new NotSupportedException();
+    public AudioRealizationResult ReadRealization() => throw new NotSupportedException();
 
     public AudioVoiceReadout ReadVoice(AudioVoiceReadRequest arg0) => throw new NotSupportedException();
 

@@ -26,8 +26,7 @@ public class HullContactTests
             Environment: false,
             Impulse: new Vector3(0.0f, 0.0f, -3.0f),
             ImpulseMagnitude: 3.0f);
-        dynamics.WorldContacts.Add(new DynamicsContactAtReceipt(
-            Present: true,
+        dynamics.WorldContacts.Add(new DynamicsContact(
             Environment: false,
             First: new DynamicsBodyReference(hull.Handle.Value),
             Second: ObstacleHandle(0),
@@ -60,8 +59,7 @@ public class HullContactTests
         // The same pair, reported from the rock's end: the Engine hands the
         // impulse to the body named first and its negation to the body named
         // second, and what the hull felt is the second of those here.
-        dynamics.WorldContacts.Add(new DynamicsContactAtReceipt(
-            Present: true,
+        dynamics.WorldContacts.Add(new DynamicsContact(
             Environment: false,
             First: ObstacleHandle(0),
             Second: new DynamicsBodyReference(hull.Handle.Value),
@@ -109,15 +107,13 @@ public class HullContactTests
             ImpulseMagnitude: 1.0f);
         dynamics.ContactCount = 1U;
         dynamics.HullContact = brushAgainstFender;
-        dynamics.WorldContacts.Add(new DynamicsContactAtReceipt(
-            Present: true,
+        dynamics.WorldContacts.Add(new DynamicsContact(
             Environment: false,
             First: ObstacleHandle(0),
             Second: ObstacleHandle(1),
             Impulse: new Vector3(0.0f, 0.0f, -9.0f),
             ImpulseMagnitude: 9.0f));
-        dynamics.WorldContacts.Add(new DynamicsContactAtReceipt(
-            Present: true,
+        dynamics.WorldContacts.Add(new DynamicsContact(
             Environment: false,
             First: new DynamicsBodyReference(hull.Handle.Value),
             Second: ObstacleHandle(2),
@@ -140,8 +136,7 @@ public class HullContactTests
         (RecordingDynamics dynamics, DynamicsWorld world, DynamicsBody hull, ApproachField chart) =
             HullAgainstTheChart();
 
-        dynamics.WorldContacts.Add(new DynamicsContactAtReceipt(
-            Present: true,
+        dynamics.WorldContacts.Add(new DynamicsContact(
             Environment: false,
             First: ObstacleHandle(0),
             Second: ObstacleHandle(1),

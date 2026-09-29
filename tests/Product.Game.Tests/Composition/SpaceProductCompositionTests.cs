@@ -11,9 +11,8 @@ namespace Rusty.Space.Product.Tests;
 /// projection, then the cameras, and the product publishes once the whole
 /// thing stands; each of those stages can fail, and the owners a failed
 /// construction had already opened cannot be left for a product nobody can
-/// reach. Handles whose own constructor never returned are a different matter:
-/// they belong to the create call, which the Engine discards whole, and these
-/// tests record that Space does not pretend to release them.
+/// reach. A failed call keeps what it did (Engine #8736), so an owner whose own
+/// constructor fails also releases what it had opened before it failed.
 /// </summary>
 public class SpaceProductCompositionTests
 {
@@ -93,10 +92,9 @@ public class SpaceProductCompositionTests
     public void AProjectionThatFailsToOpenItsStreamReleasesTheSetAndFlight()
     {
         // The projection's constructor opens its whole set of appearances and
-        // then fails on its stream, so the projection was never a held owner:
-        // the fully built bridge set, its theater, and the flight are what the
-        // composition has to put down. The projection's own partial appearances
-        // belong to the failed create call, which the Engine discards whole.
+        // then fails on its stream. It releases the appearances it opened, and
+        // the composition puts down the fully built bridge set, its theater,
+        // and the flight.
         RecordingEngine engine = new();
         engine.Faults.FailOn = nameof(IUiService.OpenStream);
 
@@ -104,7 +102,7 @@ public class SpaceProductCompositionTests
 
         Assert.Equal(0, engine.CameraView.CameraReleases);
         Assert.Equal(0, engine.Ui.StreamReleases);
-        Assert.Equal(BridgeAppearanceHandleCount, engine.Graphics.AppearanceReleases);
+        Assert.Equal(ProjectionHandleCount + BridgeAppearanceHandleCount, engine.Graphics.AppearanceReleases);
         Assert.Equal(BridgeLightCount, engine.Graphics.LightReleases);
         Assert.Equal(BridgeMeshCount, engine.ImplicitSurfaces.MeshReleases);
         Assert.Equal(BridgeMaterialCount, engine.Graphics.MaterialReleases);
@@ -166,12 +164,11 @@ public class SpaceProductCompositionTests
     }
 
     [Fact]
-    public void ATheaterThatFailsItsFirstVoiceLeavesItsClipsToTheFailedCreate()
+    public void ATheaterThatFailsItsFirstVoiceReleasesTheClipsItOpened()
     {
-        // The theater fails while staging its voices. Like the projection, it
-        // issues no releases for its half-built self: the clips belong to the
-        // failed create call, which the Engine discards whole. The composition
-        // puts down the fully built set and the flight it was holding.
+        // The theater fails while staging its voices. It releases the clips it
+        // had already opened, and the composition puts down the fully built set
+        // and the flight it was holding.
         RecordingEngine engine = new();
         engine.Faults.FailOn = nameof(IAudioService.CreateVoice);
 
@@ -184,7 +181,7 @@ public class SpaceProductCompositionTests
         Assert.Equal(BridgeMeshCount, engine.ImplicitSurfaces.MeshReleases);
         Assert.Equal(BridgeMaterialCount, engine.Graphics.MaterialReleases);
         Assert.Equal(0, engine.Audio.VoiceReleases);
-        Assert.Equal(0, engine.Audio.ClipReleases);
+        Assert.Equal(TheaterClipCount, engine.Audio.ClipReleases);
         Assert.Equal(OpenedBodies, engine.Dynamics.BodyReleases);
         Assert.Equal(1, engine.Dynamics.WorldReleases);
     }

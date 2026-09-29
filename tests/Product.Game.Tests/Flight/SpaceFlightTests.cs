@@ -236,8 +236,7 @@ public class SpaceFlightTests
             Environment: false,
             Impulse: new Vector3(0.0f, 0.0f, -3.0f),
             ImpulseMagnitude: 3.0f);
-        dynamics.WorldContacts.Add(new DynamicsContactAtReceipt(
-            Present: true,
+        dynamics.WorldContacts.Add(new DynamicsContact(
             Environment: false,
             First: new DynamicsBodyReference(1UL),
             Second: new DynamicsBodyReference(2UL),
@@ -275,8 +274,7 @@ public class SpaceFlightTests
             Environment: false,
             Impulse: new Vector3(0.0f, 0.0f, -3.0f),
             ImpulseMagnitude: 3.0f);
-        dynamics.WorldContacts.Add(new DynamicsContactAtReceipt(
-            Present: true,
+        dynamics.WorldContacts.Add(new DynamicsContact(
             Environment: false,
             First: new DynamicsBodyReference(1UL),
             Second: new DynamicsBodyReference(2UL),
@@ -326,8 +324,7 @@ public class SpaceFlightTests
             Environment: false,
             Impulse: new Vector3(0.0f, 0.0f, -12.0f),
             ImpulseMagnitude: 12.0f);
-        dynamics.WorldContacts.Add(new DynamicsContactAtReceipt(
-            Present: true,
+        dynamics.WorldContacts.Add(new DynamicsContact(
             Environment: false,
             First: new DynamicsBodyReference(1UL),
             Second: new DynamicsBodyReference(2UL),
@@ -356,8 +353,7 @@ public class SpaceFlightTests
             Environment: false,
             Impulse: new Vector3(0.0f, 0.0f, -9.0f),
             ImpulseMagnitude: 9.0f);
-        dynamics.WorldContacts.Add(new DynamicsContactAtReceipt(
-            Present: true,
+        dynamics.WorldContacts.Add(new DynamicsContact(
             Environment: false,
             First: new DynamicsBodyReference(1UL),
             Second: new DynamicsBodyReference(2UL),

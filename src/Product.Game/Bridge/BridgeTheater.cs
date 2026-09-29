@@ -78,41 +78,44 @@ internal sealed class BridgeTheater : IDisposable
         HumPitch = this.tuning.HumPitchBase;
         HumVolume = this.tuning.HumVolumeIdle;
 
-        // No partial self-unwind here, following SpacePresentation: handles
-        // whose constructor never returns belong to the failed create call,
-        // which the Engine discards whole. Issuing individual releases for a
-        // half-built owner risks desynchronizing the generated lease wrappers
-        // from that rollback (and masks the original failure behind a
-        // dispose-guard cascade). The composition releases only fully built
-        // owners; Dispose below covers the whole-owner teardown.
-        humClip = audio.OpenClip(new AudioClipRequest(HumClipPath));
-        thudClip = audio.OpenClip(new AudioClipRequest(ThudClipPath));
-
-        humBase = new AudioSourceDescriptor(
-            humClip,
-            AudioBus.Ambient,
-            ToSingle(tuning.HumVolumeIdle),
-            ToSingle(tuning.HumPitchBase),
-            Looping: true,
-            SpatialBlend: 0.0f,
-            // The projection requires positive finite attenuation even for a
-            // non-positional voice; it plays no spatial role here.
-            Attenuation: 1.0f,
-            Pan: 0.0f,
-            AudioEmitterKind.Global2d,
-            Vector3.Zero,
-            Entity: 0,
-            Offset: Vector3.Zero);
-        thudBase = humBase with
+        // A failed call keeps what it did (Engine #8736), so a half-built
+        // theater releases the clips and voices it already opened.
+        try
         {
-            Clip = thudClip,
-            Bus = AudioBus.Sfx,
-            Volume = 0.0f,
-            Pitch = 1.0f,
-            Looping = false,
-        };
-        humVoice = audio.CreateVoice(humBase);
-        thudVoice = audio.CreateVoice(thudBase);
+            humClip = audio.OpenClip(new AudioClipRequest(HumClipPath));
+            thudClip = audio.OpenClip(new AudioClipRequest(ThudClipPath));
+
+            humBase = new AudioSourceDescriptor(
+                humClip,
+                AudioBus.Ambient,
+                ToSingle(tuning.HumVolumeIdle),
+                ToSingle(tuning.HumPitchBase),
+                Looping: true,
+                SpatialBlend: 0.0f,
+                // The projection requires positive finite attenuation even for a
+                // non-positional voice; it plays no spatial role here.
+                Attenuation: 1.0f,
+                Pan: 0.0f,
+                AudioEmitterKind.Global2d,
+                Vector3.Zero,
+                Entity: 0,
+                Offset: Vector3.Zero);
+            thudBase = humBase with
+            {
+                Clip = thudClip,
+                Bus = AudioBus.Sfx,
+                Volume = 0.0f,
+                Pitch = 1.0f,
+                Looping = false,
+            };
+            humVoice = audio.CreateVoice(humBase);
+            thudVoice = audio.CreateVoice(thudBase);
+        }
+        catch
+        {
+            Dispose();
+            throw;
+        }
         NeedleDegrees = NeedleRestDegrees;
     }
 

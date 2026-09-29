@@ -27,7 +27,6 @@ namespace Rusty.Space.Product.Flight;
 internal sealed class HullContacts
 {
     private const uint NoContacts = 0u;
-    private const uint MaximumContactsToRead = 8u;
 
     private readonly IDynamicsService dynamics;
     private readonly ApproachField approach;
@@ -63,18 +62,8 @@ internal sealed class HullContacts
         bool reportedByPair = false;
 
         ulong hullValue = hull.Handle.Value;
-        uint contacts = Math.Min(
-            dynamics.ReadWorld(new DynamicsWorldReadRequest(world)).ContactCount,
-            MaximumContactsToRead);
-        for (uint index = NoContacts; index < contacts; index++)
+        foreach (DynamicsContact contact in dynamics.ReadWorld(new DynamicsWorldReadRequest(world)).Contacts.Span)
         {
-            DynamicsContactAtReceipt contact = dynamics.ReadContactAt(
-                new DynamicsContactAtRequest(world, index));
-            if (!contact.Present)
-            {
-                continue;
-            }
-
             bool hullIsFirst = contact.First.Value == hullValue;
             bool hullIsSecond = !hullIsFirst && contact.Second.Value == hullValue;
             if (!hullIsFirst && !hullIsSecond)
