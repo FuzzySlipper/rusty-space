@@ -138,11 +138,6 @@ internal sealed record SpaceTuning(
             SwiftCurrentDepth: 0.12f,
             SwiftCurrentHeight: -0.28f,
             SwiftCurrentColor: new Color(1.0f, 0.38f, 0.18f, 1.0f),
-            StarGridRadius: 8,
-            StarSpacing: 12.0f,
-            StarHeight: -0.65f,
-            StarDiameter: 0.16f,
-            StarColor: new Color(0.82f, 0.90f, 1.0f, 1.0f),
             WreckColor: new Color(0.44f, 0.40f, 0.37f, 1.0f),
             BoulderColor: new Color(0.58f, 0.52f, 0.46f, 1.0f)),
         // A couple of seconds of reading ahead: long enough that the swift band

@@ -77,7 +77,7 @@ The current product is deliberately a small flight and presentation base:
   response, one gamey orbital well around the planet, and wide gentle plus
   narrow swift drift currents — all applied as Engine Dynamics forces.
 - `Viewing` owns product camera framing and zoom policy around Engine Camera.
-- `Presentation` publishes the ship, planet, wake, current indicators, stars,
+- `Presentation` publishes the ship, planet, wake, current indicators,
   and HUD facts through Engine Appearance and UI services.
 - `Lifecycle` and `Composition` keep the product callback and dependency
   ordering explicit.

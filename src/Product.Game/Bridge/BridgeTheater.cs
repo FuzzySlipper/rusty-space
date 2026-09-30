@@ -238,6 +238,7 @@ internal sealed class BridgeTheater : IDisposable
         spool = 0.0;
         load = 0.0;
         admittedTime = TimeSpan.Zero;
+        lastImpactCount = 0;
         Lean = HelmLean.Rest;
         Lamps = TheaterLampState.Rest;
         FaultText = "SYSTEMS NOMINAL";

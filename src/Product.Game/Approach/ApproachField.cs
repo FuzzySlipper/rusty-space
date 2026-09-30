@@ -62,19 +62,19 @@ internal sealed class ApproachField : IDisposable
 
         Name = definition.Name;
         Obstacles = [.. definition.Obstacles];
-        foreach (ObstacleDefinition obstacle in definition.Obstacles)
+        try
         {
-            DynamicsBody body = PutInPlace(dynamics, world, obstacle);
-            try
+            foreach (ObstacleDefinition obstacle in definition.Obstacles)
             {
+                DynamicsBody body = PutInPlace(dynamics, world, obstacle);
                 bodies.Add(body);
                 obstacleByBody.Add(body.Handle.Value, obstacle.Id);
             }
-            catch
-            {
-                body.Dispose();
-                throw;
-            }
+        }
+        catch
+        {
+            Dispose();
+            throw;
         }
     }
 
@@ -101,13 +101,25 @@ internal sealed class ApproachField : IDisposable
         }
 
         disposed = true;
+        List<Exception> errors = [];
         foreach (DynamicsBody body in bodies)
         {
-            body.Dispose();
+            try
+            {
+                body.Dispose();
+            }
+            catch (Exception error)
+            {
+                errors.Add(error);
+            }
         }
 
         bodies.Clear();
         obstacleByBody.Clear();
+        if (errors.Count > 0)
+        {
+            throw new AggregateException(errors).Flatten();
+        }
     }
 
     private static DynamicsBody PutInPlace(

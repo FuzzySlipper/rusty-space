@@ -78,12 +78,7 @@ internal sealed class SpaceProductComposition : IDisposable
             // Whatever got as far as opening Engine handles is put back down in
             // the reverse of the order that opened it, so a create that fails
             // partway leaves no owner holding a handle nobody can reach.
-            helm?.Dispose();
-            camera?.Dispose();
-            presentation?.Dispose();
-            theater?.Dispose();
-            bridge?.Dispose();
-            flight.Dispose();
+            ReleaseOwners(helm, camera, presentation, theater, bridge, flight);
             throw;
         }
     }
@@ -135,11 +130,27 @@ internal sealed class SpaceProductComposition : IDisposable
     /// </summary>
     public void Dispose()
     {
-        Helm.Dispose();
-        Camera.Dispose();
-        Presentation.Dispose();
-        Theater.Dispose();
-        Bridge.Dispose();
-        Flight.Dispose();
+        ReleaseOwners(Helm, Camera, Presentation, Theater, Bridge, Flight);
+    }
+
+    private static void ReleaseOwners(params IDisposable?[] owners)
+    {
+        List<Exception> errors = [];
+        foreach (IDisposable? owner in owners)
+        {
+            try
+            {
+                owner?.Dispose();
+            }
+            catch (Exception error)
+            {
+                errors.Add(error);
+            }
+        }
+
+        if (errors.Count > 0)
+        {
+            throw new AggregateException(errors).Flatten();
+        }
     }
 }

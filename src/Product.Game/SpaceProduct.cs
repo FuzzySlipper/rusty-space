@@ -65,6 +65,11 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
         }
 
         FlightAdmission admission = composition.Flight.Admit(update);
+        if (admission.ResetOccurred)
+        {
+            composition.Theater.Reset();
+        }
+
         if (admission.FaultRequested)
         {
             // Operator abort (F): a product-owned terminal report; the turn
@@ -75,12 +80,16 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
         // The theater reads the telemetry the turn admitted and stages its
         // reactions before the projection republishes: filters always track,
         // Engine calls happen only for enabled reactions on a published turn.
-        composition.Theater.Advance(
-            composition.Flight.Telemetry,
-            composition.Flight.Ship,
-            composition.Flight.ImpactCount,
-            admission.TurnDuration,
-            admission.Published);
+        if (!admission.ResetOccurred)
+        {
+            composition.Theater.Advance(
+                composition.Flight.Telemetry,
+                composition.Flight.Ship,
+                composition.Flight.ImpactCount,
+                admission.TurnDuration,
+                admission.Published);
+        }
+
         if (admission.Published)
         {
             PublishFlight();
@@ -153,6 +162,7 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
     private void PublishFlight() => composition.Presentation.Publish(
         composition.Flight.Readout,
         composition.Flight.Telemetry,
+        composition.Flight.Coupling,
         composition.Flight.Contributions,
         composition.Flight.ProjectedPath,
         composition.Flight.LastStrike,

@@ -111,6 +111,7 @@ public sealed class FlightDebugModule : IDebugCommandModule
         return FormattableString.Invariant(
             $"""
             chart       {flight.Approach.Name}  ({flight.Approach.Obstacles.Count} authored)
+            dynamics    generation {flight.LastDynamicsStep.Generation}  bodies {flight.LastDynamicsStep.BodyCount}  contacts {flight.LastDynamicsStep.ContactCount}
             contacts    {flight.ImpactCount} since this hull was built
             last        {NameOf(strike.Impact.Struck)} on {NameOf(damage?.Part)}  impulse ({strike.Impact.LocalImpulse.X:F3}, {strike.Impact.LocalImpulse.Z:F3})  magnitude {strike.Impact.Magnitude:F3}
             struck side ({struckSide.X:F2}, {struckSide.Z:F2})   health lost {damage?.HealthLost ?? 0.0:F3}

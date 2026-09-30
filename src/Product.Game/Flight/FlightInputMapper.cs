@@ -59,7 +59,7 @@ internal sealed class FlightInputMapper
         {
             if (inputEvent.Kind == InputEventKind.Clear)
             {
-                state = FlightInputState.Neutral;
+                state = FlightInputState.Neutral with { StabilizerEnabled = state.StabilizerEnabled };
                 continue;
             }
 
@@ -164,7 +164,7 @@ internal sealed class FlightInputMapper
 
     internal void Reset() => state = FlightInputState.Neutral;
 
-    private static bool IsDigitalActive(ProductInputEvent inputEvent) => inputEvent.X > 0.0f;
+    private static bool IsDigitalActive(ProductInputEvent inputEvent) => inputEvent.Phase != InputPhase.Released && inputEvent.X > 0.0f;
 
     private static double NormalizeAnalogThrust(float value) => Math.Clamp(
         (double)value,

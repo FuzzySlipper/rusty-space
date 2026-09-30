@@ -22,6 +22,8 @@ internal sealed class ServiceFaults
     private readonly List<string> releases = [];
 
     internal string? FailOn { get; set; }
+    internal int FailOnOccurrence { get; set; } = 1;
+    private int matchingCalls;
 
     internal IReadOnlyList<string> Releases => releases;
 
@@ -46,7 +48,7 @@ internal sealed class ServiceFaults
 
     internal void FailIf(string operation)
     {
-        if (FailOn == operation)
+        if (FailOn == operation && ++matchingCalls == FailOnOccurrence)
         {
             throw new InjectedFault(operation);
         }
@@ -143,6 +145,7 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
     private DynamicsBodyProperties? appliedProperties;
 
     internal List<DynamicsStepRequest> Steps { get; } = [];
+    internal Action<int>? OnStep { get; set; }
 
     /// <summary>
     /// The angular blocks the product asked the Engine to stand up, in the order it
@@ -192,6 +195,7 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
 
     public DynamicsBody CreateBody(DynamicsCreateBodyRequest arg0)
     {
+        faults.FailIf(nameof(CreateBody));
         BodyCreates++;
         createdAttitude = arg0.Body.Transform.Rotation;
         return OpenBody();
@@ -199,10 +203,12 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
 
     public DynamicsStepReceipt Step(DynamicsStepRequest arg0)
     {
+        faults.FailIf(nameof(StepAndRead));
         Steps.Add(arg0);
+        OnStep?.Invoke(Steps.Count);
         return new DynamicsStepReceipt(
             RopeSubsteps: 0U, RopeIterations: 0U, RopeLinkCount: 0U, RopeSolverLinkSteps: 0U,
-            Generation: (ulong)Steps.Count, BodyCount: 1U, ContactCount: 0U);
+            Generation: (ulong)Steps.Count, BodyCount: (uint)(BodyCreates - BodyReleases), ContactCount: (uint)WorldContacts.Count);
     }
 
     public DynamicsReadout Read(DynamicsReadRequest arg0) => new(
@@ -229,6 +235,7 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
 
     public DynamicsBody CreateCuboidBody(DynamicsCreateCuboidBodyRequest arg0)
     {
+        faults.FailIf(nameof(CreateCuboidBody));
         BodyCreates++;
         CreatedBlocks.Add(arg0.Body);
         return OpenBody();
@@ -236,6 +243,7 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
 
     public DynamicsBody CreateSphereBodyWithProperties(DynamicsCreateSphereBodyPropertiesRequest arg0)
     {
+        faults.FailIf(nameof(CreateSphereBodyWithProperties));
         BodyCreates++;
         CreatedBoulders.Add(arg0.Body);
         return OpenBody();
@@ -251,7 +259,13 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
         => throw new NotSupportedException();
 
     public DynamicsStepAndReadResult StepAndRead(DynamicsStepAndReadRequest arg0)
-        => throw new NotSupportedException();
+    {
+        DynamicsStepReceipt receipt = Step(new DynamicsStepRequest(
+            arg0.World, arg0.StepSeconds, arg0.Steps, arg0.Actions));
+        DynamicsBodyFact[] facts = arg0.Bodies.ToArray().Select(body => new DynamicsBodyFact(
+            new DynamicsBodyReference(body.Handle.Value), Read(new DynamicsReadRequest(body)))).ToArray();
+        return new DynamicsStepAndReadResult(facts, receipt.Generation, receipt.BodyCount, receipt.ContactCount);
+    }
 
     public void Reset(DynamicsResetRequest arg0) => throw new NotSupportedException();
 
@@ -304,12 +318,14 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
     {
         WorldReleases++;
         faults.RecordRelease("world");
+        faults.FailIf("release-world");
     }
 
     private void RecordBodyRelease()
     {
         BodyReleases++;
         faults.RecordRelease("body");
+        faults.FailIf("release-body");
     }
 
     // Bodies are named apart: a product that has to say which authored rock a
@@ -384,6 +400,9 @@ internal sealed class RecordingGraphics(ServiceFaults faults) : IGraphicsService
     private ulong nextLightHandle;
     private ulong nextMaterialHandle;
 
+    internal int AppearanceCreates => checked((int)nextAppearanceHandle);
+    internal int LightCreates => checked((int)nextLightHandle);
+    internal int MaterialCreates => checked((int)nextMaterialHandle);
     internal int AppearanceReleases { get; private set; }
     internal int LightReleases { get; private set; }
     internal int MaterialReleases { get; private set; }
@@ -547,18 +566,21 @@ internal sealed class RecordingGraphics(ServiceFaults faults) : IGraphicsService
     {
         AppearanceReleases++;
         faults.RecordRelease("appearance");
+        faults.FailIf("release-appearance");
     }
 
     private void RecordLightRelease()
     {
         LightReleases++;
         faults.RecordRelease("light");
+        faults.FailIf("release-light");
     }
 
     private void RecordMaterialRelease()
     {
         MaterialReleases++;
         faults.RecordRelease("material");
+        faults.FailIf("release-material");
     }
 }
 
@@ -589,6 +611,7 @@ internal sealed class RecordingUi(ServiceFaults faults) : IUiService
     {
         StreamReleases++;
         faults.RecordRelease("ui");
+        faults.FailIf("release-ui");
     }
 }
 
@@ -626,6 +649,7 @@ internal sealed class RecordingCameraView(ServiceFaults faults) : ICameraViewSer
     {
         CameraReleases++;
         faults.RecordRelease("camera");
+        faults.FailIf("release-camera");
     }
 
     public void UpdateCamera(CameraUpdateRequest arg0)
@@ -675,6 +699,7 @@ internal sealed class RecordingImplicitSurfaces(ServiceFaults faults) : IImplici
     private ulong nextNode = 1UL;
     private ulong nextMesh = 1UL;
 
+    internal int MeshCreates => checked((int)(nextMesh - 1));
     internal int MeshReleases { get; private set; }
 
     /// <summary>How many extractions the recipe asked for, in emit order.</summary>
@@ -723,6 +748,7 @@ internal sealed class RecordingImplicitSurfaces(ServiceFaults faults) : IImplici
     {
         MeshReleases++;
         faults.RecordRelease("mesh");
+        faults.FailIf("release-mesh");
     }
 
     public void CaptureAuditPiece(ImplicitAuditPieceRequest arg0) => throw new NotSupportedException();
@@ -818,12 +844,14 @@ internal sealed class RecordingAudio(ServiceFaults faults) : IAudioService
     {
         VoiceReleases++;
         faults.RecordRelease("voice");
+        faults.FailIf("release-voice");
     }
 
     private void RecordClipRelease()
     {
         ClipReleases++;
         faults.RecordRelease("clip");
+        faults.FailIf("release-clip");
     }
 
     public AudioSignalHandle Emit(AudioEmitRequest arg0) => throw new NotSupportedException();

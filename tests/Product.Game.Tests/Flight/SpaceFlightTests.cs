@@ -302,6 +302,7 @@ public class SpaceFlightTests
         flight.ResetFlight();
 
         Assert.False(flight.LastStrike.Impact.Present);
+        Assert.Equal(0UL, flight.ImpactCount);
 
         flight.Admit(Update(admittedSteps: 1, fixedDeltaSeconds: 1.0 / 60.0));
 
@@ -375,6 +376,42 @@ public class SpaceFlightTests
 
         Assert.True(flight.LastCommand.RepairHeld);
         Assert.False(flight.Ship.StarboardStabilizer.OutOfTrim);
+    }
+
+    [Fact]
+    public void SustainedContactCostsHardwareOnceAndTheFinalSubstepControlsTouching()
+    {
+        RecordingDynamics dynamics = new();
+        using SpaceFlight flight = Flight(dynamics);
+        dynamics.ContactCount = 1;
+        dynamics.HullContact = new DynamicsContactFact(true, false, new Vector3(0, 0, -9), 9);
+        flight.Admit(Update(1, 1.0 / 60.0));
+        double afterArrival = flight.Ship.StarboardStabilizer.Health;
+        flight.Admit(Update(3, 1.0 / 60.0));
+        Assert.Equal(afterArrival, flight.Ship.StarboardStabilizer.Health);
+        Assert.Equal(1UL, flight.ImpactCount);
+        dynamics.OnStep = step =>
+        {
+            if (step == 6)
+            {
+                dynamics.ContactCount = 0;
+                dynamics.HullContact = default;
+            }
+        };
+        flight.Admit(Update(2, 1.0 / 60.0));
+        Assert.True(flight.LastStrike.Impact.Present);
+        Assert.False(flight.LastStrike.StillTouching);
+        Assert.Equal(afterArrival, flight.Ship.StarboardStabilizer.Health);
+    }
+
+    [Fact]
+    public void TheDynamicsReceiptIsAvailableToTheImpactDiagnostics()
+    {
+        RecordingDynamics dynamics = new();
+        using SpaceFlight flight = Flight(dynamics);
+        flight.Admit(Update(2, 1.0 / 60.0));
+        Assert.Equal(2UL, flight.LastDynamicsStep.Generation);
+        Assert.Equal((uint)dynamics.BodyCreates, flight.LastDynamicsStep.BodyCount);
     }
 
     private static ProductUpdate Update(uint admittedSteps, double fixedDeltaSeconds) =>

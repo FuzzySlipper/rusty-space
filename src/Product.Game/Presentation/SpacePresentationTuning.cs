@@ -22,11 +22,6 @@ internal sealed record SpacePresentationTuning(
     float SwiftCurrentDepth,
     float SwiftCurrentHeight,
     Color SwiftCurrentColor,
-    int StarGridRadius,
-    float StarSpacing,
-    float StarHeight,
-    float StarDiameter,
-    Color StarColor,
     // Authored approach geometry. A wreck block and a boulder are drawn on the
     // terms the Engine will meet them on: an angular block in one color and a
     // round mass in another, so the shape a line has to avoid is the shape that
@@ -34,7 +29,6 @@ internal sealed record SpacePresentationTuning(
     Color WreckColor,
     Color BoulderColor)
 {
-    private const int MinimumStarGridRadius = 1;
     private const float MinimumPositiveMagnitude = 0.0f;
     private const float MinimumColorComponent = 0.0f;
     private const float MaximumColorComponent = 1.0f;
@@ -56,15 +50,6 @@ internal sealed record SpacePresentationTuning(
         ValidatePositiveFinite(SwiftCurrentDepth, nameof(SwiftCurrentDepth));
         ValidateFinite(SwiftCurrentHeight, nameof(SwiftCurrentHeight));
         ValidateColor(SwiftCurrentColor, nameof(SwiftCurrentColor));
-        if (StarGridRadius < MinimumStarGridRadius)
-        {
-            throw new ArgumentOutOfRangeException(nameof(StarGridRadius));
-        }
-
-        ValidatePositiveFinite(StarSpacing, nameof(StarSpacing));
-        ValidateFinite(StarHeight, nameof(StarHeight));
-        ValidatePositiveFinite(StarDiameter, nameof(StarDiameter));
-        ValidateColor(StarColor, nameof(StarColor));
         ValidateColor(WreckColor, nameof(WreckColor));
         ValidateColor(BoulderColor, nameof(BoulderColor));
         return this;

@@ -99,17 +99,23 @@ internal sealed class SpaceFlight : IDisposable
             FitHull(initialBody);
             readout = MapReadout(this.dynamics.Read(new DynamicsReadRequest(initialBody)));
             body = initialBody;
-            initialBody = null;
             // The chart this hull is flying goes into the same world the hull is
             // in, through the Engine's own create lane, and stays there: the
             // Engine is what decides what happens where two bodies meet.
             approach = new ApproachField(this.dynamics, world, approachDefinition);
             hullContacts = new HullContacts(this.dynamics, approach);
+            initialBody = null;
         }
         catch
         {
-            initialBody?.Dispose();
-            world.Dispose();
+            try
+            {
+                initialBody?.Dispose();
+            }
+            finally
+            {
+                world.Dispose();
+            }
             throw;
         }
     }
@@ -184,6 +190,8 @@ internal sealed class SpaceFlight : IDisposable
     /// </summary>
     internal ulong ImpactCount => impactCount;
 
+    internal DynamicsStepObservation LastDynamicsStep { get; private set; }
+
     internal ulong FixedStepCount => fixedStepCount;
 
     internal ulong UpdateSequence => updateSequence;
@@ -199,7 +207,7 @@ internal sealed class SpaceFlight : IDisposable
         {
             ResetFlight();
             return new FlightAdmission(
-                true, fixedStepCount, updateSequence, TimeSpan.Zero, input.FaultRequested);
+                true, fixedStepCount, updateSequence, TimeSpan.Zero, input.FaultRequested, ResetOccurred: true);
         }
 
         // The Engine owns update admission and fixed-step timing; its facts
@@ -271,12 +279,14 @@ internal sealed class SpaceFlight : IDisposable
 
             // Every product-meaning push joins once, per substep, into the
             // single DynamicsAction force for that substep.
-            dynamics.Step(new DynamicsStepRequest(
+            DynamicsStepAndReadResult stepped = dynamics.StepAndRead(new DynamicsStepAndReadRequest(
                 world,
                 turn.DynamicsStepSeconds,
                 SingleSubstep,
-                new[] { ToDynamicsAction(substepForces.Total) }));
-            DynamicsReadout nativeReadout = dynamics.Read(new DynamicsReadRequest(body));
+                new[] { ToDynamicsAction(substepForces.Total) },
+                new[] { body }));
+            DynamicsReadout nativeReadout = stepped.Bodies.Span[0].Readout;
+            LastDynamicsStep = new DynamicsStepObservation(stepped.Generation, stepped.BodyCount, stepped.ContactCount);
             currentReadout = MapReadout(nativeReadout);
             // The Engine has already given the hull whatever its contacts amounted
             // to, and the readout above is where that shows up. What happens here
@@ -295,8 +305,12 @@ internal sealed class SpaceFlight : IDisposable
                     impactCount = checked(impactCount + SequenceIncrement);
                 }
 
+                // One arrival costs hardware once; resting against a face is
+                // still the same arrival, even across several admitted turns.
+                HullDamage? struck = inContact
+                    ? strike.Damage ?? lastStrike.Damage
+                    : ship.TakeImpact(contact.LocalImpulse, contact.Magnitude);
                 inContact = true;
-                HullDamage struck = ship.TakeImpact(contact.LocalImpulse, contact.Magnitude);
                 if (contact.Magnitude >= strike.Impact.Magnitude)
                 {
                     strike = new HullStrike(contact, struck, StillTouching: true);
@@ -318,8 +332,8 @@ internal sealed class SpaceFlight : IDisposable
         // afterwards, which is the whole point of reading it at all; what the
         // contact ended or not is carried apart from it.
         HullStrike reported = strike.Impact.Present
-            ? strike
-            : lastStrike with { StillTouching = false };
+            ? strike with { StillTouching = inContact }
+            : lastStrike with { StillTouching = inContact };
 
         telemetry.Capture(
             turnStart,
@@ -380,6 +394,8 @@ internal sealed class SpaceFlight : IDisposable
             projectedPath = FlightPath.None;
             lastStrike = NoStrike;
             inContact = false;
+            impactCount = 0;
+            LastDynamicsStep = default;
             controller.Reset();
             coupling.Reset();
             ship.Reset();
@@ -405,14 +421,25 @@ internal sealed class SpaceFlight : IDisposable
         disposed = true;
         // The chart goes down with the world it was put into. Its bodies were
         // opened in that world, so they are released while it is still open.
-        approach.Dispose();
-        try
+        List<Exception> errors = [];
+        void Release(IDisposable resource)
         {
-            body.Dispose();
+            try
+            {
+                resource.Dispose();
+            }
+            catch (Exception error)
+            {
+                errors.Add(error);
+            }
         }
-        finally
+
+        Release(approach);
+        Release(body);
+        Release(world);
+        if (errors.Count > 0)
         {
-            world.Dispose();
+            throw new AggregateException(errors).Flatten();
         }
     }
 
@@ -561,4 +588,5 @@ internal readonly record struct FlightAdmission(
     ulong FixedStepCount,
     ulong UpdateSequence,
     TimeSpan TurnDuration,
-    bool FaultRequested);
+    bool FaultRequested,
+    bool ResetOccurred = false);

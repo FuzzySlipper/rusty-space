@@ -16,31 +16,6 @@ namespace Rusty.Space.Product.Tests;
 /// </summary>
 public class SpaceProductCompositionTests
 {
-    // Every appearance handle the navigation projection opens at construction:
-    // the hull, the planet, the wake, both band cores, both band authority
-    // regions, the declined band, the velocity reading, the projected path, the
-    // flow lattice, the tuning-only push vectors, the centers of force, the
-    // star field, the chart's blocks and boulders, and the mark a contact leaves
-    // on the hull. A teardown that leaves any of them open is a leak this count
-    // catches.
-    private const int ProjectionHandleCount = 17;
-
-    // Every appearance handle the bridge set opens at construction: one per
-    // extracted implicit surface plus the separately addressable screens,
-    // lamps, prop slate, lit lamp twins, and load needle. Its lights, mesh
-    // resources, and materials are counted apart, as are the theater's
-    // voices and clips.
-    private const int BridgeAppearanceHandleCount = 19;
-    private const int BridgeLightCount = 2;
-    private const int BridgeMeshCount = 7;
-    private const int BridgeMaterialCount = 6;
-    private const int TheaterVoiceCount = 2;
-    private const int TheaterClipCount = 2;
-
-    // Every body the flight opens in the Engine: the hull, and one for each piece
-    // of authored approach geometry the chart stands on.
-    private static int OpenedBodies => 1 + SpaceTuning.Defaults.Approach.Obstacles.Count;
-
     [Fact]
     public void AComposedProductPutsDownEveryOwnerItOpened()
     {
@@ -50,12 +25,12 @@ public class SpaceProductCompositionTests
         product.Dispose();
 
         Assert.Equal(1, engine.Graphics.SnapshotPublications);
-        Assert.Equal(ProjectionHandleCount + BridgeAppearanceHandleCount, engine.Graphics.AppearanceReleases);
-        Assert.Equal(BridgeLightCount, engine.Graphics.LightReleases);
-        Assert.Equal(BridgeMeshCount, engine.ImplicitSurfaces.MeshReleases);
-        Assert.Equal(BridgeMaterialCount, engine.Graphics.MaterialReleases);
-        Assert.Equal(TheaterVoiceCount, engine.Audio.VoiceReleases);
-        Assert.Equal(TheaterClipCount, engine.Audio.ClipReleases);
+        Assert.Equal(engine.Graphics.AppearanceCreates, engine.Graphics.AppearanceReleases);
+        Assert.Equal(engine.Graphics.LightCreates, engine.Graphics.LightReleases);
+        Assert.Equal(engine.ImplicitSurfaces.MeshCreates, engine.ImplicitSurfaces.MeshReleases);
+        Assert.Equal(engine.Graphics.MaterialCreates, engine.Graphics.MaterialReleases);
+        Assert.Equal(engine.Audio.VoiceDescriptors.Count, engine.Audio.VoiceReleases);
+        Assert.Equal(engine.Audio.OpenedClipPaths.Count, engine.Audio.ClipReleases);
         Assert.Equal(2, engine.CameraView.CameraReleases);
         Assert.Equal(
             ["camera", "ui", "appearance", "voice", "clip", "light", "appearance", "mesh", "material", "body", "world"],
@@ -73,17 +48,17 @@ public class SpaceProductCompositionTests
 
         Assert.Throws<InjectedFault>(() => new SpaceProduct(ProductContexts.For(engine)));
 
-        Assert.Equal(0, engine.CameraView.CameraReleases);
+        Assert.Equal(1, engine.CameraView.CameraReleases);
         Assert.Equal(1, engine.Ui.StreamReleases);
         Assert.Equal(
-            ProjectionHandleCount + BridgeAppearanceHandleCount,
+            engine.Graphics.AppearanceCreates,
             engine.Graphics.AppearanceReleases);
-        Assert.Equal(BridgeLightCount, engine.Graphics.LightReleases);
-        Assert.Equal(BridgeMeshCount, engine.ImplicitSurfaces.MeshReleases);
-        Assert.Equal(BridgeMaterialCount, engine.Graphics.MaterialReleases);
-        Assert.Equal(TheaterVoiceCount, engine.Audio.VoiceReleases);
-        Assert.Equal(TheaterClipCount, engine.Audio.ClipReleases);
-        Assert.Equal(OpenedBodies, engine.Dynamics.BodyReleases);
+        Assert.Equal(engine.Graphics.LightCreates, engine.Graphics.LightReleases);
+        Assert.Equal(engine.ImplicitSurfaces.MeshCreates, engine.ImplicitSurfaces.MeshReleases);
+        Assert.Equal(engine.Graphics.MaterialCreates, engine.Graphics.MaterialReleases);
+        Assert.Equal(engine.Audio.VoiceDescriptors.Count, engine.Audio.VoiceReleases);
+        Assert.Equal(engine.Audio.OpenedClipPaths.Count, engine.Audio.ClipReleases);
+        Assert.Equal(engine.Dynamics.BodyCreates, engine.Dynamics.BodyReleases);
         Assert.Equal(1, engine.Dynamics.WorldReleases);
         AssertReleasedDeepestFirst(engine);
     }
@@ -102,13 +77,13 @@ public class SpaceProductCompositionTests
 
         Assert.Equal(0, engine.CameraView.CameraReleases);
         Assert.Equal(0, engine.Ui.StreamReleases);
-        Assert.Equal(ProjectionHandleCount + BridgeAppearanceHandleCount, engine.Graphics.AppearanceReleases);
-        Assert.Equal(BridgeLightCount, engine.Graphics.LightReleases);
-        Assert.Equal(BridgeMeshCount, engine.ImplicitSurfaces.MeshReleases);
-        Assert.Equal(BridgeMaterialCount, engine.Graphics.MaterialReleases);
-        Assert.Equal(TheaterVoiceCount, engine.Audio.VoiceReleases);
-        Assert.Equal(TheaterClipCount, engine.Audio.ClipReleases);
-        Assert.Equal(OpenedBodies, engine.Dynamics.BodyReleases);
+        Assert.Equal(engine.Graphics.AppearanceCreates, engine.Graphics.AppearanceReleases);
+        Assert.Equal(engine.Graphics.LightCreates, engine.Graphics.LightReleases);
+        Assert.Equal(engine.ImplicitSurfaces.MeshCreates, engine.ImplicitSurfaces.MeshReleases);
+        Assert.Equal(engine.Graphics.MaterialCreates, engine.Graphics.MaterialReleases);
+        Assert.Equal(engine.Audio.VoiceDescriptors.Count, engine.Audio.VoiceReleases);
+        Assert.Equal(engine.Audio.OpenedClipPaths.Count, engine.Audio.ClipReleases);
+        Assert.Equal(engine.Dynamics.BodyCreates, engine.Dynamics.BodyReleases);
         Assert.Equal(1, engine.Dynamics.WorldReleases);
     }
 
@@ -126,14 +101,14 @@ public class SpaceProductCompositionTests
         Assert.Equal(2, engine.CameraView.CameraReleases);
         Assert.Equal(1, engine.Ui.StreamReleases);
         Assert.Equal(
-            ProjectionHandleCount + BridgeAppearanceHandleCount,
+            engine.Graphics.AppearanceCreates,
             engine.Graphics.AppearanceReleases);
-        Assert.Equal(BridgeLightCount, engine.Graphics.LightReleases);
-        Assert.Equal(BridgeMeshCount, engine.ImplicitSurfaces.MeshReleases);
-        Assert.Equal(BridgeMaterialCount, engine.Graphics.MaterialReleases);
-        Assert.Equal(TheaterVoiceCount, engine.Audio.VoiceReleases);
-        Assert.Equal(TheaterClipCount, engine.Audio.ClipReleases);
-        Assert.Equal(OpenedBodies, engine.Dynamics.BodyReleases);
+        Assert.Equal(engine.Graphics.LightCreates, engine.Graphics.LightReleases);
+        Assert.Equal(engine.ImplicitSurfaces.MeshCreates, engine.ImplicitSurfaces.MeshReleases);
+        Assert.Equal(engine.Graphics.MaterialCreates, engine.Graphics.MaterialReleases);
+        Assert.Equal(engine.Audio.VoiceDescriptors.Count, engine.Audio.VoiceReleases);
+        Assert.Equal(engine.Audio.OpenedClipPaths.Count, engine.Audio.ClipReleases);
+        Assert.Equal(engine.Dynamics.BodyCreates, engine.Dynamics.BodyReleases);
         Assert.Equal(1, engine.Dynamics.WorldReleases);
         Assert.Equal(
             ["camera", "ui", "appearance", "voice", "clip", "light", "appearance", "mesh", "material", "body", "world"],
@@ -156,10 +131,10 @@ public class SpaceProductCompositionTests
         Assert.Equal(0, engine.Graphics.AppearanceReleases);
         Assert.Equal(0, engine.Graphics.LightReleases);
         Assert.Equal(1, engine.ImplicitSurfaces.MeshReleases);
-        Assert.Equal(BridgeMaterialCount, engine.Graphics.MaterialReleases);
+        Assert.Equal(engine.Graphics.MaterialCreates, engine.Graphics.MaterialReleases);
         Assert.Equal(0, engine.Audio.VoiceReleases);
         Assert.Equal(0, engine.Audio.ClipReleases);
-        Assert.Equal(OpenedBodies, engine.Dynamics.BodyReleases);
+        Assert.Equal(engine.Dynamics.BodyCreates, engine.Dynamics.BodyReleases);
         Assert.Equal(1, engine.Dynamics.WorldReleases);
     }
 
@@ -176,14 +151,58 @@ public class SpaceProductCompositionTests
 
         Assert.Equal(0, engine.CameraView.CameraReleases);
         Assert.Equal(0, engine.Ui.StreamReleases);
-        Assert.Equal(BridgeAppearanceHandleCount, engine.Graphics.AppearanceReleases);
-        Assert.Equal(BridgeLightCount, engine.Graphics.LightReleases);
-        Assert.Equal(BridgeMeshCount, engine.ImplicitSurfaces.MeshReleases);
-        Assert.Equal(BridgeMaterialCount, engine.Graphics.MaterialReleases);
+        Assert.Equal(engine.Graphics.AppearanceCreates, engine.Graphics.AppearanceReleases);
+        Assert.Equal(engine.Graphics.LightCreates, engine.Graphics.LightReleases);
+        Assert.Equal(engine.ImplicitSurfaces.MeshCreates, engine.ImplicitSurfaces.MeshReleases);
+        Assert.Equal(engine.Graphics.MaterialCreates, engine.Graphics.MaterialReleases);
         Assert.Equal(0, engine.Audio.VoiceReleases);
-        Assert.Equal(TheaterClipCount, engine.Audio.ClipReleases);
-        Assert.Equal(OpenedBodies, engine.Dynamics.BodyReleases);
+        Assert.Equal(engine.Audio.OpenedClipPaths.Count, engine.Audio.ClipReleases);
+        Assert.Equal(engine.Dynamics.BodyCreates, engine.Dynamics.BodyReleases);
         Assert.Equal(1, engine.Dynamics.WorldReleases);
+    }
+
+    [Theory]
+    [InlineData(nameof(IDynamicsService.CreateBody), 1)]
+    [InlineData(nameof(IDynamicsService.CreateCuboidBody), 2)]
+    [InlineData(nameof(IDynamicsService.CreateSphereBodyWithProperties), 2)]
+    public void ABodyCreationFailureReleasesEveryEarlierBody(string operation, int occurrence)
+    {
+        RecordingEngine engine = new();
+        engine.Faults.FailOn = operation;
+        engine.Faults.FailOnOccurrence = occurrence;
+        Assert.Throws<InjectedFault>(() => new SpaceProduct(ProductContexts.For(engine)));
+        Assert.Equal(engine.Dynamics.BodyCreates, engine.Dynamics.BodyReleases);
+        Assert.Equal(1, engine.Dynamics.WorldReleases);
+    }
+
+    [Theory]
+    [InlineData("camera")]
+    [InlineData("ui")]
+    [InlineData("appearance")]
+    [InlineData("voice")]
+    [InlineData("clip")]
+    [InlineData("light")]
+    [InlineData("mesh")]
+    [InlineData("material")]
+    [InlineData("body")]
+    [InlineData("world")]
+    public void AThrowingReleaseStillReleasesEveryOtherResource(string owner)
+    {
+        RecordingEngine engine = new();
+        SpaceProduct product = new(ProductContexts.For(engine));
+        engine.Faults.FailOn = "release-" + owner;
+        Assert.Throws<AggregateException>(product.Dispose);
+        Assert.Equal(engine.CameraView.CreatedCameras.Count, engine.CameraView.CameraReleases);
+        Assert.Equal(1, engine.Ui.StreamReleases);
+        Assert.Equal(engine.Graphics.AppearanceCreates, engine.Graphics.AppearanceReleases);
+        Assert.Equal(engine.Graphics.LightCreates, engine.Graphics.LightReleases);
+        Assert.Equal(engine.Graphics.MaterialCreates, engine.Graphics.MaterialReleases);
+        Assert.Equal(engine.ImplicitSurfaces.MeshCreates, engine.ImplicitSurfaces.MeshReleases);
+        Assert.Equal(engine.Audio.VoiceDescriptors.Count, engine.Audio.VoiceReleases);
+        Assert.Equal(engine.Audio.OpenedClipPaths.Count, engine.Audio.ClipReleases);
+        Assert.Equal(engine.Dynamics.BodyCreates, engine.Dynamics.BodyReleases);
+        Assert.Equal(1, engine.Dynamics.WorldReleases);
+        product.Dispose();
     }
 
     private static void AssertReleasedDeepestFirst(RecordingEngine engine)

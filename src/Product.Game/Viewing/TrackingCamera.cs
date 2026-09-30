@@ -49,7 +49,15 @@ internal sealed class TrackingCamera : IDisposable
         positioned = true;
         lastResetCount = spawnResetCount;
         camera = this.cameraView.CreateCamera(Descriptor(chasePosition));
-        this.cameraView.SetActiveCamera(camera);
+        try
+        {
+            this.cameraView.SetActiveCamera(camera);
+        }
+        catch
+        {
+            camera.Dispose();
+            throw;
+        }
     }
 
     internal void Follow(

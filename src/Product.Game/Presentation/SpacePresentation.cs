@@ -44,7 +44,6 @@ internal sealed class SpacePresentation : IDisposable
     private const float NeutralHeadingRadians = 0.0f;
     private const float HalfLength = 0.5f;
     private const float UniformScale = 1.0f;
-    private const ulong FirstStarObjectId = 1_000UL;
     private const ulong FirstPathPointId = 2_000UL;
     private const ulong FirstFlowPointId = 3_000UL;
     private const ulong FirstDebugVectorId = 4_000UL;
@@ -103,7 +102,6 @@ internal sealed class SpacePresentation : IDisposable
     private readonly Appearance flowAppearance;
     private readonly Appearance debugVectorAppearance;
     private readonly Appearance centerMarkerAppearance;
-    private readonly Appearance starAppearance;
     private readonly Appearance wreckAppearance;
     private readonly Appearance boulderAppearance;
     private readonly Appearance struckMarkAppearance;
@@ -150,7 +148,6 @@ internal sealed class SpacePresentation : IDisposable
             flowAppearance = CreateCube(overlay.FlowColor);
             debugVectorAppearance = CreateCube(overlay.DebugColor);
             centerMarkerAppearance = CreateCube(overlay.DebugCenterColor);
-            starAppearance = CreateSphere(this.tuning.StarColor);
             wreckAppearance = CreateCube(this.tuning.WreckColor);
             boulderAppearance = CreateSphere(this.tuning.BoulderColor);
             struckMarkAppearance = CreateCube(overlay.StruckMarkColor);
@@ -166,6 +163,7 @@ internal sealed class SpacePresentation : IDisposable
     internal void Publish(
         FlightReadout readout,
         FlightTelemetrySnapshot telemetry,
+        double coupling,
         FlightForces contributions,
         FlightPath path,
         HullStrike strike,
@@ -173,20 +171,19 @@ internal sealed class SpacePresentation : IDisposable
     {
         ArgumentNullException.ThrowIfNull(ship);
 
-        PublishAppearance(readout, telemetry, contributions, path, strike, ship);
+        PublishAppearance(readout, telemetry, coupling, contributions, path, strike, ship);
         PublishHud(readout, telemetry);
     }
 
     private void PublishAppearance(
         FlightReadout readout,
         FlightTelemetrySnapshot telemetry,
+        double coupling,
         FlightForces contributions,
         FlightPath path,
         HullStrike strike,
         InstalledShip ship)
     {
-        int starWidth = checked((tuning.StarGridRadius * 2) + 1);
-        int starCount = checked(starWidth * starWidth);
         int flowWidth = checked((overlay.FlowLatticeRadius * 2) + 1);
         int flowCount = checked(flowWidth * flowWidth);
         // The bridge set publishes its stationary facts through this same
@@ -226,7 +223,7 @@ internal sealed class SpacePresentation : IDisposable
         // Coupled bands are drawn in their own color; a hull that has wound its
         // coupling down sees them declined, because on that trim they have
         // nothing to do with it.
-        bool caught = telemetry.Coupling > Uncoupled;
+        bool caught = coupling > Uncoupled;
         facts[3] = new AppearanceFact(
                 (ulong)SpaceAppearanceObject.GentleCurrent,
                 false,
@@ -649,24 +646,40 @@ internal sealed class SpacePresentation : IDisposable
         }
 
         released = true;
-        hudStream?.Dispose();
-        struckMarkAppearance?.Dispose();
-        boulderAppearance?.Dispose();
-        wreckAppearance?.Dispose();
-        starAppearance?.Dispose();
-        centerMarkerAppearance?.Dispose();
-        debugVectorAppearance?.Dispose();
-        flowAppearance?.Dispose();
-        pathAppearance?.Dispose();
-        velocityAppearance?.Dispose();
-        declinedAppearance?.Dispose();
-        swiftAuthorityAppearance?.Dispose();
-        gentleAuthorityAppearance?.Dispose();
-        swiftAppearance?.Dispose();
-        gentleAppearance?.Dispose();
-        wakeAppearance?.Dispose();
-        planetAppearance?.Dispose();
-        shipAppearance?.Dispose();
+        List<Exception> errors = [];
+        void Release(IDisposable? resource)
+        {
+            try
+            {
+                resource?.Dispose();
+            }
+            catch (Exception error)
+            {
+                errors.Add(error);
+            }
+        }
+
+        Release(hudStream);
+        Release(struckMarkAppearance);
+        Release(boulderAppearance);
+        Release(wreckAppearance);
+        Release(centerMarkerAppearance);
+        Release(debugVectorAppearance);
+        Release(flowAppearance);
+        Release(pathAppearance);
+        Release(velocityAppearance);
+        Release(declinedAppearance);
+        Release(swiftAuthorityAppearance);
+        Release(gentleAuthorityAppearance);
+        Release(swiftAppearance);
+        Release(gentleAppearance);
+        Release(wakeAppearance);
+        Release(planetAppearance);
+        Release(shipAppearance);
+        if (errors.Count > 0)
+        {
+            throw new AggregateException(errors).Flatten();
+        }
     }
 
     internal void RetireRetainedSnapshot()

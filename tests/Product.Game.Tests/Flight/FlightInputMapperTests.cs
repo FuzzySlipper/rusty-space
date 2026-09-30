@@ -127,6 +127,30 @@ public class FlightInputMapperTests
         Assert.Equal(0.0, command.CouplingTrim, 9);
     }
 
+    [Fact]
+    public void FocusLossReleasesHeldCommandsAndPreservesTheAttitudeHoldSwitch()
+    {
+        FlightInputMapper mapper = new();
+        Turn(mapper, Digital("space.flight.stabilizer", true), Digital("space.flight.thrust", true));
+        FlightCommand cleared = Turn(mapper, new ProductInputEvent { Kind = InputEventKind.Clear }).Command;
+        Assert.False(cleared.StabilizerEnabled);
+        Assert.Equal(0.0, cleared.Throttle);
+        mapper.Reset();
+        Assert.True(Turn(mapper).Command.StabilizerEnabled);
+    }
+
+    [Fact]
+    public void AReleasedPhaseCannotLeaveThrustHeld()
+    {
+        FlightInputMapper mapper = new();
+        Turn(mapper, Digital("space.flight.thrust", true));
+        FlightCommand released = Turn(mapper, Digital("space.flight.thrust", true) with
+        {
+            Phase = InputPhase.Released,
+        }).Command;
+        Assert.Equal(0.0, released.Throttle);
+    }
+
     /// <summary>
     /// One admitted turn, read the way the coordinator reads it: held state
     /// moves as it is read, so the next turn starts from what this one left
@@ -139,7 +163,7 @@ public class FlightInputMapperTests
     private static ProductInputEvent Digital(string intent, bool active) => new()
     {
         Kind = InputEventKind.MappedDigital,
-        Phase = InputPhase.Pressed,
+        Phase = active ? InputPhase.Pressed : InputPhase.Released,
         X = active ? 1f : 0f,
         Intent = Encoding.UTF8.GetBytes(intent),
     };

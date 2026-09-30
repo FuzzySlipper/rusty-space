@@ -373,6 +373,7 @@ public class SpacePresentationTests
         presentation.Publish(
             AtRest(),
             FlightTelemetrySnapshot.Neutral,
+            tuning.Coupling.DefaultLevel,
             FlightForces.Zero,
             FlightPath.None,
             new HullStrike(HullImpact.None, null),
@@ -414,6 +415,7 @@ public class SpacePresentationTests
         presentation.Publish(
             AtRest(),
             FlightTelemetrySnapshot.Neutral,
+            tuning.Coupling.DefaultLevel,
             FlightForces.Zero,
             FlightPath.None,
             new HullStrike(HullImpact.None, null),
@@ -499,6 +501,7 @@ public class SpacePresentationTests
         presentation.Publish(
             readout,
             telemetry,
+            telemetry.Coupling,
             FlightForces.Zero,
             path,
             strike,
