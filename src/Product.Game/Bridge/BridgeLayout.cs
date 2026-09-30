@@ -335,7 +335,7 @@ internal sealed record BridgeLayout(
 }
 
 /// <summary>
-/// The restrained initial palette: broad structural tones plus the phosphor
+/// The restrained initial colors and surface finishes: structural tones plus the phosphor
 /// display colors. Wear, labels, and per-part variation follow the layout.
 /// </summary>
 internal sealed record BridgePalette(
@@ -352,6 +352,13 @@ internal sealed record BridgePalette(
     Color OverheadGlow,
     Color HelmGlow)
 {
+    internal Color StripFault { get; init; } = new(0.50f, 0.12f, 0.10f, 1.0f);
+    internal Color FaultLit { get; init; } = new(1.0f, 0.25f, 0.18f, 1.0f);
+    internal Color ReadyLit { get; init; } = new(0.75f, 1.0f, 0.95f, 1.0f);
+    internal Color Needle { get; init; } = new(1.0f, 0.88f, 0.66f, 1.0f);
+    internal float MatteRoughness { get; init; } = 0.85f;
+    internal float SatinRoughness { get; init; } = 0.55f;
+
     internal static BridgePalette Defaults { get; } = new(
         Floor: new Color(0.23f, 0.24f, 0.27f, 1.0f),
         Walls: new Color(0.38f, 0.40f, 0.38f, 1.0f),
@@ -380,6 +387,18 @@ internal sealed record BridgePalette(
         ValidateColor(EngineeringDisplay, nameof(EngineeringDisplay));
         ValidateColor(OverheadGlow, nameof(OverheadGlow));
         ValidateColor(HelmGlow, nameof(HelmGlow));
+        ValidateColor(StripFault, nameof(StripFault));
+        ValidateColor(FaultLit, nameof(FaultLit));
+        ValidateColor(ReadyLit, nameof(ReadyLit));
+        ValidateColor(Needle, nameof(Needle));
+        if (!float.IsFinite(MatteRoughness) || MatteRoughness < 0.0f || MatteRoughness > 1.0f)
+        {
+            throw new ArgumentOutOfRangeException(nameof(MatteRoughness));
+        }
+        if (!float.IsFinite(SatinRoughness) || SatinRoughness < 0.0f || SatinRoughness > 1.0f)
+        {
+            throw new ArgumentOutOfRangeException(nameof(SatinRoughness));
+        }
         return this;
     }
 

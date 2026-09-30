@@ -178,8 +178,9 @@ straight line through a river. Gating the well as well would make zero
 coupling mean "nowhere to fall", which is a different fiction and a worse
 one.
 
-The emergency release dumps the actuator to zero and leaves it there until
-the player winds it back in. What bailing out costs is the travel time
+The emergency release sets the retained coupling demand to zero until
+the player winds it back in; the emitter answers through its own response.
+What bailing out costs is the dial travel time
 back to the cradle, never a stolen velocity.
 
 ### Mass consistency

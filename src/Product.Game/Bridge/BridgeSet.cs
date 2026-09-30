@@ -38,24 +38,8 @@ internal sealed class BridgeSet : IDisposable
     /// <summary>First Engine logical light id owned by the set.</summary>
     internal const ulong FirstBridgeLightId = 8_001UL;
 
-    // The strip's fault lamp rests dim red in the neutral presentation; the
-    // parent theater owns any fault reaction that lights it.
-    private static readonly Color StripFaultColor = new(0.50f, 0.12f, 0.10f, 1.0f);
-
-    // Lit twins for the two driven strip lamps: the presentation publishes
-    // one twin visible and the other hidden, so a lamp changes state without
-    // replacing an appearance handle mid-life.
-    private static readonly Color FaultLampLitColor = new(1.0f, 0.25f, 0.18f, 1.0f);
-    private static readonly Color ReadyLampLitColor = new(0.75f, 1.0f, 0.95f, 1.0f);
-
-    // The load needle reads warm paper-white against the console body so the
-    // theater's repeater stays legible at a glance from the seat.
-    private static readonly Color NeedleColor = new(1.0f, 0.88f, 0.66f, 1.0f);
-
     private static readonly Vector3 NoEmissionVector = Vector3.Zero;
     private static readonly Color WhiteTint = new(1.0f, 1.0f, 1.0f, 1.0f);
-    private const float MatteRoughness = 0.85f;
-    private const float SatinRoughness = 0.55f;
 
     private static readonly BridgePart[] PresentationParts =
     [
@@ -153,12 +137,12 @@ internal sealed class BridgeSet : IDisposable
         // broad and restrained; wear and labels follow the layout.
         Material Solid(Color color, float roughness) => CreateMaterial(color, roughness);
         BridgeMaterials made = new(
-            Floor: Solid(palette.Floor, MatteRoughness),
-            Walls: Solid(palette.Walls, MatteRoughness),
-            Ceiling: Solid(palette.Ceiling, MatteRoughness),
-            Console: Solid(palette.Console, SatinRoughness),
-            SeatFabric: Solid(palette.SeatFabric, MatteRoughness),
-            Cabinet: Solid(palette.Cabinet, SatinRoughness));
+            Floor: Solid(palette.Floor, palette.MatteRoughness),
+            Walls: Solid(palette.Walls, palette.MatteRoughness),
+            Ceiling: Solid(palette.Ceiling, palette.MatteRoughness),
+            Console: Solid(palette.Console, palette.SatinRoughness),
+            SeatFabric: Solid(palette.SeatFabric, palette.MatteRoughness),
+            Cabinet: Solid(palette.Cabinet, palette.SatinRoughness));
         return made;
     }
 
@@ -214,7 +198,7 @@ internal sealed class BridgeSet : IDisposable
             PrimitiveGeometry.Cube, Wireframe: false, palette.SideDisplay)));
         partNames.Add("strip caution lamp");
         primitiveAppearances.Add(appearance.CreatePrimitive(new PrimitiveAppearanceRequest(
-            PrimitiveGeometry.Cube, Wireframe: false, StripFaultColor)));
+            PrimitiveGeometry.Cube, Wireframe: false, palette.StripFault)));
         partNames.Add("strip fault lamp");
 
         // Engineering corner lamps: status violet plus a warm task lamp.
@@ -230,13 +214,13 @@ internal sealed class BridgeSet : IDisposable
         // the theater sweeps with field load. Identities follow creation
         // order, and only one lamp twin is ever published visible.
         primitiveAppearances.Add(appearance.CreatePrimitive(new PrimitiveAppearanceRequest(
-            PrimitiveGeometry.Cube, Wireframe: false, FaultLampLitColor)));
+            PrimitiveGeometry.Cube, Wireframe: false, palette.FaultLit)));
         partNames.Add("strip fault lamp (lit)");
         primitiveAppearances.Add(appearance.CreatePrimitive(new PrimitiveAppearanceRequest(
-            PrimitiveGeometry.Cube, Wireframe: false, ReadyLampLitColor)));
+            PrimitiveGeometry.Cube, Wireframe: false, palette.ReadyLit)));
         partNames.Add("strip ready lamp (lit)");
         primitiveAppearances.Add(appearance.CreatePrimitive(new PrimitiveAppearanceRequest(
-            PrimitiveGeometry.Cube, Wireframe: false, NeedleColor)));
+            PrimitiveGeometry.Cube, Wireframe: false, palette.Needle)));
         partNames.Add("load needle");
     }
 
