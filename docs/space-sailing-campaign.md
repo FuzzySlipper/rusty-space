@@ -142,20 +142,20 @@ and input signs with it.
 
 ### Force staleness under catch-up
 
-`AdmittedStepCount` can exceed one, and `IDynamicsService.Step` applies the
+`AdmittedStepCount` can exceed one, and `IDynamicsService.StepAndRead` applies the
 actions in a request once before running its own substeps: rapier keeps a
 body's added force across every step of one simulation, so a request that
 carries four steps applies one frozen answer four times. `SpaceFlight.Admit`
 instead resolves every source and steps once per fixed substep, reading the
 body back between substeps, so each push acts on the state it meets. The
-Engine rebuilds its world from canonical state on each `Step` call, which is
+Engine rebuilds its world from canonical state on each `StepAndRead` call, which is
 what makes the separate calls correct and also what makes each one cost a
 rebuild; that cost lands only on turns that were already catching up.
 
 The actuator spool advances per fixed substep for the same reason: an
 admitted step is one fixed step of simulated time, so a turn that catches up
-four steps has had four steps of throttle travel. The spool and the coupling
-level are their owners' own state, each moved over the one admitted interval it
+four steps has had four steps of throttle travel. The installed drive response and the retained coupling
+demand are their owners' own state, each moved over the one admitted interval it
 is handed and read back from the owner, so an interval cannot be counted twice
 and nothing a turn did is left waiting for a separate publication.
 

@@ -61,7 +61,7 @@ internal sealed class InstalledShip
     private readonly PlanarVector steeringAuthorityCenterLocal;
     private readonly double driveAuthority;
 
-    internal InstalledShip(ShipLoadout loadout, double driveAuthority, DamageTuning damage)
+    internal InstalledShip(ShipLoadout loadout, double driveAuthority, DamageTuning damage, PartThermalTuning thermal)
     {
         ArgumentNullException.ThrowIfNull(loadout);
         ArgumentNullException.ThrowIfNull(damage);
@@ -79,22 +79,22 @@ internal sealed class InstalledShip
         emitter = new InstalledPart(
             loadout.Emitter,
             new ActuatorResponse(loadout.Emitter.Response, FullCouplingGate),
-            damage);
+            damage, thermal);
         drive = new InstalledPart(
             loadout.Drive,
             new ActuatorResponse(loadout.Drive.Response, driveAuthority),
-            damage);
+            damage, thermal);
         portStabilizer = new InstalledPart(
             loadout.PortStabilizer,
             new ActuatorResponse(loadout.PortStabilizer.Response, portDefinition.DeliveredAuthority),
-            damage,
+            damage, thermal,
             trimOffsetWhenLatched: JammedVane(portDefinition, damage));
         starboardStabilizer = new InstalledPart(
             loadout.StarboardStabilizer,
             new ActuatorResponse(
                 loadout.StarboardStabilizer.Response,
                 starboardDefinition.DeliveredAuthority),
-            damage,
+            damage, thermal,
             trimOffsetWhenLatched: JammedVane(starboardDefinition, damage));
         parts = [emitter, drive, portStabilizer, starboardStabilizer];
 
@@ -217,7 +217,7 @@ internal sealed class InstalledShip
         // catches a fraction of what an unmarked one would.
         double coupling = gate * emitterDefinition.CouplingGain * emitter.DeliveryFraction;
 
-        // The drive answers the throttle spool. It is handed the demand as the
+        // The drive answers the pilot's thrust demand. It is handed the demand as the
         // controller resolved it so a push trimmed off at maximum speed keeps
         // that direction, and it returns how much of it the hardware reached.
         double demandedDriveMagnitude = demandedDrive.Magnitude;

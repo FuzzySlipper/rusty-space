@@ -23,6 +23,7 @@ internal sealed class SpaceProductComposition : IDisposable
             Tuning.FlightBody,
             Tuning.Ship,
             Tuning.Damage,
+            Tuning.Thermal,
             Tuning.Field,
             Tuning.Orbital,
             Tuning.GentleCurrent,
@@ -62,7 +63,7 @@ internal sealed class SpaceProductComposition : IDisposable
                 Tuning.Camera,
                 flight.Readout,
                 flight.ResetCount);
-            helm = new HelmCamera(Engine.CameraView, Tuning.Bridge);
+            helm = new HelmCamera(Engine.CameraView, Tuning.Bridge, Tuning.HelmCamera);
             Flight = flight;
             Bridge = bridge;
             Theater = theater;
@@ -70,7 +71,6 @@ internal sealed class SpaceProductComposition : IDisposable
             Camera = camera;
             Helm = helm;
             Seated = false;
-            Debug = new FlightDebugModule(flight);
             BridgeDebug = new BridgeDebugModule(bridge, theater, () => Seated);
         }
         catch
@@ -100,8 +100,6 @@ internal sealed class SpaceProductComposition : IDisposable
     internal HelmCamera Helm { get; }
 
     internal bool Seated { get; private set; }
-
-    internal FlightDebugModule Debug { get; }
 
     internal BridgeDebugModule BridgeDebug { get; }
 

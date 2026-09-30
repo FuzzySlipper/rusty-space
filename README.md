@@ -78,6 +78,12 @@ selects a matching source runtime and supplies the MSBuild properties needed
 to use the source SDK. Ordinary product work must not discover adjacent
 checkouts or invoke Cargo.
 
+For live handling comparisons, the generated debug catalog exposes
+`space.loadout.stock`, `space.loadout.scavenged`, and `space.loadout.damaged`.
+Each rebuilds at spawn with fresh fitted hardware, resets the bridge reactions
+and camera, and immediately publishes the selected fit. Pause and the helm seat
+are preserved. `space.hardware` reports the fit and delivered actuator state.
+
 ## Product slice
 
 The current product is an inertial flight slice with fitted hardware and a
@@ -94,7 +100,7 @@ static, reactive bridge:
 - `Viewing` owns chart framing, zoom, and the seated helm camera.
 - `Presentation` publishes the ship, planet, wake, current indicators,
   and HUD facts through Engine Appearance and UI services.
-- `Debugging` reports flight and bridge facts; `Tuning` composes the authored settings.
+- `Debugging` reports flight and bridge facts and selects authored fits; `Tuning` composes the authored settings.
 - `Lifecycle` and `Composition` keep the product callback and dependency
   ordering explicit.
 

@@ -17,6 +17,7 @@ internal sealed record SpaceTuning(
     FlightBodyTuning FlightBody,
     ShipLoadout Ship,
     DamageTuning Damage,
+    PartThermalTuning Thermal,
     ApproachFieldDefinition Approach,
     FieldTuning Field,
     OrbitalGravityTuning Orbital,
@@ -27,21 +28,21 @@ internal sealed record SpaceTuning(
     TrajectoryTuning Trajectory,
     BridgeLayout Bridge,
     TheaterTuning Theater,
-    CameraTuning Camera)
+    CameraTuning Camera,
+    HelmCameraTuning HelmCamera)
 {
     internal static SpaceTuning Defaults { get; } = new(
         Flight: new(
             MaximumSpeed: 12.0,
             MaximumThrust: 6.0,
             MaximumTurnRate: 2.1,
-            ThrottleResponse: TimeSpan.FromSeconds(0.20),
             SteeringResponse: TimeSpan.FromSeconds(0.25)),
         // A hull leaves the cradle engaged enough that a wake or a band bends
         // its line, and a full trim sweep takes long enough to read as a
         // setting being wound rather than a switch being thrown.
         Coupling: new(
             DefaultLevel: 0.6,
-            TrimResponse: TimeSpan.FromSeconds(1.5)),
+            FullSweepTime: TimeSpan.FromSeconds(1.5)),
         // The hull on its own. What is mounted to it is the loadout's doing, and
         // the stock fit's parts bring the weight and turn inertia back to what
         // the bare hull used to carry, so a stock ship still flies the way it
@@ -68,6 +69,7 @@ internal sealed record SpaceTuning(
             KnockoutImpulse: 5.0,
             TrimOffsetFraction: 0.22,
             RepairTime: TimeSpan.FromSeconds(1.6)),
+        Thermal: new(HeatPerSecondAtFullDemand: 0.25, CoolingPerSecond: 0.30),
         Approach: ApproachFields.KestrelApproach,
         Field: new(
             PlanetPosition: new PlanarVector(14.0, 0.0),
@@ -190,7 +192,8 @@ internal sealed record SpaceTuning(
             FarPlane: 500.0,
             MinimumZoomScale: 0.65,
             MaximumZoomScale: 2.5,
-            WheelZoomSensitivity: 0.003));
+            WheelZoomSensitivity: 0.003),
+        HelmCamera: new(FovYDegrees: 60.0, NearPlane: 0.05, FarPlane: 500.0));
 
     internal SpaceTuning Validate() => this with
     {
@@ -199,6 +202,7 @@ internal sealed record SpaceTuning(
         FlightBody = FlightBody.Validate(),
         Ship = Ship.Validate(),
         Damage = Damage.Validate(),
+        Thermal = Thermal.Validate(),
         Approach = Approach.Validate(),
         Field = Field.Validate(),
         Orbital = Orbital.Validate(),
@@ -210,5 +214,6 @@ internal sealed record SpaceTuning(
         Bridge = Bridge.Validate(),
         Theater = Theater.Validate(),
         Camera = Camera.Validate(),
+        HelmCamera = HelmCamera.Validate(),
     };
 }

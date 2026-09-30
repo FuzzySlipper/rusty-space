@@ -28,12 +28,6 @@ namespace Rusty.Space.Product.ShipSystems;
 /// </remarks>
 internal sealed class InstalledPart
 {
-    // Heat gained in one second at full demand, and the fraction of the heat it
-    // carries that a part gives up in one second. Together they settle a part
-    // worked continuously at its rating just under the nominal envelope, so a
-    // part asked to overdeliver is the one that climbs past it.
-    private const double HeatPerSecondAtFullDemand = 0.25;
-    private const double CoolingPerSecond = 0.30;
     private const double AmbientTemperature = 0.0;
     private const double NoDemand = 0.0;
     private const double NoTrimOffset = 0.0;
@@ -43,6 +37,7 @@ internal sealed class InstalledPart
 
     private readonly ActuatorResponse response;
     private readonly DamageTuning damage;
+    private readonly PartThermalTuning thermal;
     private readonly double trimOffsetWhenLatched;
     private readonly double fittedHealth;
     private double temperature = AmbientTemperature;
@@ -53,11 +48,13 @@ internal sealed class InstalledPart
         PartDefinition definition,
         ActuatorResponse response,
         DamageTuning damage,
+        PartThermalTuning thermal,
         double trimOffsetWhenLatched = NoTrimOffset)
     {
         Definition = definition ?? throw new ArgumentNullException(nameof(definition));
         this.response = response ?? throw new ArgumentNullException(nameof(response));
         this.damage = damage ?? throw new ArgumentNullException(nameof(damage));
+        this.thermal = thermal ?? throw new ArgumentNullException(nameof(thermal));
         this.trimOffsetWhenLatched = trimOffsetWhenLatched;
         fittedHealth = definition.Health;
         health = definition.Health;
@@ -92,9 +89,6 @@ internal sealed class InstalledPart
 
     /// <summary>Where the part's actuator stands after the last advance.</summary>
     internal double ActuatorValue => response.Value;
-
-    /// <summary>How fast the part's actuator is travelling.</summary>
-    internal double ActuatorTravel => response.Velocity;
 
     /// <summary>The stop the part's actuator is built against.</summary>
     internal double ActuatorLimit => response.Limit;
@@ -212,8 +206,8 @@ internal sealed class InstalledPart
     private void Warm(double demandAsFractionOfRating, TimeSpan step)
     {
         double seconds = step.TotalSeconds;
-        double gathered = Math.Abs(demandAsFractionOfRating) * HeatPerSecondAtFullDemand * seconds;
-        double givenUp = (temperature - AmbientTemperature) * CoolingPerSecond * seconds;
+        double gathered = Math.Abs(demandAsFractionOfRating) * thermal.HeatPerSecondAtFullDemand * seconds;
+        double givenUp = (temperature - AmbientTemperature) * thermal.CoolingPerSecond * seconds;
         temperature = Math.Max(AmbientTemperature, temperature + gathered - givenUp);
     }
 }

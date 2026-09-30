@@ -39,13 +39,6 @@ internal sealed class BridgeTheater : IDisposable
     private const string HumClipPath = "audio/drive-hum.wav";
     private const string ThudClipPath = "audio/impact-thud.wav";
 
-    /// <summary>
-    /// The load needle's sweep: rest angle at no load, plus this many degrees
-    /// at full meter. A compass-style sweep across the side housing face.
-    /// </summary>
-    private const double NeedleRestDegrees = -60.0;
-    private const double NeedleSweepDegrees = 120.0;
-
     private readonly IAudioService audio;
     private readonly BridgeSet bridge;
     private readonly TheaterTuning tuning;
@@ -116,7 +109,7 @@ internal sealed class BridgeTheater : IDisposable
             Dispose();
             throw;
         }
-        NeedleDegrees = NeedleRestDegrees;
+        NeedleDegrees = tuning.NeedleRestDegrees;
     }
 
     internal TheaterTuning Tuning => tuning;
@@ -134,13 +127,12 @@ internal sealed class BridgeTheater : IDisposable
     internal double HumVolume { get; private set; }
 
     /// <summary>
-    /// The load needle's sweep in degrees, from <see cref="NeedleRestDegrees"/>
-    /// at no load across <see cref="NeedleSweepDegrees"/> at full meter.
+    /// The load needle's sweep in degrees, from <see cref="TheaterTuning.NeedleRestDegrees"/>
+    /// at no load across <see cref="TheaterTuning.NeedleSweepDegrees"/> at full meter.
     /// </summary>
     internal double NeedleDegrees { get; private set; }
     internal string FaultText { get; private set; } = "SYSTEMS NOMINAL";
 
-    internal ulong ImpactCount => lastImpactCount;
 
     /// <summary>
     /// Advances every filtered channel on admitted time, then stages the
@@ -198,13 +190,13 @@ internal sealed class BridgeTheater : IDisposable
                 humBase with { Volume = ToSingle(HumVolume), Pitch = ToSingle(HumPitch) }));
             if (struck)
             {
-                double strength = Math.Clamp(telemetry.CollisionMagnitude / 8.0, 0.15, 1.0);
+                double strength = Math.Clamp(telemetry.CollisionMagnitude / tuning.ThudFullImpulse, tuning.ThudMinimumVolume, 1.0);
                 audio.UpdateVoice(new AudioVoiceUpdateRequest(
                     thudVoice,
                     thudBase with
                     {
                         Volume = ToSingle(strength),
-                        Pitch = ToSingle(0.8 + (0.4 * strength)),
+                        Pitch = ToSingle(tuning.ThudPitchBase + (tuning.ThudPitchSpan * strength)),
                     }));
                 audio.ControlVoice(new AudioVoiceControlRequest(thudVoice, AudioVoiceControl.Retrigger));
             }
@@ -220,8 +212,8 @@ internal sealed class BridgeTheater : IDisposable
             bridge.SetPropSway(Sway());
         }
 
-        NeedleDegrees = NeedleRestDegrees
-            + (NeedleSweepDegrees * Math.Clamp(load / tuning.LoadMeterMax, 0.0, 1.0));
+        NeedleDegrees = tuning.NeedleRestDegrees
+            + (tuning.NeedleSweepDegrees * Math.Clamp(load / tuning.LoadMeterMax, 0.0, 1.0));
         if (tuning.RepeaterReactions)
         {
             bridge.SetNeedleRotation(NeedleRotation());
@@ -244,7 +236,7 @@ internal sealed class BridgeTheater : IDisposable
         FaultText = "SYSTEMS NOMINAL";
         HumPitch = tuning.HumPitchBase;
         HumVolume = tuning.HumVolumeIdle;
-        NeedleDegrees = NeedleRestDegrees;
+        NeedleDegrees = tuning.NeedleRestDegrees;
         // Restaging neutral presentation is itself gated: with every reaction
         // off, resetting stages nothing, so the enable flags mean zero Engine
         // calls from either entry point.
@@ -365,8 +357,8 @@ internal sealed class BridgeTheater : IDisposable
             return level;
         }
 
-        double shimmer = 0.75
-            + (0.25 * Math.Sin(2.0 * Math.PI * tuning.FaultFlickerHz * admittedTime.TotalSeconds));
+        double shimmer = tuning.FaultShimmerBase
+            + (tuning.FaultShimmerSpan * Math.Sin(2.0 * Math.PI * tuning.FaultFlickerHz * admittedTime.TotalSeconds));
         return ToSingle(level * tuning.BrownoutSag * shimmer);
     }
 }

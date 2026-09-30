@@ -128,6 +128,7 @@ internal sealed class RecordingDynamics(ServiceFaults faults)
     private Quaternion createdAttitude = Quaternion.Identity;
     private ulong nextHandle = 1UL;
     private DynamicsBodyProperties? appliedProperties;
+    private readonly Dictionary<ulong, DynamicsBodyProperties> propertiesByBody = [];
 
     internal List<DynamicsStepRequest> Steps { get; } = [];
     internal Action<int>? OnStep { get; set; }
@@ -196,24 +197,28 @@ internal sealed class RecordingDynamics(ServiceFaults faults)
             Generation: (ulong)Steps.Count, BodyCount: (uint)(BodyCreates - BodyReleases), ContactCount: (uint)WorldContacts.Count);
     }
 
-    public DynamicsReadout Read(DynamicsReadRequest arg0) => new(
-        new Transform(Vector3.Zero, createdAttitude, Vector3.One),
-        new Vector3(SlipPerRead * ++Reads, 0.0f, 0.0f),
-        Vector3.Zero,
-        Sleeping: false,
-        new MassProperties(
-            Available: true,
-            Mass: appliedProperties.HasValue ? appliedProperties.Value.Mass : BodyMass,
-            PrincipalInertia: appliedProperties.HasValue
-                ? appliedProperties.Value.MassPolicy.Explicit.PrincipalInertia
-                : new Vector3(BodyInertia, BodyInertia, BodyInertia),
-            Policy: appliedProperties.HasValue
-                ? appliedProperties.Value.MassPolicy.Kind
-                : DynamicsMassPolicyKind.DeriveFromShapeAndMass,
-            CenterOfMass: Vector3.Zero,
-            PrincipalInertiaLocalFrame: Quaternion.Identity),
-        ContactCount: ContactCount,
-        FirstContact: HullContact);
+    public DynamicsReadout Read(DynamicsReadRequest arg0)
+    {
+        DynamicsBodyProperties? bodyProperties = propertiesByBody.TryGetValue(arg0.Body.Handle.Value, out var value) ? value : null;
+        return new(
+            new Transform(Vector3.Zero, createdAttitude, Vector3.One),
+            new Vector3(SlipPerRead * ++Reads, 0.0f, 0.0f),
+            Vector3.Zero,
+            Sleeping: false,
+            new MassProperties(
+                Available: true,
+                Mass: bodyProperties.HasValue ? bodyProperties.Value.Mass : BodyMass,
+                PrincipalInertia: bodyProperties.HasValue
+                    ? bodyProperties.Value.MassPolicy.Explicit.PrincipalInertia
+                    : new Vector3(BodyInertia, BodyInertia, BodyInertia),
+                Policy: bodyProperties.HasValue
+                    ? bodyProperties.Value.MassPolicy.Kind
+                    : DynamicsMassPolicyKind.DeriveFromShapeAndMass,
+                CenterOfMass: Vector3.Zero,
+                PrincipalInertiaLocalFrame: Quaternion.Identity),
+            ContactCount: ContactCount,
+            FirstContact: HullContact);
+    }
 
     public DynamicsBody CreateCuboidBody(DynamicsCreateCuboidBodyRequest arg0)
     {
@@ -244,6 +249,7 @@ internal sealed class RecordingDynamics(ServiceFaults faults)
     {
         faults.FailIf(nameof(UpdateBody));
         appliedProperties = arg0.Properties;
+        propertiesByBody[arg0.Body.Handle.Value] = arg0.Properties;
         BodyUpdates++;
     }
 

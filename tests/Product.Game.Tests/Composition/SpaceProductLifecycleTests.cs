@@ -98,6 +98,50 @@ public class SpaceProductLifecycleTests
         Assert.Equal(publications, engine.Graphics.SnapshotPublications);
     }
 
+    [Fact]
+    public void RestartWhilePausedRebuildsAndPublishesWithoutResumingFlight()
+    {
+        RecordingEngine engine = new();
+        using SpaceProduct product = new(ProductContexts.For(engine));
+        product.Start();
+        product.Pause();
+        int bodies = engine.Dynamics.BodyCreates;
+        int publications = engine.Graphics.SnapshotPublications;
+        product.Restart();
+        Assert.Equal(bodies + 1, engine.Dynamics.BodyCreates);
+        Assert.Equal(publications + 1, engine.Graphics.SnapshotPublications);
+        Assert.Throws<InvalidOperationException>(() => product.Update(Turn()));
+        product.Resume();
+        product.Update(Turn());
+        Assert.Single(engine.Dynamics.Steps);
+    }
+
+    [Fact]
+    public void DebugSelectionPublishesEachAuthoredFitAndPreservesPause()
+    {
+        RecordingEngine engine = new();
+        using SpaceProduct product = new(ProductContexts.For(engine));
+        List<IDebugCommandModule> modules = [];
+        product.RegisterDebugCommands(RecordingServiceProxy.Create<IDebugCommandModuleRegistrar>((_, args) =>
+        {
+            modules.Add((IDebugCommandModule)args![0]!);
+            return new DebugCommandRegistrationResult(DebugCommandRegistrationStatus.Registered, "recorded");
+        }));
+        FlightDebugModule debug = Assert.Single(modules.OfType<FlightDebugModule>());
+        Assert.Throws<InvalidOperationException>(() => debug.ScavengedLoadout());
+        product.Start();
+        product.Pause();
+        int publications = engine.Graphics.SnapshotPublications;
+        Assert.Contains("oversized-scavenged-emitter", debug.ScavengedLoadout());
+        Assert.Contains("damaged-stabilizer", debug.DamagedLoadout());
+        Assert.Contains("stock", debug.StockLoadout());
+        Assert.Equal(publications + 3, engine.Graphics.SnapshotPublications);
+        Assert.Empty(engine.Dynamics.Steps);
+        Assert.Throws<InvalidOperationException>(() => product.Update(Turn()));
+        product.Shutdown();
+        Assert.Throws<InvalidOperationException>(() => debug.StockLoadout());
+    }
+
     private static ProductUpdate Turn(string? intent = null) => new(
         new ProductUpdateFacts(ProductUpdateMode.Realtime, ProductLifecycleState.Running,
             Generation: 1, ControlRevision: 0, ObservedHostTimeNanoseconds: 0, SimulationStep: 0,

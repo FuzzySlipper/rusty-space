@@ -1,6 +1,6 @@
 namespace Rusty.Space.Product.Navigation;
 
-public readonly record struct PlanarVector(double X, double Z)
+internal readonly record struct PlanarVector(double X, double Z)
 {
     internal static PlanarVector Zero { get; } = new(0.0, 0.0);
 

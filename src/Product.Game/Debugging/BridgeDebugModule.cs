@@ -43,7 +43,6 @@ public sealed class BridgeDebugModule : IDebugCommandModule
             parts       {names.Length - bridge.ImplicitSurfaceCount} presentation: {parts}
             seated      {(seated() ? "at helm" : "at chart")}
             seated eye  ({placements.SeatedEye.Position.X:F2}, {placements.SeatedEye.Position.Y:F2}, {placements.SeatedEye.Position.Z:F2}) yaw {placements.SeatedEye.YawDegrees:F1} pitch {placements.SeatedEye.PitchDegrees:F1}
-            approach    ({placements.ApproachView.Position.X:F2}, {placements.ApproachView.Position.Y:F2}, {placements.ApproachView.Position.Z:F2}) yaw {placements.ApproachView.YawDegrees:F1} pitch {placements.ApproachView.PitchDegrees:F1} focus ({placements.ApproachFocus.X:F2}, {placements.ApproachFocus.Y:F2}, {placements.ApproachFocus.Z:F2})
             instrument  ({placements.InstrumentCenter.X:F2}, {placements.InstrumentCenter.Y:F2}, {placements.InstrumentCenter.Z:F2}) facing ({placements.InstrumentNormal.X:F1}, {placements.InstrumentNormal.Y:F1}, {placements.InstrumentNormal.Z:F1})
             lights      overhead ({placements.OverheadLight.X:F2}, {placements.OverheadLight.Y:F2}, {placements.OverheadLight.Z:F2})  helm ({placements.HelmLight.X:F2}, {placements.HelmLight.Y:F2}, {placements.HelmLight.Z:F2})
             audio       ({placements.AudioAnchor.X:F2}, {placements.AudioAnchor.Y:F2}, {placements.AudioAnchor.Z:F2})

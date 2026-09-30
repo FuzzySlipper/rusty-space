@@ -1,6 +1,6 @@
 namespace Rusty.Space.Product.Lifecycle;
 
-public enum SpaceLifecycleState
+internal enum SpaceLifecycleState
 {
     Created,
     Running,

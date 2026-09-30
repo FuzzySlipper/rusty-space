@@ -56,7 +56,7 @@ public class DriftCurrentTests
 
         Flight.FlightWrench wrench = current.Resolve(
             tuning.Center,
-            current.FlowDirection.Scale(tuning.FlowSpeed),
+            tuning.Direction.Scale(tuning.FlowSpeed),
             mass: ShipMass,
             coupling: FullyCoupled);
 
@@ -71,7 +71,7 @@ public class DriftCurrentTests
 
         Flight.FlightWrench wrench = current.Resolve(
             tuning.Center,
-            current.FlowDirection.Scale(-50.0),
+            tuning.Direction.Scale(-50.0),
             mass: ShipMass,
             coupling: FullyCoupled);
 

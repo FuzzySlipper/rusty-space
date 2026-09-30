@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using Rusty.Engine;
+using Rusty.Space.Product.Navigation;
 
 namespace Rusty.Space.Product.Bridge;
 
@@ -73,17 +74,9 @@ internal sealed record BridgeLayout(
     Vector3 AudioAnchorLocal,
     BridgePalette Palette)
 {
-    /// <summary>
-    /// How far proud of the recess back the instrument face sits. The display
-    /// module plugs the opening without touching the cut walls.
-    /// </summary>
-    internal const float InstrumentBackClearance = 0.02f;
-
-    /// <summary>
-    /// How far the control-strip island stops short of the console edges. The
-    /// strip must fit the face it protrudes from.
-    /// </summary>
-    internal const float ControlStripZInset = 0.2f;
+    internal BridgeRecipeTuning Recipe { get; init; } = BridgeRecipeTuning.Defaults;
+    internal BridgeInstrumentTuning Instruments { get; init; } = BridgeInstrumentTuning.Defaults;
+    internal BridgeLightingTuning Lighting { get; init; } = BridgeLightingTuning.Defaults;
 
     internal static BridgeLayout Defaults { get; } = new(
         Anchor: new Vector3(-9.5f, 0.0f, -9.5f),
@@ -153,7 +146,7 @@ internal sealed record BridgeLayout(
 
         ValidatePositive(ConsoleDepthX, nameof(ConsoleDepthX));
         ValidatePositive(ConsoleWidthZ, nameof(ConsoleWidthZ));
-        if (ConsoleWidthZ <= 2.0f * ControlStripZInset)
+        if (ConsoleWidthZ <= 2.0f * Instruments.ControlStripInset)
         {
             throw new ArgumentOutOfRangeException(nameof(ConsoleWidthZ));
         }
@@ -185,7 +178,7 @@ internal sealed record BridgeLayout(
         }
 
         ValidatePositive(RecessDepth, nameof(RecessDepth));
-        if (RecessDepth >= ConsoleDepthX || RecessDepth <= InstrumentBackClearance)
+        if (RecessDepth >= ConsoleDepthX || RecessDepth <= Instruments.BackClearance)
         {
             throw new ArgumentOutOfRangeException(nameof(RecessDepth));
         }
@@ -261,12 +254,15 @@ internal sealed record BridgeLayout(
         ValidateFiniteVector(HelmLightLocal, nameof(HelmLightLocal));
         ValidateFiniteVector(AudioAnchorLocal, nameof(AudioAnchorLocal));
         Palette.Validate();
+        Recipe.Validate();
+        Instruments.Validate();
+        Lighting.Validate();
         return this;
     }
 
     /// <summary>
     /// The world-space attachment facts the parent theater consumes: where the
-    /// seated and approach cameras belong, where the instrument faces point,
+    /// seated camera belongs, where the instrument faces point,
     /// and where lights and the audio source stage. Pure derivation, so the
     /// parent owns every reaction and this task owns only the facts.
     /// </summary>
@@ -276,18 +272,9 @@ internal sealed record BridgeLayout(
         {
             Vector3 eye = ToWorld(new Vector3(SeatCenter.X, EyeHeightAboveFloor, SeatCenter.Z));
             Vector3 instrument = InstrumentCenter;
-            (double seatedYaw, double seatedPitch) = YawPitchFor(eye, instrument);
-            // The approach view stands south of the room on the doorway axis
-            // and reads the helm face through the doorway gap: the segment
-            // from camera to focus must cross the south-wall plane inside the
-            // doorway width and below the lintel, which the layout tests pin.
-            Vector3 approach = ToWorld(ApproachSourceLocal);
-            Vector3 approachTarget = ToWorld(ApproachFocusLocal);
-            (double approachYaw, double approachPitch) = YawPitchFor(approach, approachTarget);
+            (double seatedYaw, double seatedPitch) = CameraOrientation.LookAt(eye, instrument);
             return new BridgePlacements(
                 new CameraPose(eye, seatedPitch, seatedYaw),
-                new CameraPose(approach, approachPitch, approachYaw),
-                approachTarget,
                 instrument,
                 InstrumentNormal,
                 SideInstrumentCenter,
@@ -299,21 +286,6 @@ internal sealed record BridgeLayout(
         }
     }
 
-    /// <summary>
-    /// Where the approach camera stands, room-local: south of the doorway,
-    /// offset west so the sightline to the helm face threads the gap.
-    /// </summary>
-    internal Vector3 ApproachSourceLocal => new(
-        -((DoorwayWidth / 2.0f) + 0.65f),
-        1.6f,
-        -((RoomWidthZ / 2.0f) + 2.9f));
-
-    /// <summary>
-    /// What the approach camera reads, room-local: the center of the main
-    /// display opening on the helm face.
-    /// </summary>
-    internal Vector3 ApproachFocusLocal => new(ConsoleFaceX, DisplayCenterHeight, 0.0f);
-
     internal Vector3 ToWorld(Vector3 local) => Anchor + local;
 
     /// <summary>West face of the helm console: the plane the seat reads.</summary>
@@ -321,7 +293,7 @@ internal sealed record BridgeLayout(
 
     /// <summary>Center of the recessed main display, in world space.</summary>
     internal Vector3 InstrumentCenter =>
-        ToWorld(new Vector3(ConsoleFaceX + RecessDepth - InstrumentBackClearance, DisplayCenterHeight, 0.0f));
+        ToWorld(new Vector3(ConsoleFaceX + RecessDepth - Instruments.BackClearance, DisplayCenterHeight, 0.0f));
 
     /// <summary>Direction the main display faces: toward the seat.</summary>
     internal static Vector3 InstrumentNormal => -Vector3.UnitX;
@@ -331,29 +303,11 @@ internal sealed record BridgeLayout(
     internal float SideHousingCenterZ => (ConsoleWidthZ / 2.0f) + SideHousingGap + (SideHousingWidthZ / 2.0f);
 
     internal Vector3 SideInstrumentCenter => ToWorld(new Vector3(
-        SideHousingFaceX + RecessDepth - InstrumentBackClearance,
+        SideHousingFaceX + RecessDepth - Instruments.BackClearance,
         SideDisplayCenterHeight,
         SideHousingCenterZ));
 
     internal static Vector3 SideInstrumentNormal => -Vector3.UnitX;
-
-    /// <summary>
-    /// Engine camera yaw/pitch that looks from a source at a target. Yaw zero
-    /// faces -Z with positive yaw toward +X; negative pitch looks down.
-    /// </summary>
-    internal static (double YawDegrees, double PitchDegrees) YawPitchFor(Vector3 source, Vector3 target)
-    {
-        Vector3 offset = target - source;
-        double length = offset.Length();
-        if (length <= 0.0)
-        {
-            return (0.0, 0.0);
-        }
-
-        double yaw = Math.Atan2(offset.X, -offset.Z) * 180.0 / Math.PI;
-        double pitch = Math.Asin(Math.Clamp(offset.Y / length, -1.0, 1.0)) * 180.0 / Math.PI;
-        return (yaw, pitch);
-    }
 
     private static void ValidatePositive(float value, string parameterName)
     {
@@ -447,8 +401,6 @@ internal sealed record BridgePalette(
 /// </summary>
 internal sealed record BridgePlacements(
     CameraPose SeatedEye,
-    CameraPose ApproachView,
-    Vector3 ApproachFocus,
     Vector3 InstrumentCenter,
     Vector3 InstrumentNormal,
     Vector3 SideInstrumentCenter,

@@ -4,6 +4,7 @@ using Rusty.Engine;
 using Rusty.Space.Product.Bridge;
 using Rusty.Space.Product.Composition;
 using Rusty.Space.Product.Engine.Tests;
+using Rusty.Space.Product.Tuning;
 using Xunit;
 
 namespace Rusty.Space.Product.Viewing.Tests;
@@ -22,13 +23,16 @@ public class HelmCameraTests
     {
         RecordingEngine engine = new();
         BridgeLayout layout = BridgeLayout.Defaults.Validate();
-        using HelmCamera helm = new(engine.CameraView.Service, layout);
+        using HelmCamera helm = new(engine.CameraView.Service, layout, new HelmCameraTuning(70, 0.2, 350));
 
         Assert.Single(engine.CameraView.CreatedCameras);
         helm.Follow(HelmLean.Rest);
 
         CameraDescriptor pose = engine.CameraView.CameraPoses[engine.CameraView.CreatedCameras[0]];
         Assert.Equal(layout.Placements.SeatedEye.Position, pose.Pose.Position);
+        Assert.Equal(70, pose.Projection.FovYDegrees);
+        Assert.Equal(0.2, pose.Projection.Near);
+        Assert.Equal(350, pose.Projection.Far);
         Assert.Equal(layout.Placements.SeatedEye.YawDegrees, pose.Pose.YawDegrees, 9);
         Assert.Equal(layout.Placements.SeatedEye.PitchDegrees, pose.Pose.PitchDegrees, 9);
     }
@@ -38,7 +42,7 @@ public class HelmCameraTests
     {
         RecordingEngine engine = new();
         BridgeLayout layout = BridgeLayout.Defaults.Validate();
-        using HelmCamera helm = new(engine.CameraView.Service, layout);
+        using HelmCamera helm = new(engine.CameraView.Service, layout, SpaceTuning.Defaults.HelmCamera);
         var lean = new HelmLean(new Vector3(-0.05f, 0.0f, 0.02f), 1.5);
 
         helm.Follow(lean);

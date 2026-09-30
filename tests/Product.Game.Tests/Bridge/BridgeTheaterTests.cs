@@ -303,7 +303,7 @@ public class BridgeTheaterTests
     private static InstalledShip StockShip()
     {
         SpaceTuning tuning = SpaceTuning.Defaults;
-        return new InstalledShip(tuning.Ship, tuning.Flight.MaximumThrust, tuning.Damage);
+        return new InstalledShip(tuning.Ship, tuning.Flight.MaximumThrust, tuning.Damage, tuning.Thermal);
     }
 
     private static FlightTelemetrySnapshot Spooling(double effort) => new(

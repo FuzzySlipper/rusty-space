@@ -22,19 +22,12 @@ internal sealed class TrackingCamera : IDisposable
     private const double NeutralDeltaSeconds = 0.0;
     private const double FullSmoothing = 1.0;
 
-    // Engine world axes are right-handed Y-up. Camera yaw zero faces -Z and
-    // positive yaw turns toward +X, so the horizontal look direction for yaw
-    // is (sin yaw, 0, -cos yaw); the tuned yaw decides which world side the
-    // camera sits on and the pitch decides how far it leans down.
-    private const double YAxisForwardZ = -1.0;
-
     private readonly ICameraViewService cameraView;
     private readonly CameraTuning tuning;
     private readonly Camera camera;
     private Vector3 chasePosition;
     private ulong lastResetCount;
     private double zoomScale = 1.0;
-    private bool positioned;
     private bool disposed;
 
     internal TrackingCamera(
@@ -46,7 +39,6 @@ internal sealed class TrackingCamera : IDisposable
         this.cameraView = cameraView ?? throw new ArgumentNullException(nameof(cameraView));
         this.tuning = tuning;
         chasePosition = AnchorPosition(spawn.Position);
-        positioned = true;
         lastResetCount = spawnResetCount;
         camera = this.cameraView.CreateCamera(Descriptor(chasePosition));
         try
@@ -68,30 +60,14 @@ internal sealed class TrackingCamera : IDisposable
     {
         ThrowIfDisposed();
         double nextZoomScale = ResolveZoomScale(input);
-        bool nextPositioned = positioned;
-        if (resetCount != lastResetCount)
-        {
-            nextPositioned = false;
-        }
-
         Vector3 target = AnchorPosition(readout.Position, nextZoomScale);
-        Vector3 nextChasePosition;
-        if (!nextPositioned)
-        {
-            nextChasePosition = target;
-            nextPositioned = true;
-        }
-        else
-        {
-            nextChasePosition = chasePosition
-                + ((target - chasePosition) * ToSingle(FollowFraction(
-                    turnDuration,
-                    tuning.PositionSmoothing)));
-        }
+        Vector3 nextChasePosition = resetCount != lastResetCount
+            ? target
+            : chasePosition + ((target - chasePosition) * ToSingle(FollowFraction(
+                turnDuration, tuning.PositionSmoothing)));
 
         cameraView.UpdateCamera(new CameraUpdateRequest(camera, Descriptor(nextChasePosition)));
         chasePosition = nextChasePosition;
-        positioned = nextPositioned;
         zoomScale = nextZoomScale;
         lastResetCount = resetCount;
     }
@@ -121,13 +97,11 @@ internal sealed class TrackingCamera : IDisposable
 
     private Vector3 AnchorPosition(PlanarVector shipPosition, double scale)
     {
-        double yawRadians = tuning.YawDegrees * Math.PI / 180.0;
-        double forwardX = Math.Sin(yawRadians);
-        double forwardZ = YAxisForwardZ * Math.Cos(yawRadians);
+        Vector3 forward = CameraOrientation.HorizontalForward(tuning.YawDegrees);
         return new Vector3(
-            ToSingle(shipPosition.X - (forwardX * tuning.BackDistance * scale)),
+            ToSingle(shipPosition.X - (forward.X * tuning.BackDistance * scale)),
             ToSingle(tuning.HeightAboveShip * scale),
-            ToSingle(shipPosition.Z - (forwardZ * tuning.BackDistance * scale)));
+            ToSingle(shipPosition.Z - (forward.Z * tuning.BackDistance * scale)));
     }
 
     /// <summary>

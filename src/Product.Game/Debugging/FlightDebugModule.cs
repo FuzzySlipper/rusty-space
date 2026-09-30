@@ -4,25 +4,45 @@ using Rusty.Space.Product.Field;
 using Rusty.Space.Product.Flight;
 using Rusty.Space.Product.Navigation;
 using Rusty.Space.Product.ShipSystems;
+using Rusty.Space.Product.Tuning;
 
 namespace Rusty.Space.Product.Debugging;
 
 /// <summary>
-/// Read-only live-debug view of the flight spine. Every command reports state
-/// and none writes back, so handling is tuned from what the product actually
-/// decided this turn instead of from a rebuild and a guess.
+/// Live-debug flight readings plus explicit selection of the authored hull fits.
+/// Reading commands leave state alone; loadout commands rebuild the hull at spawn.
 /// </summary>
 /// <remarks>
 /// Public because the Engine emits catalog dispatch into the product
 /// composition, which sees Product.Game as a referenced assembly. Only the
-/// composition root constructs it; the commands read, never mutate.
+/// composition root constructs it and supplies the product-owned selection callback.
 /// </remarks>
 public sealed class FlightDebugModule : IDebugCommandModule
 {
     private readonly SpaceFlight flight;
 
-    internal FlightDebugModule(SpaceFlight flight)
-        => this.flight = flight ?? throw new ArgumentNullException(nameof(flight));
+    private readonly Action<ShipLoadout> selectLoadout;
+
+    internal FlightDebugModule(SpaceFlight flight, Action<ShipLoadout> selectLoadout)
+    {
+        this.flight = flight ?? throw new ArgumentNullException(nameof(flight));
+        this.selectLoadout = selectLoadout ?? throw new ArgumentNullException(nameof(selectLoadout));
+    }
+
+    [DebugCommand("space.loadout.stock", Description = "Rebuilds the hull at spawn with the stock fit.")]
+    public string StockLoadout() => Select(ShipLoadouts.Stock);
+
+    [DebugCommand("space.loadout.scavenged", Description = "Rebuilds the hull at spawn with the oversized scavenged emitter.")]
+    public string ScavengedLoadout() => Select(ShipLoadouts.OversizedScavengedEmitter);
+
+    [DebugCommand("space.loadout.damaged", Description = "Rebuilds the hull at spawn with the damaged stabilizer fit.")]
+    public string DamagedLoadout() => Select(ShipLoadouts.DamagedStabilizer);
+
+    private string Select(ShipLoadout loadout)
+    {
+        selectLoadout(loadout);
+        return Hardware();
+    }
 
     [DebugCommand("space.forces", Description = "Shows the last admitted turn's push split by the source that produced it.")]
     public string Forces()
@@ -165,7 +185,8 @@ public sealed class FlightDebugModule : IDebugCommandModule
         FlightCommand command = flight.LastCommand;
         return FormattableString.Invariant(
             $"""
-            coupling    {flight.Coupling:F3}
+            requested   {flight.Coupling:F3}
+            emitter     {flight.Ship.Emitter.ActuatorValue:F3}
             trim        demand {command.CouplingTrim:F2}  (Q winds out, E winds in)
             attitude    {(command.StabilizerEnabled ? "hold engaged" : "hold disengaged")}
             emergency   {(command.EmergencyUncouple ? "uncouple held" : "clear")}

@@ -192,7 +192,7 @@ public class HullImpactTests
     private static InstalledShip Stock() => new(
         SpaceTuning.Defaults.Ship,
         SpaceTuning.Defaults.Flight.MaximumThrust,
-        SpaceTuning.Defaults.Damage);
+        SpaceTuning.Defaults.Damage, SpaceTuning.Defaults.Thermal);
 
     private static ShipEffort AdvanceWithNoDemand(InstalledShip ship)
     {

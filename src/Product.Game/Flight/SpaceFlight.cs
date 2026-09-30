@@ -18,7 +18,8 @@ internal sealed class SpaceFlight : IDisposable
     private const uint SingleSubstep = 1;
     private const uint FirstSubstep = 0;
     private const ulong SequenceIncrement = 1;
-    private const double NeutralCommandIntent = 0.0;
+    private const float NoGravity = 0.0f;
+    private const float ChartPlaneAxis = 0.0f;
     private const float NoDamping = 0.0f;
     private const float HullFriction = 0.5f;
     private const float NoRestitution = 0.0f;
@@ -30,7 +31,7 @@ internal sealed class SpaceFlight : IDisposable
     private readonly IDynamicsService dynamics;
     private readonly DynamicsWorld world;
     private readonly FlightController controller;
-    private readonly FieldCoupling coupling;
+    private readonly CouplingTrim coupling;
     private readonly FlightTelemetry telemetry = new();
     private readonly StellarField field;
     private readonly HullForceModel forceModel;
@@ -38,7 +39,10 @@ internal sealed class SpaceFlight : IDisposable
     private readonly ApproachField approach;
     private readonly HullContacts hullContacts;
     private readonly FlightBodyTuning bodyTuning;
-    private readonly InstalledShip ship;
+    private InstalledShip ship;
+    private readonly double driveAuthority;
+    private readonly DamageTuning damageTuning;
+    private readonly PartThermalTuning thermalTuning;
     private readonly FlightInputMapper inputMapper = new();
     private DynamicsBody body = null!;
     private FlightCommand command = FlightCommand.Neutral;
@@ -63,6 +67,7 @@ internal sealed class SpaceFlight : IDisposable
         FlightBodyTuning bodyTuning,
         ShipLoadout shipLoadout,
         DamageTuning damageTuning,
+        PartThermalTuning thermalTuning,
         FieldTuning fieldTuning,
         OrbitalGravityTuning orbitalTuning,
         DriftCurrentTuning gentleCurrentTuning,
@@ -72,9 +77,12 @@ internal sealed class SpaceFlight : IDisposable
     {
         this.dynamics = dynamics ?? throw new ArgumentNullException(nameof(dynamics));
         this.bodyTuning = bodyTuning;
-        ship = new InstalledShip(shipLoadout, flightTuning.MaximumThrust, damageTuning);
+        driveAuthority = flightTuning.MaximumThrust;
+        this.damageTuning = damageTuning;
+        this.thermalTuning = thermalTuning;
+        ship = new InstalledShip(shipLoadout, driveAuthority, damageTuning, thermalTuning);
         controller = new FlightController(flightTuning);
-        coupling = new FieldCoupling(couplingTuning);
+        coupling = new CouplingTrim(couplingTuning);
         field = new StellarField(fieldTuning);
         DriftCurrent gentle = new(gentleCurrentTuning);
         DriftCurrent swift = new(swiftCurrentTuning);
@@ -96,7 +104,7 @@ internal sealed class SpaceFlight : IDisposable
         try
         {
             initialBody = CreateSpawnBody();
-            FitHull(initialBody);
+            FitHull(initialBody, ship);
             readout = MapReadout(this.dynamics.Read(new DynamicsReadRequest(initialBody)));
             body = initialBody;
             // The chart this hull is flying goes into the same world the hull is
@@ -228,10 +236,7 @@ internal sealed class SpaceFlight : IDisposable
         // The Engine admitted these steps at its own rate, and that admitted
         // duration is the only clock the turn runs on.
         AdmittedTurn turn = AdmittedTurn.FromFacts(update.Facts);
-        ulong nextFixedStepCount = checked(fixedStepCount + stepCount);
-        ulong nextUpdateSequence = checked(updateSequence + SequenceIncrement);
         FlightBodyState turnStart = ToBodyState(readout);
-        FlightReadout currentReadout = readout;
         FlightForces turnStartForces = FlightForces.Zero;
         FlightForces forces = FlightForces.Zero;
         FlightControlOutput output = default;
@@ -240,19 +245,17 @@ internal sealed class SpaceFlight : IDisposable
         FieldSample fieldSample = field.Sample(turnStart.Position);
         for (uint stepIndex = 0; stepIndex < stepCount; stepIndex++)
         {
-            FlightBodyState bodyState = ToBodyState(currentReadout);
+            FlightBodyState bodyState = ToBodyState(readout);
             fieldSample = field.Sample(bodyState.Position);
-            // Each actuator owns its own level and moves over the one admitted
+            // Each installed actuator moves over the one admitted
             // fixed step this substep integrates, so a turn that catches up four
             // steps has had four steps of travel and no interval is counted
             // twice.
-            FlightControlOutput substepOutput = controller.Advance(
+            FlightControlOutput substepOutput = controller.Resolve(
                 bodyState,
                 input.Command,
-                currentReadout.YawInertia,
-                turn.FixedStep);
-            // The coupling actuator travels on the same per-substep clock for
-            // the same reason.
+                readout.YawInertia);
+            // Relative trim winds the retained demand on the admitted clock.
             coupling.Advance(input.Command, turn.FixedStep);
             // A patch held on a latched effector is held against the same clock
             // everything else on this hull answers to.
@@ -271,7 +274,7 @@ internal sealed class SpaceFlight : IDisposable
                 ship,
                 fieldSample,
                 substepEffort,
-                currentReadout.Mass);
+                readout.Mass);
             if (stepIndex == FirstSubstep)
             {
                 turnStartForces = substepForces;
@@ -287,7 +290,7 @@ internal sealed class SpaceFlight : IDisposable
                 new[] { body }));
             DynamicsReadout nativeReadout = stepped.Bodies.Span[0].Readout;
             LastDynamicsStep = new DynamicsStepObservation(stepped.Generation, stepped.BodyCount, stepped.ContactCount);
-            currentReadout = MapReadout(nativeReadout);
+            readout = MapReadout(nativeReadout);
             // The Engine has already given the hull whatever its contacts amounted
             // to, and the readout above is where that shows up. What happens here
             // turns the same push into something the instruments can report and the
@@ -297,7 +300,7 @@ internal sealed class SpaceFlight : IDisposable
                 world,
                 body,
                 nativeReadout,
-                currentReadout.HeadingRadians);
+                readout.HeadingRadians);
             if (contact.Present)
             {
                 if (!inContact)
@@ -331,18 +334,20 @@ internal sealed class SpaceFlight : IDisposable
         // frame is still something the panel can show and a tuning pass can query
         // afterwards, which is the whole point of reading it at all; what the
         // contact ended or not is carried apart from it.
+        fixedStepCount = checked(fixedStepCount + stepCount);
+        updateSequence = checked(updateSequence + SequenceIncrement);
         HullStrike reported = strike.Impact.Present
             ? strike with { StillTouching = inContact }
             : lastStrike with { StillTouching = inContact };
 
         telemetry.Capture(
             turnStart,
-            currentReadout,
+            readout,
             forces,
             output,
             effort,
             coupling.Level,
-            nextFixedStepCount,
+            fixedStepCount,
             stepCount,
             turn.FixedStep,
             reported);
@@ -350,28 +355,28 @@ internal sealed class SpaceFlight : IDisposable
         // actually left the ship in, with the hardware's last reached effort held,
         // so what the player reads ahead is the same rule that moved the hull.
         projectedPath = trajectory.Project(
-            ToBodyState(currentReadout),
+            ToBodyState(readout),
             ship,
             effort,
-            currentReadout.Mass,
+            readout.Mass,
             turn.FixedStep);
         contributions = forces;
         firstSubstepContributions = turnStartForces;
         lastStrike = reported;
         lastFieldSample = fieldSample;
         command = input.Command;
-        readout = currentReadout;
-        fixedStepCount = nextFixedStepCount;
-        updateSequence = nextUpdateSequence;
         return new FlightAdmission(
             true, fixedStepCount, updateSequence, turn.Duration, input.FaultRequested);
     }
 
-    internal void ResetFlight()
+    internal void Refit(ShipLoadout loadout) => ResetFlight(
+        new InstalledShip(loadout.Validate(), driveAuthority, damageTuning, thermalTuning));
+
+    internal void ResetFlight() => ResetFlight(ship);
+
+    private void ResetFlight(InstalledShip fittedShip)
     {
         ThrowIfDisposed();
-        ulong nextUpdateSequence = checked(updateSequence + SequenceIncrement);
-        ulong nextResetCount = checked(resetCount + SequenceIncrement);
         DynamicsBody? candidate = null;
         try
         {
@@ -380,11 +385,12 @@ internal sealed class SpaceFlight : IDisposable
             // fitted hardware is put on it: the same fit the spawn applies, or
             // the ship silently loses its mounted weight every time the player
             // puts it back on the line.
-            FitHull(candidate);
+            FitHull(candidate, fittedShip);
             FlightReadout candidateReadout = MapReadout(
                 dynamics.Read(new DynamicsReadRequest(candidate)));
             DynamicsBody previous = body;
             body = candidate;
+            ship = fittedShip;
             candidate = null;
             readout = candidateReadout;
             command = FlightCommand.Neutral;
@@ -396,13 +402,12 @@ internal sealed class SpaceFlight : IDisposable
             inContact = false;
             impactCount = 0;
             LastDynamicsStep = default;
-            controller.Reset();
             coupling.Reset();
             ship.Reset();
             telemetry.Reset();
             inputMapper.Reset();
-            updateSequence = nextUpdateSequence;
-            resetCount = nextResetCount;
+            updateSequence = checked(updateSequence + SequenceIncrement);
+            resetCount = checked(resetCount + SequenceIncrement);
             previous.Dispose();
         }
         finally
@@ -444,13 +449,6 @@ internal sealed class SpaceFlight : IDisposable
     }
 
     /// <summary>
-    /// The same push, with the turn it causes because it lands away from the
-    /// center of mass.
-    /// </summary>
-    private static FlightWrench AtPoint(PlanarVector force, PlanarVector offsetFromCenter) =>
-        new(force, PlanarFrame.YawTorque(offsetFromCenter, force));
-
-    /// <summary>
     /// Hands the Engine the mass and turn inertia the fitted hardware adds to the
     /// hull, through the body-update lane and with authored mass properties.
     /// </summary>
@@ -478,21 +476,21 @@ internal sealed class SpaceFlight : IDisposable
     /// of a read that is already a step behind the ship.
     /// </para>
     /// </remarks>
-    private void FitHull(DynamicsBody hull)
+    private void FitHull(DynamicsBody hull, InstalledShip fittedShip)
     {
         DynamicsReadout current = dynamics.Read(new DynamicsReadRequest(hull));
-        dynamics.UpdateBody(new DynamicsUpdateBodyRequest(hull, FittedProperties(current)));
+        dynamics.UpdateBody(new DynamicsUpdateBodyRequest(hull, FittedProperties(current, fittedShip)));
     }
 
-    private DynamicsBodyProperties FittedProperties(DynamicsReadout hull) => new(
-        ToSingle(checked(hull.MassProperties.Mass + ship.AddedMass)),
+    private static DynamicsBodyProperties FittedProperties(DynamicsReadout hull, InstalledShip fittedShip) => new(
+        ToSingle(checked(hull.MassProperties.Mass + fittedShip.AddedMass)),
         new DynamicsMassPolicy(
             DynamicsMassPolicyKind.Explicit,
             new DynamicsExplicitMassProperties(
                 Vector3.Zero,
                 new Vector3(
                     ToSingle(hull.MassProperties.PrincipalInertia.X),
-                    ToSingle(hull.MassProperties.PrincipalInertia.Y + ship.AddedYawInertia),
+                    ToSingle(hull.MassProperties.PrincipalInertia.Y + fittedShip.AddedYawInertia),
                     ToSingle(hull.MassProperties.PrincipalInertia.Z)),
                 Quaternion.Identity)),
         hull.LinearVelocity,
@@ -506,7 +504,7 @@ internal sealed class SpaceFlight : IDisposable
             RotationZ: AxisLocked),
         LinearDamping: NoDamping,
         AngularDamping: NoDamping,
-        GravityScale: ToSingle(NeutralCommandIntent),
+        GravityScale: NoGravity,
         Friction: HullFriction,
         Restitution: NoRestitution,
         CollisionGroups: AllCollisionGroups,
@@ -540,15 +538,15 @@ internal sealed class SpaceFlight : IDisposable
                 RotationX: AxisLocked,
                 RotationY: AxisFree,
                 RotationZ: AxisLocked),
-            GravityScale: ToSingle(NeutralCommandIntent))));
+            GravityScale: NoGravity)));
 
     private DynamicsAction ToDynamicsAction(FlightWrench wrench) => new(
         body,
-        new Vector3(ToSingle(wrench.Force.X), ToSingle(NeutralCommandIntent), ToSingle(wrench.Force.Z)),
+        new Vector3(ToSingle(wrench.Force.X), ChartPlaneAxis, ToSingle(wrench.Force.Z)),
         new Vector3(
-            ToSingle(NeutralCommandIntent),
+            ChartPlaneAxis,
             ToSingle(PlanarFrame.EngineYaw(wrench.YawTorque)),
-            ToSingle(NeutralCommandIntent)),
+            ChartPlaneAxis),
         Vector3.Zero,
         Vector3.Zero,
         Wake: true);

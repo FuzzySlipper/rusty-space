@@ -162,6 +162,40 @@ public class SpaceFlightTests
         Assert.Equal(1, dynamics.BodyReleases);
     }
 
+    [Fact]
+    public void RefitReplacesOnlyTheHullAndAppliesTheNewMountedMassOnce()
+    {
+        RecordingDynamics dynamics = new();
+        using SpaceFlight flight = Flight(dynamics);
+        int chartAndHull = dynamics.BodyCreates;
+        flight.Refit(ShipLoadouts.OversizedScavengedEmitter);
+        double expected = BodyMass + flight.Ship.AddedMass;
+        Assert.Equal("oversized-scavenged-emitter", flight.Ship.LoadoutName);
+        Assert.Equal(expected, flight.Readout.Mass, 5);
+        Assert.Equal(chartAndHull + 1, dynamics.BodyCreates);
+        Assert.Equal(1, dynamics.BodyReleases);
+        flight.ResetFlight();
+        Assert.Equal(expected, flight.Readout.Mass, 5);
+        flight.Refit(ShipLoadouts.DamagedStabilizer);
+        Assert.Equal("damaged-stabilizer", flight.Ship.LoadoutName);
+        Assert.Equal(BodyMass + flight.Ship.AddedMass, flight.Readout.Mass, 5);
+    }
+
+    [Fact]
+    public void ARefusedRefitKeepsThePreviousHardwareAndReleasesTheCandidateHull()
+    {
+        ServiceFaults faults = new();
+        RecordingDynamics dynamics = new(faults);
+        using SpaceFlight flight = Flight(dynamics);
+        InstalledShip previous = flight.Ship;
+        faults.FailOn = nameof(IDynamicsService.UpdateBody);
+        Assert.Throws<InjectedFault>(() => flight.Refit(ShipLoadouts.OversizedScavengedEmitter));
+        Assert.Same(previous, flight.Ship);
+        Assert.Equal(0UL, flight.ResetCount);
+        Assert.Equal(1, dynamics.BodyReleases);
+        Assert.Equal(flight.Approach.Obstacles.Count + 1, dynamics.BodyCreates - dynamics.BodyReleases);
+    }
+
     private static SpaceFlight Flight(
         RecordingDynamics dynamics,
         double spawnHeadingRadians = 0.0,
@@ -173,6 +207,7 @@ public class SpaceFlightTests
         SpaceTuning.Defaults.FlightBody with { SpawnHeadingRadians = spawnHeadingRadians },
         loadout ?? SpaceTuning.Defaults.Ship,
         SpaceTuning.Defaults.Damage,
+        SpaceTuning.Defaults.Thermal,
         SpaceTuning.Defaults.Field,
         SpaceTuning.Defaults.Orbital,
         SpaceTuning.Defaults.GentleCurrent,

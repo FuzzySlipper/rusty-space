@@ -121,7 +121,7 @@ public class FlightTelemetryTests
         // A control law's demand and the effort the fitted actuators put in to
         // meet it are different numbers, and the panel reports the actuators':
         // a demand the ship cannot reach is not an effort the ship made. Drive
-        // effort is the throttle spool's own travel, so it comes from the
+        // demand is the pilot's throttle setting, so it comes from the
         // controller; heading effort, saturation, and the disagreement between
         // the two sides of the effector pair come from the hardware.
         FlightTelemetry telemetry = new();
@@ -130,7 +130,7 @@ public class FlightTelemetryTests
             Frame(0.0, PlanarVector.Zero, 0.0),
             Readout(0.0, PlanarVector.Zero, 0.0),
             FlightForces.Zero,
-            Control(driveEffort: 0.75, steeringEffort: 1.0, driveSaturated: false, steeringSaturated: false),
+            Control(driveEffort: 0.75),
             Hardware(headingEffort: 0.4, headingSaturated: true, headingAsymmetry: 0.5),
             SampledCoupling,
             3UL,
@@ -173,7 +173,7 @@ public class FlightTelemetryTests
             Frame(0.0, PlanarVector.Zero, 0.0),
             Readout(0.0, new PlanarVector(0.0, 9.0), 0.0),
             FlightForces.Zero,
-            Control(driveEffort: 1.0, steeringEffort: 1.0, driveSaturated: true, steeringSaturated: true),
+            Control(driveEffort: 1.0, driveSaturated: true),
             Hardware(),
             SampledCoupling,
             9UL,
@@ -248,14 +248,9 @@ public class FlightTelemetryTests
 
     private static FlightControlOutput Control(
         double driveEffort = 0.0,
-        double steeringEffort = 0.0,
-        bool driveSaturated = false,
-        bool steeringSaturated = false) => new(
+        bool driveSaturated = false) => new(
             FlightWrench.Zero,
             FlightWrench.Zero,
-            0.0,
             driveEffort,
-            steeringEffort,
-            driveSaturated,
-            steeringSaturated);
+            driveSaturated);
 }

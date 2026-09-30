@@ -16,13 +16,15 @@ internal sealed class HelmCamera : IDisposable
 {
     private readonly ICameraViewService cameraView;
     private readonly CameraPose seated;
+    private readonly HelmCameraTuning tuning;
     private readonly Camera camera;
     private bool disposed;
 
-    internal HelmCamera(ICameraViewService cameraView, BridgeLayout layout)
+    internal HelmCamera(ICameraViewService cameraView, BridgeLayout layout, HelmCameraTuning tuning)
     {
         this.cameraView = cameraView ?? throw new ArgumentNullException(nameof(cameraView));
         ArgumentNullException.ThrowIfNull(layout);
+        this.tuning = tuning.Validate();
         seated = layout.Validate().Placements.SeatedEye;
         camera = this.cameraView.CreateCamera(Descriptor(seated.Position, seated.PitchDegrees, seated.YawDegrees));
     }
@@ -53,16 +55,16 @@ internal sealed class HelmCamera : IDisposable
         camera.Dispose();
     }
 
-    private static CameraDescriptor Descriptor(Vector3 position, double pitchDegrees, double yawDegrees) => new(
+    private CameraDescriptor Descriptor(Vector3 position, double pitchDegrees, double yawDegrees) => new(
         new CameraPose(position, pitchDegrees, yawDegrees),
         CameraBasisMode.Derived,
         default,
         new CameraProjection(
             CameraProjectionKind.Perspective,
-            60.0,
+            tuning.FovYDegrees,
             VerticalSize: 0.0,
-            Near: 0.05,
-            Far: 500.0),
+            Near: tuning.NearPlane,
+            Far: tuning.FarPlane),
         new CameraViewport(0.0, 0.0, 1.0, 1.0));
 
     private void ThrowIfDisposed()

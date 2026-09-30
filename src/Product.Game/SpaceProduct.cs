@@ -2,6 +2,8 @@ using Rusty.Engine;
 using Rusty.Engine.Debugging;
 using Rusty.Space.Product.Composition;
 using Rusty.Space.Product.Flight;
+using Rusty.Space.Product.Debugging;
+using Rusty.Space.Product.ShipSystems;
 using Rusty.Space.Product.Lifecycle;
 
 namespace Rusty.Space.Product;
@@ -14,6 +16,7 @@ namespace Rusty.Space.Product;
 public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
 {
     private readonly SpaceProductComposition composition;
+    private readonly FlightDebugModule debugCommands;
     private SpaceLifecycleState lifecycle = SpaceLifecycleState.Created;
 
     public SpaceProduct(ProductCreateContext context)
@@ -23,6 +26,7 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
         try
         {
             composition = composed;
+            debugCommands = new FlightDebugModule(composed.Flight, SelectLoadout);
             // Create-time projection: the Engine retains this initial snapshot
             // alongside create outputs, before any update is admitted.
             PublishFlight();
@@ -37,11 +41,11 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
     }
 
     // The Engine generates the catalog and its dispatch; Space only names the
-    // live owners worth reading. Commands report state and never write it.
+    // live owners worth reading and the explicit loadout selection controls.
     public void RegisterDebugCommands(IDebugCommandModuleRegistrar registrar)
     {
         ArgumentNullException.ThrowIfNull(registrar);
-        registrar.Register(composition.Debug);
+        registrar.Register(debugCommands);
         registrar.Register(composition.BridgeDebug);
     }
 
@@ -106,8 +110,26 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
 
     public void Restart()
     {
-        RequireState(SpaceLifecycleState.Running, nameof(Restart));
+        if (lifecycle is not (SpaceLifecycleState.Running or SpaceLifecycleState.Paused))
+        {
+            throw new InvalidOperationException($"Restart requires a running or paused product; current state is {lifecycle}.");
+        }
         composition.Flight.ResetFlight();
+        PublishReset();
+    }
+
+    private void SelectLoadout(ShipLoadout loadout)
+    {
+        if (lifecycle is not (SpaceLifecycleState.Running or SpaceLifecycleState.Paused))
+        {
+            throw new InvalidOperationException($"Loadout selection requires a running or paused product; current state is {lifecycle}.");
+        }
+        composition.Flight.Refit(loadout);
+        PublishReset();
+    }
+
+    private void PublishReset()
+    {
         composition.Theater.Reset();
         PublishFlight();
         FollowCamera(ReadOnlySpan<ProductInputEvent>.Empty, TimeSpan.Zero);

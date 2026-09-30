@@ -4,7 +4,6 @@ internal sealed record FlightTuning(
     double MaximumSpeed,
     double MaximumThrust,
     double MaximumTurnRate,
-    TimeSpan ThrottleResponse,
     TimeSpan SteeringResponse)
 {
     private const double MinimumPositiveMagnitude = 0.0;
@@ -15,7 +14,6 @@ internal sealed record FlightTuning(
         ValidatePositiveFinite(MaximumThrust, nameof(MaximumThrust));
         ValidatePositiveFinite(MaximumTurnRate, nameof(MaximumTurnRate));
         ValidatePositive(SteeringResponse, nameof(SteeringResponse));
-        ValidatePositive(ThrottleResponse, nameof(ThrottleResponse));
         return this;
     }
 

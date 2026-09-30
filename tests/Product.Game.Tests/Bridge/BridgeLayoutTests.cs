@@ -100,40 +100,9 @@ public class BridgeLayoutTests
         Assert.True(faceOffset > 0.0f);
         Assert.True(faceOffset < layout.RecessDepth);
         float backGap = (layout.ConsoleFaceX + layout.RecessDepth) - faceOffset - layout.ConsoleFaceX;
-        Assert.Equal(BridgeLayout.InstrumentBackClearance, backGap, 4);
+        Assert.Equal(layout.Instruments.BackClearance, backGap, 4);
         Assert.Equal(-Vector3.UnitX, BridgeLayout.InstrumentNormal);
         Assert.Equal(layout.DisplayCenterHeight, layout.InstrumentCenter.Y - layout.Anchor.Y, 4);
-    }
-
-    [Fact]
-    public void TheApproachViewReadsTheHelmThroughTheDoorway()
-    {
-        BridgeLayout layout = BridgeLayout.Defaults.Validate();
-        BridgePlacements placements = layout.Placements;
-
-        Vector3 source = placements.ApproachView.Position - layout.Anchor;
-        Vector3 focus = placements.ApproachFocus - layout.Anchor;
-
-        // The camera stands outside the room and the focus sits on the helm
-        // face inside the display opening.
-        double outside = Math.Sqrt(source.X * source.X + source.Z * source.Z);
-        Assert.True(outside > layout.RoomLengthX / 2.0f);
-        Assert.Equal(layout.ConsoleFaceX, focus.X, 4);
-        Assert.Equal(layout.DisplayCenterHeight, focus.Y, 4);
-        Assert.Equal(0.0f, focus.Z, 4);
-
-        // The sightline threads the doorway: where it crosses the south-wall
-        // plane it is inside the doorway half-width and below the lintel.
-        double wallZ = -(layout.RoomWidthZ / 2.0f);
-        double t = (source.Z - wallZ) / (source.Z - focus.Z);
-        Assert.InRange(t, 0.0, 1.0);
-        double crossX = source.X + ((focus.X - source.X) * t);
-        double crossY = source.Y + ((focus.Y - source.Y) * t);
-        Assert.True(Math.Abs(crossX) <= layout.DoorwayWidth / 2.0f);
-        Assert.True(crossY >= 0.0 && crossY <= layout.DoorwayHeight);
-
-        Assert.InRange(placements.ApproachView.YawDegrees, 130.0, 170.0);
-        Assert.InRange(placements.ApproachView.PitchDegrees, -15.0, 0.0);
     }
 
     [Fact]
@@ -149,7 +118,7 @@ public class BridgeLayoutTests
     [Fact]
     public void YawAndPitchNameTheDirectionFromSourceToTarget()
     {
-        (double yaw, double pitch) = BridgeLayout.YawPitchFor(Vector3.Zero, Vector3.UnitX);
+        (double yaw, double pitch) = Rusty.Space.Product.Navigation.CameraOrientation.LookAt(Vector3.Zero, Vector3.UnitX);
 
         Assert.Equal(90.0, yaw, 9);
         Assert.Equal(0.0, pitch, 9);
@@ -158,7 +127,7 @@ public class BridgeLayoutTests
     [Fact]
     public void AZeroSightlineIsNeutralRatherThanUndefined()
     {
-        (double yaw, double pitch) = BridgeLayout.YawPitchFor(Vector3.One, Vector3.One);
+        (double yaw, double pitch) = Rusty.Space.Product.Navigation.CameraOrientation.LookAt(Vector3.One, Vector3.One);
 
         Assert.Equal(0.0, yaw);
         Assert.Equal(0.0, pitch);

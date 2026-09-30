@@ -36,12 +36,6 @@ internal static class BridgeRecipe
 {
     internal static readonly Transform Identity = new(Vector3.Zero, Quaternion.Identity, Vector3.One);
 
-    /// <summary>Authored clearance around each extraction region.</summary>
-    private const float ExtractionMargin = 0.3f;
-
-    /// <summary>How far a recess cut starts outside its face so the opening rim survives.</summary>
-    private const float CutOvershoot = 0.1f;
-
     internal static void Compose(
         IImplicitSurfacesService service,
         BridgeLayout layout,
@@ -55,7 +49,7 @@ internal static class BridgeRecipe
 
         RecipeWriter writer = new(
             service,
-            new(0.12f, 0.0f, 0.25f, ImplicitMaterialBoundaryMode.Interpolated),
+            layout.Recipe.Sampling,
             emit);
 
         // All recipe math runs in the room-local frame; world placement is the
@@ -64,8 +58,8 @@ internal static class BridgeRecipe
 
         void Surface(string name, ImplicitRecipe field, ImplicitNode solid, Vector3 localMin, Vector3 localMax, Material material, float cellSize)
         {
-            Vector3 min = W(localMin.X, localMin.Y, localMin.Z) - new Vector3(ExtractionMargin);
-            Vector3 max = W(localMax.X, localMax.Y, localMax.Z) + new Vector3(ExtractionMargin);
+            Vector3 min = W(localMin.X, localMin.Y, localMin.Z) - new Vector3(layout.Recipe.ExtractionMargin);
+            Vector3 max = W(localMax.X, localMax.Y, localMax.Z) + new Vector3(layout.Recipe.ExtractionMargin);
             writer.Surface(name, field, solid, min, max, material, Identity, [], cellSize, null);
         }
 
@@ -85,7 +79,7 @@ internal static class BridgeRecipe
                 new Vector3(-halfL - wallT, -layout.FloorThickness, -halfW - wallT),
                 new Vector3(halfL + wallT, 0.0f, halfW + wallT),
                 materials.Floor,
-                0.15f);
+                layout.Recipe.FloorCellSize);
         }
 
         using (ImplicitRecipe f = writer.Begin())
@@ -118,7 +112,7 @@ internal static class BridgeRecipe
                 new Vector3(-halfL - wallT, 0.0f, -halfW - wallT),
                 new Vector3(halfL + wallT, height, halfW + wallT),
                 materials.Walls,
-                0.12f);
+                layout.Recipe.WallCellSize);
         }
 
         using (ImplicitRecipe f = writer.Begin())
@@ -128,11 +122,11 @@ internal static class BridgeRecipe
             ImplicitNode slab = f.Box(
                 W(-halfL - wallT, slabBase, -halfW - wallT),
                 W(halfL + wallT, slabTop, halfW + wallT));
-            foreach (float beamX in new[] { -1.0f, 1.0f })
+            foreach (float beamX in new[] { -layout.Recipe.BeamOffsetX, layout.Recipe.BeamOffsetX })
             {
                 ImplicitNode beam = f.Box(
-                    W(beamX - 0.09f, slabBase - 0.25f, -halfW),
-                    W(beamX + 0.09f, slabBase, halfW));
+                    W(beamX - layout.Recipe.BeamHalfWidth, slabBase - layout.Recipe.BeamDrop, -halfW),
+                    W(beamX + layout.Recipe.BeamHalfWidth, slabBase, halfW));
                 slab = f.Union(slab, beam);
             }
 
@@ -140,10 +134,10 @@ internal static class BridgeRecipe
                 "bridge overhead",
                 f,
                 slab,
-                new Vector3(-halfL - wallT, slabBase - 0.25f, -halfW - wallT),
+                new Vector3(-halfL - wallT, slabBase - layout.Recipe.BeamDrop, -halfW - wallT),
                 new Vector3(halfL + wallT, slabTop, halfW + wallT),
                 materials.Ceiling,
-                0.12f);
+                layout.Recipe.OverheadCellSize);
         }
 
         ComposeHelm(writer, layout, materials, W, Surface);
@@ -171,8 +165,8 @@ internal static class BridgeRecipe
         // Control strip: a protruding island on the face below the display.
         float stripHalf = layout.ControlStripHeight / 2.0f;
         ImplicitNode strip = f.Box(
-            world(faceX - layout.ControlStripProtrusion, layout.ControlStripCenterHeight - stripHalf, -halfConsole + BridgeLayout.ControlStripZInset),
-            world(faceX + 0.02f, layout.ControlStripCenterHeight + stripHalf, halfConsole - BridgeLayout.ControlStripZInset));
+            world(faceX - layout.ControlStripProtrusion, layout.ControlStripCenterHeight - stripHalf, -halfConsole + layout.Instruments.ControlStripInset),
+            world(faceX + layout.Recipe.StripFaceOverlap, layout.ControlStripCenterHeight + stripHalf, halfConsole - layout.Instruments.ControlStripInset));
         body = f.Union(body, strip);
 
         // Main display recess: cut from outside the face so a thick bezel rim
@@ -180,7 +174,7 @@ internal static class BridgeRecipe
         float displayHalfW = layout.DisplayWidth / 2.0f;
         float displayHalfH = layout.DisplayHeight / 2.0f;
         ImplicitNode recess = f.Box(
-            world(faceX - CutOvershoot, layout.DisplayCenterHeight - displayHalfH, -displayHalfW),
+            world(faceX - layout.Recipe.CutOvershoot, layout.DisplayCenterHeight - displayHalfH, -displayHalfW),
             world(faceX + layout.RecessDepth, layout.DisplayCenterHeight + displayHalfH, displayHalfW));
         body = f.Subtract(body, recess);
 
@@ -191,7 +185,7 @@ internal static class BridgeRecipe
             new Vector3(faceX - layout.ControlStripProtrusion, 0.0f, -halfConsole),
             new Vector3(eastX, layout.ConsoleHeight, halfConsole),
             materials.Console,
-            0.05f);
+            layout.Recipe.ConsoleCellSize);
     }
 
     private static void ComposeSideHousing(
@@ -214,7 +208,7 @@ internal static class BridgeRecipe
         float displayHalfW = layout.SideDisplayWidth / 2.0f;
         float displayHalfH = layout.SideDisplayHeight / 2.0f;
         ImplicitNode recess = f.Box(
-            world(faceX - CutOvershoot, layout.SideDisplayCenterHeight - displayHalfH, centerZ - displayHalfW),
+            world(faceX - layout.Recipe.CutOvershoot, layout.SideDisplayCenterHeight - displayHalfH, centerZ - displayHalfW),
             world(faceX + layout.RecessDepth, layout.SideDisplayCenterHeight + displayHalfH, centerZ + displayHalfW));
         body = f.Subtract(body, recess);
 
@@ -225,7 +219,7 @@ internal static class BridgeRecipe
             new Vector3(faceX, 0.0f, centerZ - halfHousing),
             new Vector3(eastX, layout.SideHousingHeight, centerZ + halfHousing),
             materials.Console,
-            0.05f);
+            layout.Recipe.ConsoleCellSize);
     }
 
     private static void ComposeSeat(
@@ -235,29 +229,30 @@ internal static class BridgeRecipe
         Func<float, float, float, Vector3> world,
         Action<string, ImplicitRecipe, ImplicitNode, Vector3, Vector3, Material, float> surface)
     {
+        BridgeSeatDefinition seatShape = layout.Recipe.Seat;
         float sx = layout.SeatCenter.X;
         float sz = layout.SeatCenter.Z;
 
         using ImplicitRecipe f = writer.Begin();
         ImplicitNode pedestal = f.Box(
-            world(sx - 0.15f, 0.0f, sz - 0.15f),
-            world(sx + 0.15f, 0.42f, sz + 0.15f));
+            world(sx - seatShape.PedestalHalfWidth, 0.0f, sz - seatShape.PedestalHalfWidth),
+            world(sx + seatShape.PedestalHalfWidth, seatShape.PedestalTop, sz + seatShape.PedestalHalfWidth));
         ImplicitNode cushion = f.Box(
-            world(sx - 0.35f, 0.42f, sz - 0.35f),
-            world(sx + 0.35f, 0.55f, sz + 0.35f));
+            world(sx - seatShape.CushionHalfWidth, seatShape.PedestalTop, sz - seatShape.CushionHalfWidth),
+            world(sx + seatShape.CushionHalfWidth, seatShape.CushionTop, sz + seatShape.CushionHalfWidth));
         ImplicitNode backrest = f.Box(
-            world(sx - 0.40f, 0.55f, sz - 0.35f),
-            world(sx - 0.25f, 1.25f, sz + 0.35f));
+            world(sx + seatShape.BackRearOffsetX, seatShape.CushionTop, sz - seatShape.CushionHalfWidth),
+            world(sx + seatShape.BackFrontOffsetX, seatShape.BackTop, sz + seatShape.CushionHalfWidth));
         ImplicitNode seat = f.Union(pedestal, f.Union(cushion, backrest));
 
         surface(
             "bridge seat",
             f,
             seat,
-            new Vector3(sx - 0.40f, 0.0f, sz - 0.35f),
-            new Vector3(sx + 0.35f, 1.25f, sz + 0.35f),
+            new Vector3(sx + Math.Min(seatShape.BackRearOffsetX, -seatShape.CushionHalfWidth), 0.0f, sz - seatShape.CushionHalfWidth),
+            new Vector3(sx + Math.Max(seatShape.BackFrontOffsetX, seatShape.CushionHalfWidth), seatShape.BackTop, sz + seatShape.CushionHalfWidth),
             materials.SeatFabric,
-            0.06f);
+            layout.Recipe.SeatCellSize);
     }
 
     private static void ComposeEngineering(
@@ -286,7 +281,7 @@ internal static class BridgeRecipe
             new Vector3(-halfL, 0.0f, -halfW),
             new Vector3(-halfL + layout.CabinetDepth + layout.LowCabinetLengthX, layout.CabinetHeight, -halfW + layout.CabinetLengthZ),
             materials.Cabinet,
-            0.08f);
+            layout.Recipe.CabinetCellSize);
     }
 
 }

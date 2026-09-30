@@ -254,7 +254,7 @@ public class SpacePresentationTests
         // instruments carry instead.
         RecordingEngine engine = new();
         SpaceTuning tuning = SpaceTuning.Defaults;
-        InstalledShip ship = new(tuning.Ship, tuning.Flight.MaximumThrust, tuning.Damage);
+        InstalledShip ship = new(tuning.Ship, tuning.Flight.MaximumThrust, tuning.Damage, tuning.Thermal);
         HullDamage struck = ship.TakeImpact(new PlanarVector(0.0, -1.0), HardArrival);
         HullStrike contact = new(
             new HullImpact(true, new PlanarVector(0.0, -3.0), new PlanarVector(0.0, -3.0), 3.0, null),
@@ -362,7 +362,7 @@ public class SpacePresentationTests
             theater,
             tuning.Presentation,
             tuning.Overlay);
-        InstalledShip jammed = new InstalledShip(tuning.Ship, tuning.Flight.MaximumThrust, tuning.Damage);
+        InstalledShip jammed = new InstalledShip(tuning.Ship, tuning.Flight.MaximumThrust, tuning.Damage, tuning.Thermal);
         jammed.TakeImpact(new PlanarVector(0.0, -1.0), HardArrival);
         theater.Advance(
             FlightTelemetrySnapshot.Neutral,
@@ -403,7 +403,7 @@ public class SpacePresentationTests
             theater,
             tuning.Presentation,
             tuning.Overlay);
-        InstalledShip ship = new InstalledShip(tuning.Ship, tuning.Flight.MaximumThrust, tuning.Damage);
+        InstalledShip ship = new InstalledShip(tuning.Ship, tuning.Flight.MaximumThrust, tuning.Damage, tuning.Thermal);
         FlightTelemetrySnapshot spooling = new(
             0UL, 1U, 0.0, 0.0, 0.0, 1.0, 0.0, false, false, 0.6, 0.0, 0.0,
             PlanarVector.Zero, 0.0, null);
@@ -505,7 +505,7 @@ public class SpacePresentationTests
             FlightForces.Zero,
             path,
             strike,
-            ship ?? new InstalledShip(tuning.Ship, tuning.Flight.MaximumThrust, tuning.Damage));
+            ship ?? new InstalledShip(tuning.Ship, tuning.Flight.MaximumThrust, tuning.Damage, tuning.Thermal));
         return engine.Graphics.LastSnapshot;
     }
 

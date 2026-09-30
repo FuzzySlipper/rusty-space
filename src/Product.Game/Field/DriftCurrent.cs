@@ -28,8 +28,6 @@ internal sealed class DriftCurrent
         direction = tuning.Direction.Scale(1.0 / tuning.Direction.Magnitude);
     }
 
-    internal PlanarVector FlowDirection => direction;
-
     /// <summary>
     /// The band's own shape, reported by the owner of the band so a consumer that
     /// has to draw it does not carry a second copy of the tuning and quietly

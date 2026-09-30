@@ -57,14 +57,6 @@ internal sealed class BridgeSet : IDisposable
     private const float MatteRoughness = 0.85f;
     private const float SatinRoughness = 0.55f;
 
-    /// <summary>Edge length of the lamp cubes staged on the set.</summary>
-    private const float LampSize = 0.07f;
-
-    private const float LampHalfSize = LampSize / 2.0f;
-
-    /// <summary>Air gap between a lamp cube and the face it reads on.</summary>
-    private const float LampFaceGap = 0.001f;
-
     private static readonly BridgePart[] PresentationParts =
     [
         BridgePart.PropSlate,
@@ -259,13 +251,13 @@ internal sealed class BridgeSet : IDisposable
             new LightDescriptor(
                 LightKind.Point,
                 new Vector3(palette.OverheadGlow.R, palette.OverheadGlow.G, palette.OverheadGlow.B),
-                Intensity: 2.0f,
+                Intensity: Layout.Lighting.OverheadIntensity,
                 Enabled: true,
                 placements.OverheadLight,
                 Direction: -Vector3.UnitY,
                 HasRange: true,
                 Range: Layout.OverheadLightRange,
-                Decay: 2.0f,
+                Decay: Layout.Lighting.Decay,
                 OuterAngleRadians: 0.0f,
                 Penumbra: 0.0f,
                 LightShadowIntent.Disabled));
@@ -275,13 +267,13 @@ internal sealed class BridgeSet : IDisposable
             Descriptor = new LightDescriptor(
                 LightKind.Point,
                 new Vector3(palette.HelmGlow.R, palette.HelmGlow.G, palette.HelmGlow.B),
-                Intensity: 1.0f,
+                Intensity: Layout.Lighting.HelmIntensity,
                 Enabled: true,
                 placements.HelmLight,
                 Direction: -Vector3.UnitY,
                 HasRange: true,
                 Range: Layout.HelmLightRange,
-                Decay: 2.0f,
+                Decay: Layout.Lighting.Decay,
                 OuterAngleRadians: 0.0f,
                 Penumbra: 0.0f,
                 LightShadowIntent.Disabled),
@@ -378,8 +370,8 @@ internal sealed class BridgeSet : IDisposable
 
     /// <summary>Center of the load needle's sweep on the side housing face.</summary>
     internal Vector3 NeedlePivot => Layout.ToWorld(new Vector3(
-        Layout.SideHousingFaceX - 0.04f,
-        0.45f,
+        Layout.SideHousingFaceX + Layout.Instruments.NeedleFaceOffset,
+        Layout.Instruments.NeedleHeight,
         Layout.SideHousingCenterZ));
 
     private Transform PartTransform(BridgePart part)
@@ -389,42 +381,42 @@ internal sealed class BridgeSet : IDisposable
             BridgePart.MainDisplay => new Transform(
                 Layout.InstrumentCenter,
                 BridgeRecipe.Identity.Rotation,
-                new Vector3(0.03f, Layout.DisplayHeight, Layout.DisplayWidth)),
+                new Vector3(Layout.Instruments.DisplayThickness, Layout.DisplayHeight, Layout.DisplayWidth)),
             BridgePart.SideDisplay => new Transform(
                 Layout.SideInstrumentCenter,
                 BridgeRecipe.Identity.Rotation,
-                new Vector3(0.03f, Layout.SideDisplayHeight, Layout.SideDisplayWidth)),
+                new Vector3(Layout.Instruments.DisplayThickness, Layout.SideDisplayHeight, Layout.SideDisplayWidth)),
             BridgePart.EngineeringDisplay => new Transform(
                 EngineeringDisplayCenter,
                 BridgeRecipe.Identity.Rotation,
-                new Vector3(0.03f, 0.30f, 0.50f)),
-            BridgePart.StripReadyLamp => LampOnStrip(-0.5f),
+                Layout.Instruments.EngineeringDisplaySize),
+            BridgePart.StripReadyLamp => LampOnStrip(-Layout.Instruments.StripLampSpacing),
             BridgePart.StripCautionLamp => LampOnStrip(0.0f),
-            BridgePart.StripFaultLamp => LampOnStrip(0.5f),
+            BridgePart.StripFaultLamp => LampOnStrip(Layout.Instruments.StripLampSpacing),
             BridgePart.EngineeringStatusLamp => new Transform(
                 Layout.ToWorld(new Vector3(
-                    -Layout.RoomLengthX / 2.0f + Layout.CabinetDepth + LampHalfSize + LampFaceGap,
-                    1.45f,
-                    -Layout.RoomWidthZ / 2.0f + 0.25f)),
+                    -Layout.RoomLengthX / 2.0f + Layout.CabinetDepth + Layout.Instruments.LampHalfSize + Layout.Instruments.LampFaceGap,
+                    Layout.Instruments.StatusLampHeight,
+                    -Layout.RoomWidthZ / 2.0f + Layout.Instruments.StatusLampWallInset)),
                 BridgeRecipe.Identity.Rotation,
-                new Vector3(LampSize, LampSize, LampSize)),
+                new Vector3(Layout.Instruments.LampSize, Layout.Instruments.LampSize, Layout.Instruments.LampSize)),
             BridgePart.EngineeringTaskLamp => new Transform(
                 Layout.ToWorld(new Vector3(
-                    -Layout.RoomLengthX / 2.0f + Layout.CabinetDepth + 0.6f,
-                    Layout.LowCabinetHeight + LampHalfSize + LampFaceGap,
+                    -Layout.RoomLengthX / 2.0f + Layout.CabinetDepth + Layout.Instruments.TaskLampOffsetX,
+                    Layout.LowCabinetHeight + Layout.Instruments.LampHalfSize + Layout.Instruments.LampFaceGap,
                     -Layout.RoomWidthZ / 2.0f + Layout.CabinetDepth / 2.0f)),
                 BridgeRecipe.Identity.Rotation,
-                new Vector3(LampSize, LampSize, LampSize)),
+                new Vector3(Layout.Instruments.LampSize, Layout.Instruments.LampSize, Layout.Instruments.LampSize)),
             BridgePart.PropSlate => new Transform(
                 Placements.PropPivot,
                 BridgeRecipe.Identity.Rotation,
                 Layout.PropSize),
-            BridgePart.FaultLampLit => LampOnStrip(0.5f),
-            BridgePart.ReadyLampLit => LampOnStrip(-0.5f),
+            BridgePart.FaultLampLit => LampOnStrip(Layout.Instruments.StripLampSpacing),
+            BridgePart.ReadyLampLit => LampOnStrip(-Layout.Instruments.StripLampSpacing),
             BridgePart.LoadNeedle => new Transform(
                 NeedlePivot,
                 BridgeRecipe.Identity.Rotation,
-                new Vector3(0.025f, 0.34f, 0.025f)),
+                Layout.Instruments.NeedleSize),
             // The switch names every member; anything else is a programming
             // error the construction-time BuildFacts surfaces at once.
             _ => throw new ArgumentOutOfRangeException(nameof(part)),
@@ -433,16 +425,16 @@ internal sealed class BridgeSet : IDisposable
 
     private Transform LampOnStrip(float zOffset) => new(
         Layout.ToWorld(new Vector3(
-            Layout.ConsoleFaceX - Layout.ControlStripProtrusion - LampHalfSize - LampFaceGap,
+            Layout.ConsoleFaceX - Layout.ControlStripProtrusion - Layout.Instruments.LampHalfSize - Layout.Instruments.LampFaceGap,
             Layout.ControlStripCenterHeight,
             zOffset)),
         BridgeRecipe.Identity.Rotation,
-        new Vector3(LampSize, LampSize, LampSize));
+        new Vector3(Layout.Instruments.LampSize, Layout.Instruments.LampSize, Layout.Instruments.LampSize));
 
     private Vector3 EngineeringDisplayCenter => Layout.ToWorld(new Vector3(
         // A hair proud of the cabinet face so the module back never z-fights it.
-        -Layout.RoomLengthX / 2.0f + Layout.CabinetDepth + 0.016f,
-        1.20f,
+        -Layout.RoomLengthX / 2.0f + Layout.CabinetDepth + Layout.Instruments.EngineeringDisplayFaceOffset,
+        Layout.Instruments.EngineeringDisplayHeight,
         -Layout.RoomWidthZ / 2.0f + Layout.CabinetLengthZ / 2.0f));
 
     /// <summary>

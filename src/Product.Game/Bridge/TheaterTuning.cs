@@ -60,6 +60,14 @@ internal sealed record TheaterTuning(
     double FaultFlickerHz,
     double BrownoutSag,
     double SpoolReadyThreshold,
+    double NeedleRestDegrees,
+    double NeedleSweepDegrees,
+    double ThudFullImpulse,
+    double ThudMinimumVolume,
+    double ThudPitchBase,
+    double ThudPitchSpan,
+    double FaultShimmerBase,
+    double FaultShimmerSpan,
     // Acceptance switch: every reaction off means zero Engine calls.
     bool CameraReactions,
     bool LightingReactions,
@@ -91,6 +99,10 @@ internal sealed record TheaterTuning(
         FaultFlickerHz: 11.0,
         BrownoutSag: 0.5,
         SpoolReadyThreshold: 0.35,
+        NeedleRestDegrees: -60.0, NeedleSweepDegrees: 120.0,
+        ThudFullImpulse: 8.0, ThudMinimumVolume: 0.15,
+        ThudPitchBase: 0.8, ThudPitchSpan: 0.4,
+        FaultShimmerBase: 0.75, FaultShimmerSpan: 0.25,
         CameraReactions: true,
         LightingReactions: true,
         PropReactions: true,
@@ -140,6 +152,22 @@ internal sealed record TheaterTuning(
             throw new ArgumentOutOfRangeException(nameof(SpoolReadyThreshold));
         }
 
+        ValidateFinite(NeedleRestDegrees, nameof(NeedleRestDegrees));
+        ValidatePositive(NeedleSweepDegrees, nameof(NeedleSweepDegrees));
+        ValidatePositive(ThudFullImpulse, nameof(ThudFullImpulse));
+        ValidateFraction(ThudMinimumVolume, nameof(ThudMinimumVolume));
+        ValidatePositive(ThudPitchBase, nameof(ThudPitchBase));
+        ValidateFiniteNonNegative(ThudPitchSpan, nameof(ThudPitchSpan));
+        if (ThudPitchBase < 0.25 || ThudPitchBase + ThudPitchSpan > 4.0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(ThudPitchBase));
+        }
+        ValidateFraction(FaultShimmerBase, nameof(FaultShimmerBase));
+        ValidateFraction(FaultShimmerSpan, nameof(FaultShimmerSpan));
+        if (FaultShimmerBase < FaultShimmerSpan || FaultShimmerBase + FaultShimmerSpan > 1.0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(FaultShimmerSpan));
+        }
         return this;
     }
 

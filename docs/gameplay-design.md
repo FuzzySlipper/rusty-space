@@ -33,14 +33,16 @@ every integration. Nothing in C# integrates or corrects it.
 Product owners, one mutable state family each:
 
 - `Flight/SpaceFlight` — the admitted-turn flight spine. Reads the body,
-  advances the controller and coupling actuator per fixed substep, resolves
+  resolves controller demands and advances trim and installed actuators per fixed substep, resolves
   the force table, issues one Dynamics step per substep, captures telemetry,
   and owns reset.
-- `Flight/FlightController` — throttle spool and steering: response shaping,
-  saturation, and the effort and saturation facts telemetry reports. The
-  attitude hold is a switch the player can throw, not an assumption.
-- `Flight/FieldCoupling` — the coupling actuator: trim travel rate, clamps,
-  emergency dump, cradle setting.
+- `Flight/FlightController` — stateless thrust and yaw-rate demands, attitude
+  hold and the speed ceiling. Steering response is an error gain, not a lag
+  or torque stop; installed parts alone own actuator response and delivery limits.
+- `Flight/CouplingTrim` — the pilot's retained coupling demand. Q/E wind a
+  setting at the authored full-sweep rate; releasing trim keeps that setting.
+  The emitter's actuator alone owns the physical response to it. Emergency
+  uncouple winds the requested setting to zero; rebuilding restores the cradle setting.
 - `Flight/FlightInputMapper` — admitted named intents in, one closed
   `FlightCommand` out. Held control state lives here and nowhere else.
 - `Flight/HullForceModel` — how a hull at one state turns the environment and
@@ -95,7 +97,7 @@ Product owners, one mutable state family each:
 - `Viewing/TrackingCamera` — framing policy around the Engine camera service:
   smoothed chase position, zoom, camera cut on reset.
 - `Bridge/BridgeLayout` — the named dimensions, placements, palette, and
-  derived world-space attachment facts (seated/approach camera poses,
+  derived world-space attachment facts (seated camera pose,
   instrument faces, light/audio/prop pivots) for the one parametric bridge
   set. Pure product meaning; carries no Engine handles.
 - `Bridge/BridgeRecipe` — the product-owned implicit composition the set is
@@ -127,7 +129,11 @@ Product owners, one mutable state family each:
   reclaims resources. It reads the environment through its owners and
   re-derives nothing. The bridge set's stationary facts ride this same
   retained snapshot; the set stages no snapshot of its own.
-- `Debugging/FlightDebugModule` — read-only product debug commands.
+- `Debugging/FlightDebugModule` — flight readings and explicit
+  `space.loadout.stock`, `.scavenged`, `.damaged` selection commands. Selection
+  replaces the hull at spawn with fresh hardware, clears telemetry and bridge
+  reactions, publishes the fit and cuts the chart camera. It preserves pause
+  and the current seat; normal restart keeps the selected hardware and its damage.
 - `Debugging/BridgeDebugModule` — read-only `space.bridge` report of the
   staged set: part names, addressable identities, and attachment placements.
 - `Tuning/SpaceTuning` — the single composition-root aggregate of the
@@ -333,12 +339,24 @@ the attitude-hold switch; rebuilding the hull restores its cradle defaults.
 
 Trusted local game state is ordinary C#: one owner per state family, direct
 readable mutation inside it, and a named method for each operation that has
-product meaning — advance the spool, dump the actuator, reset the hull. Where
+product meaning — wind the trim, advance installed actuators, reset or refit the hull. Where
 a calculation is genuinely pure it returns a value, which is not an
 acceptance transaction, and there is no staging-and-commit protocol
 protecting in-process state from itself. Numerical guards that express real
 physical ranges, domain clamps, and disposal guards stay; they are not
-ceremony.
+ceremony. Compute-before-apply locals remain only where an Engine call can
+refuse a resource replacement or camera pose: the old owned resource/state
+stays in place until that call accepts. Completed Engine calls are never
+rolled back. Substep force/effort locals collect the last substep's telemetry;
+they are ordinary calculation facts, not a second copy of mutable state.
+
+`SpaceTuning` also includes part thermal rates and the seated camera projection.
+`BridgeLayout.Recipe`, `.Instruments` and `.Lighting` name extraction sampling,
+seat/beam geometry, face clearances, lamp/display/needle placements and base
+light levels. `TheaterTuning` owns needle sweep, impact sound ranges and fault
+shimmer as well as its filter settings. Each owner receives its own record.
+`Navigation/CameraOrientation` owns camera yaw/pitch conversions beside the
+planar flight frame.
 
 ## Release follows construction
 

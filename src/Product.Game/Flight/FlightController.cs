@@ -2,94 +2,37 @@ using Rusty.Space.Product.Navigation;
 
 namespace Rusty.Space.Product.Flight;
 
-internal sealed class FlightController
+/// <summary>Resolves pilot demands; installed parts own response and authority.</summary>
+internal sealed class FlightController(FlightTuning tuning)
 {
-    private const double MinimumThrottleIntent = 0.0;
-    private const double MaximumThrottleIntent = 1.0;
-    private const double MinimumTurnIntent = -1.0;
-    private const double MaximumTurnIntent = 1.0;
-    private const double FullResponseFactor = 1.0;
-    private const double UnitVectorMagnitude = 1.0;
-    private const double NoForwardAcceleration = 0.0;
-    private const double NoTurnIntent = 0.0;
-    private const double MinimumValidMomentOfInertia = 0.0;
-    private const double NoYawTorque = 0.0;
-    private const double NoPlanarForce = 0.0;
-
-    private readonly FlightTuning tuning;
-    private double throttleLevel;
-
-    internal FlightController(FlightTuning tuning)
-    {
-        this.tuning = tuning;
-    }
-
-    internal double ThrottleLevel => throttleLevel;
-
-    /// <summary>
-    /// Advances the throttle spool over one admitted fixed step and resolves
-    /// what the control effectors push for that step. The spool is this owner's
-    /// state, so the interval it travels is the one it is handed and no caller
-    /// carries a level between substeps.
-    /// </summary>
-    internal FlightControlOutput Advance(
+    internal FlightControlOutput Resolve(
         FlightBodyState body,
         FlightCommand command,
-        double momentOfInertia,
-        TimeSpan step)
+        double momentOfInertia)
     {
-        double throttleIntent = Math.Clamp(
-            command.Throttle,
-            MinimumThrottleIntent,
-            MaximumThrottleIntent);
-        double turnIntent = Math.Clamp(command.Turn, MinimumTurnIntent, MaximumTurnIntent);
-        AdvanceThrottle(throttleIntent, step);
-
-        PlanarVector commandedForce = body.Forward.Scale(throttleLevel);
-        PlanarVector driveForce = RemoveForwardAccelerationAtMaximumSpeed(
-            commandedForce,
-            body.LinearVelocity);
-        Steering steering = ResolveSteering(
-            body.AngularVelocity,
-            turnIntent,
-            momentOfInertia,
-            command.StabilizerEnabled);
-
-        return new FlightControlOutput(
-            new FlightWrench(driveForce, NoYawTorque),
-            new FlightWrench(new PlanarVector(NoPlanarForce, NoPlanarForce), steering.Torque),
-            throttleLevel,
-            throttleLevel / tuning.MaximumThrust,
-            steering.Effort,
-            DriveSaturated: driveForce != commandedForce,
-            steering.Saturated);
-    }
-
-    internal void Reset() => throttleLevel = MinimumThrottleIntent;
-
-    /// <summary>
-    /// Moves the spool toward the commanded thrust over the interval it is
-    /// handed. Releasing thrust is not an approach: the push ends on the turn it
-    /// is released, so coast starts with nothing left over to integrate.
-    /// </summary>
-    private void AdvanceThrottle(double throttleIntent, TimeSpan step)
-    {
-        if (throttleIntent == MinimumThrottleIntent)
+        double throttle = Math.Clamp(command.Throttle, 0.0, 1.0);
+        double turn = Math.Clamp(command.Turn, -1.0, 1.0);
+        PlanarVector commandedForce = body.Forward.Scale(throttle * tuning.MaximumThrust);
+        PlanarVector driveForce = RemoveForwardAccelerationAtMaximumSpeed(commandedForce, body.LinearVelocity);
+        double requestedTorque = 0.0;
+        if (double.IsFinite(momentOfInertia) && momentOfInertia > 0.0
+            && (command.StabilizerEnabled || turn != 0.0))
         {
-            throttleLevel = MinimumThrottleIntent;
-            return;
+            // SteeringResponse is the controller's error gain, not another
+            // actuator lag or torque stop. The fitted vanes limit delivery.
+            double desiredRate = turn * tuning.MaximumTurnRate;
+            requestedTorque = momentOfInertia * (desiredRate - body.AngularVelocity)
+                / tuning.SteeringResponse.TotalSeconds;
         }
 
-        double desiredThrust = throttleIntent * tuning.MaximumThrust;
-        double responseFactor = Math.Min(
-            step.TotalSeconds / tuning.ThrottleResponse.TotalSeconds,
-            FullResponseFactor);
-        throttleLevel += (desiredThrust - throttleLevel) * responseFactor;
+        return new FlightControlOutput(
+            new FlightWrench(driveForce, 0.0),
+            new FlightWrench(PlanarVector.Zero, requestedTorque),
+            throttle,
+            DriveSaturated: driveForce != commandedForce);
     }
 
-    private PlanarVector RemoveForwardAccelerationAtMaximumSpeed(
-        PlanarVector commandedForce,
-        PlanarVector velocity)
+    private PlanarVector RemoveForwardAccelerationAtMaximumSpeed(PlanarVector commandedForce, PlanarVector velocity)
     {
         double speed = velocity.Magnitude;
         if (speed < tuning.MaximumSpeed)
@@ -97,51 +40,10 @@ internal sealed class FlightController
             return commandedForce;
         }
 
-        PlanarVector velocityDirection = velocity.Scale(UnitVectorMagnitude / speed);
+        PlanarVector velocityDirection = velocity.Scale(1.0 / speed);
         double alongVelocity = commandedForce.Dot(velocityDirection);
-        return alongVelocity > NoForwardAcceleration
+        return alongVelocity > 0.0
             ? commandedForce - velocityDirection.Scale(alongVelocity)
             : commandedForce;
     }
-
-    private Steering ResolveSteering(
-        double angularVelocity,
-        double turnIntent,
-        double momentOfInertia,
-        bool stabilizerEnabled)
-    {
-        if (!double.IsFinite(momentOfInertia)
-            || momentOfInertia <= MinimumValidMomentOfInertia)
-        {
-            return new Steering(NoYawTorque, NoPlanarForce, Saturated: false);
-        }
-
-        double desiredAngularVelocity = turnIntent * tuning.MaximumTurnRate;
-        if (!stabilizerEnabled && desiredAngularVelocity == NoTurnIntent)
-        {
-            // With the attitude hold disengaged the steering effectors answer a
-            // demand and nothing else. A released control asks for nothing, so
-            // whatever rotation the ship already has carries on untouched.
-            return new Steering(NoYawTorque, NoPlanarForce, Saturated: false);
-        }
-
-        double angularVelocityError = desiredAngularVelocity - angularVelocity;
-        double torqueAuthority = momentOfInertia
-            * tuning.MaximumTurnRate
-            / tuning.SteeringResponse.TotalSeconds;
-        double requestedTorque = momentOfInertia
-            * angularVelocityError
-            / tuning.SteeringResponse.TotalSeconds;
-        double appliedTorque = Math.Clamp(requestedTorque, -torqueAuthority, torqueAuthority);
-        return new Steering(
-            appliedTorque,
-            Math.Abs(appliedTorque) / torqueAuthority,
-            appliedTorque != requestedTorque);
-    }
-
-    /// <summary>
-    /// Steering demand for one turn: applied yaw torque, how close that is to
-    /// the actuator's authority, and whether the clamp took hold.
-    /// </summary>
-    private readonly record struct Steering(double Torque, double Effort, bool Saturated);
 }
