@@ -19,6 +19,8 @@
     <RustyEngineProductUiEntry>main.js</RustyEngineProductUiEntry>
     <RustyEngineProductUiProjectionStream>rusty-space</RustyEngineProductUiProjectionStream>
     <RustyEngineProductUiProjectionContract>rusty.space.hud</RustyEngineProductUiProjectionContract>
+    <!-- Audio plays on the runtime host. A remote frame viewer is silent. -->
+    <RustyEngineProductAudioOutput>device-optional</RustyEngineProductAudioOutput>
     <RustyEngineProductLifecycleMode>realtime</RustyEngineProductLifecycleMode>
     <RustyEngineProductFixedStepHz>60</RustyEngineProductFixedStepHz>
     <RustyEngineProductFixedStepMaxCatchUpSteps>4</RustyEngineProductFixedStepMaxCatchUpSteps>

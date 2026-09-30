@@ -219,7 +219,7 @@ public class TrajectoryProjectionTests
     {
         SpaceTuning tuning = SpaceTuning.Defaults;
         return new TrajectoryProjection(
-            kinematic,
+            kinematic.Service,
             new HullForceModel(
                 new FieldResponse(tuning.Field),
                 new DriftCurrent(tuning.GentleCurrent),

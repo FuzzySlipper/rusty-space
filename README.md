@@ -17,14 +17,23 @@ renderer, loop, bridge, or browser simulation.
 
 ## Demo
 
-![A cyan hull under a chase camera flying toward an authored wreck and boulder cluster with a yellow station, its projected navigation path leading in, over the flight HUD](docs/images/rusty-space-approach.png)
+![Chart view with the cyan hull, projected course, local flow rods, and authored approach geometry](docs/images/rusty-space-approach.png)
 
-Flown and captured at 1280x720 on the GPU-backed browser playtest lane (remote
-Firefox driven by the crew playtest controller) against the development host
-described below, with the same `W` thrust control the game itself admits. The hull
-is approaching the authored wreck and boulder cluster on the `kestrel-approach`
-chart. The capture transport is a video stream of the browser window, so the image
-is not correlated to a specific Engine render submission.
+![Seated bridge with the recessed cyan display, side load needle, and strip indicators](docs/images/bridge-seated.png)
+
+Captured at 1280×720 from a private local CoreCLR playtest with simulation
+held: chart frame 566 at step 576, helm frame 568 at step 582. The helm uses
+an ordinary C-key sit toggle followed by six admitted steps. These are the
+original composite images, including the DOM HUD.
+
+The runtime host renders the chart and bridge with wgpu and streams frames to
+the browser's Engine-owned viewer; the browser also hosts the DOM flight HUD.
+Captures carry the runtime frame sequence and simulation step. The runtime
+host needs a GPU adapter; a remote browser needs only the frame viewer.
+
+Audio plays on the runtime host, with `device-optional` selected explicitly.
+Without a device the host warns once and continues silently. Remote browser
+playtests cannot verify the drive hum or impact sound by listening.
 
 ## Repository shape
 
@@ -58,8 +67,9 @@ rusty dev \
 ```
 
 `.den-serve.json` and `.den-playwright.json` use the same command.
-The host stages the product-owned DOM UI and content; Engine browser and
-renderer assets stay in the runtime pack. There is no downstream browser
+The host stages the product-owned DOM UI and content. The runtime pack owns
+the wgpu renderer in `rusty-product-host` and the
+browser frame viewer. There is no downstream browser
 bundle generator, Cargo product host, or checked NativeProduct project.
 
 Engine contributors may opt into a source build only with an explicit
@@ -70,15 +80,21 @@ checkouts or invoke Cargo.
 
 ## Product slice
 
-The current product is deliberately a small flight and presentation base:
+The current product is an inertial flight slice with fitted hardware and a
+static, reactive bridge:
 
 - `Flight` owns the inertial planar command model and Dynamics actions.
 - `Field` owns the authored space-weather pushes — stellar flow and wake
   response, one gamey orbital well around the planet, and wide gentle plus
   narrow swift drift currents — all applied as Engine Dynamics forces.
-- `Viewing` owns product camera framing and zoom policy around Engine Camera.
+- `Approach` authors the wrecks and boulders in the hull's Dynamics world.
+- `ShipSystems` owns installed part response, damage, latches, and patch work.
+- `Bridge` owns the static room and its instrument, light, prop, and audio reactions.
+- `Navigation` owns the planar frame and sign convention.
+- `Viewing` owns chart framing, zoom, and the seated helm camera.
 - `Presentation` publishes the ship, planet, wake, current indicators,
   and HUD facts through Engine Appearance and UI services.
+- `Debugging` reports flight and bridge facts; `Tuning` composes the authored settings.
 - `Lifecycle` and `Composition` keep the product callback and dependency
   ordering explicit.
 
@@ -94,7 +110,32 @@ and status for that work live in Den project tasks, never in the repository.
 
 ## Controls
 
-- Keyboard: W thrusts, A/D steer, mouse wheel zooms, R resets flight, and F
-  aborts.
-- Xbox: RT provides proportional thrust, the left stick provides proportional
-  steering, LB/RB provide digital steering, and Back resets flight.
+- Keyboard: W thrusts; A/D steer; E/Q wind coupling in/out; X emergency
+  uncouples; T toggles attitude hold; C sits at the helm or returns to the
+  chart; hold G to patch; R resets flight and bridge; F aborts. The mouse
+  wheel zooms the chart.
+- Xbox: RT provides proportional thrust, left-stick X steers, left-stick Y
+  trims coupling, LB/RB steer digitally, Back resets, and hold button 9
+  (right-stick press) to patch. Sit, attitude hold, emergency uncouple, and
+  abort currently have no controller mapping.
+
+## Verify
+
+Run `./scripts/verify.sh` for the focused C# suite and CoreCLR staging on the
+installed pin. The same gate runs in GitHub Actions as `CoreCLR verify`.
+`./scripts/verify.sh --aot` additionally runs the NativeAOT fidelity check;
+it is opt-in.
+
+## Authored audio
+
+Regenerate `content/audio/*.wav` with:
+
+```bash
+python3 scripts/generate-bridge-audio.py
+```
+
+The drive hum and impact thud are synthesized in this repository.
+
+## Licence
+
+The repository's own code, content, and documentation use the [MIT licence](LICENSE).

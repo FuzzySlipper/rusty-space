@@ -3,8 +3,8 @@
 Rusty Space is a C# downstream product. Its product project consumes one
 immutable `Rusty.Engine` SDK package; the package generates the internal
 CoreCLR and NativeAOT composition under the project's ignored `obj/` tree.
-The matching runtime pack supplies `rusty dev`, the Rust host, and Engine's
-browser/renderer assets.
+The matching runtime pack supplies `rusty dev`, `rusty-product-host` with the
+wgpu renderer and host audio, and the browser frame viewer.
 
 ```text
 Product.Game (safe C# product state and domain behavior)
@@ -21,8 +21,8 @@ name it. `RustyEnginePackageVersion` in `Directory.Build.props` is the one pin;
 the `rusty` CLI installs and runs that pair; the adopting Den task records it. Both halves come from one Engine revision and carry a
 matching generated ABI identity. Keep the pair together and let the host
 reject a mismatch; products do not add version negotiation, copied Engine
-assets, or handwritten interop. Adoption is the checksummed archive and
-bundled verifier described in the Engine's `docs/csharp-distribution.md`.
+assets, or handwritten interop. Adopt through `rusty update`, inspect the release notes, then rebuild and
+run. `rusty install` installs the exact pin into the shared cache.
 
 ## Ownership
 
@@ -59,7 +59,9 @@ rusty dev \
 ```
 
 `rusty dev` builds and stages a loose Product directory, loads Product.Game
-through CoreCLR, and serves the product UI alongside the Engine-owned canvas.
+through CoreCLR, and renders frames on the host with wgpu. The Engine-owned browser canvas
+shows streamed frames alongside the product DOM UI. Audio uses the runtime
+host device, not the browser.
 NativeAOT is a separate explicit fidelity/release operation through the SDK's
 `VerifyRustyEngineAot` target. It is not a reason to keep a checked bridge
 project or a custom product host in this repository.

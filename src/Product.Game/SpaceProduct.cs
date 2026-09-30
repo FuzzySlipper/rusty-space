@@ -29,11 +29,8 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
         }
         catch
         {
-            // A create that fails here leaves no product for anyone to dispose,
-            // so every owner this constructor opened goes back down now. That is
-            // what the lease contract covers: a release issued inside the create
-            // call is committed or rolled back with it, so putting owners down
-            // on the way out cannot desynchronize the failed create.
+            // A failed create keeps its completed Engine calls. No product
+            // reaches the caller, so release every owner opened here.
             composed.Dispose();
             throw;
         }

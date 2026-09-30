@@ -3,7 +3,7 @@
 The current, concrete ownership map for Space's product code: which named
 owner holds which state today, and where the adopted Engine surface is meant
 to be used as planned systems land. Durable design only — sequencing, status,
-and progress live in Den under campaigns #8305 and #8366.
+and progress live in Den.
 
 - Boundary statement and the invariants a review checks:
   [space sailing campaign](space-sailing-campaign.md).
@@ -20,11 +20,10 @@ adopting Den task. Docs deliberately do not name it: a revision in guidance
 goes stale the moment a pair is superseded, and a stale revision reads like a
 supported capability.
 
-Adoption is the file contract in the Engine's `docs/csharp-distribution.md`:
-verify the archive against its adjacent checksum, extract, run the bundled
-pair verifier, then point the product feed and launch commands at that pair.
-No adjacent checkout, no Cargo, no downstream binding generation, no
-compatibility negotiation.
+Use `rusty install` to install the exact pin into the shared cache and
+`rusty update` to adopt a new matched pair. Read its release notes, rebuild,
+and run the product. No adjacent checkout, Cargo, downstream binding
+generation, or compatibility negotiation is part of ordinary adoption.
 
 ## Who holds what
 
@@ -226,8 +225,9 @@ from where the hull really is every admitted turn, never a promise the product
 keeps to itself.
 
 The tuning-only readings — each source's push and each center of force the hull
-has — go on the Engine's debug render layer, so a handling pass can see them
-without a player ever having to.
+has — carry `RenderLayer.Debug`. The streamed wgpu renderer currently draws
+that layer with scene geometry. Space deliberately leaves these readings
+visible in this development slice; the layer is a label, not a visibility gate.
 
 What this is deliberately not: sensor uncertainty, FTL representation, or
 camera rule experiments. Those stay in
@@ -323,10 +323,11 @@ reset intent and the product's own restart both run the same flight reset —
 so a respawn starts from released controls rather than from whatever was
 still being held when the ship was replaced.
 
-Two handles are keyboard-only today: the attitude-hold switch, the emergency
-uncouple, and abort have no controller button, and coupling trim has no digital
-controller fallback. Those are open control decisions, tracked with the
-readout and legibility work in #8311.
+The attitude-hold switch, emergency uncouple, helm sit toggle, and abort are
+keyboard-only today. Coupling trim also has no digital controller fallback;
+its controller input is the left stick's Y axis. The patch is held on G or
+controller button 9. An Engine `Clear` releases held commands and preserves
+the attitude-hold switch; rebuilding the hull restores its cradle defaults.
 
 ## State changes directly
 
@@ -350,12 +351,11 @@ Teardown order matters once: shutdown retires the product's retained
 appearance snapshot while the services it references are still reachable, and
 the handles that snapshot pointed at are released afterwards.
 
-The Engine's lease wrappers are what make releasing at teardown safe rather
-than fragile. A release issued inside a staged call is enrolled and committed
-or rolled back with that call; once the runtime has completed terminally, a
-release drops its action instead of issuing a native call. So Space releases
-what it opened on both paths and needs no retry list or lease registry of its
-own to do it safely.
+Engine handle disposal releases resources immediately. A failed create keeps
+its completed calls, so constructors unwind their opened resources explicitly.
+Each owner attempts all releases even if one throws, and composition releases
+every owner before reporting the combined failures. No call-scoped rollback,
+product retry list, or private lease registry is involved.
 
 Space starts no external timelines, so it does not claim to complete them: the
 Engine's default answer — none was completed — is the truthful one.
@@ -372,19 +372,18 @@ generated services, and the store exists so an ordinary component read or
 write costs no native crossing. `Actor` is an optional facade over an
 existing entity; constructing one attaches nothing.
 
-Space has one anonymous rigid body today, with no part identity and no
-bounded resource. So it has no entity, no component, and no stat today, and
-that is a disposition rather than a missed migration. Adoption belongs to the
-tasks that create the identity:
+Space has one rigid body and typed identities for installed parts, whose
+mutable state lives in named owners. It uses no entity store, components, or
+stats today. Further adoption follows a concrete product need:
 
-- Installed systems (#8310): decide entity and component boundaries from real
+- Installed systems: decide entity and component boundaries from real
   ship and part identity and lifetime. An independently addressed ship or
   part can be an entity in an `EntityStore` with class components holding
   installed-system state that force resolution, damage, diagnostics, and
   repair all read. A mount or channel with no independent identity stays a
   field on its owner. The one native rigid body stays the physical
   authority: no mirrored pose or velocity, no articulated physics.
-- Bounded resources (#8314): `Stat` and `Track` where a requirement genuinely
+- Bounded resources: `Stat` and `Track` where a requirement genuinely
   is a bounded scalar with a shared maximum and modifiers. Heat flow and
   actuator second-order response stay physical rate calculations in their own
   owners and are not flattened into generic effects.

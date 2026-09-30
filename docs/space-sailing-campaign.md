@@ -197,30 +197,19 @@ impulses, body update, spatial sessions bindable to a dynamics world,
 lights, sprites, billboards, particles, audio voices and buses, and a
 generated product-facing debug command catalog.
 
-Continuous collision reaches the managed surface as
-`DynamicsBodyProperties.ContinuousCollision`, with the per-step motion limit
-widening for bodies that opt in, and the body-update request carries that
-whole bag. Spatial collision shapes also become fixed bodies when a session
-is bound to a dynamics world, so a collision space needs no new Engine
-mechanism. What the adopted pair does not do is select those options on the
-generic create path: there `DynamicsBodyConfig` carries transform,
-half-extents, mass, mass policy, axis locks, and gravity scale, and nothing
-else. Damping, friction, restitution, collision filtering, and continuous
-collision reach a body there through a shape-typed create request or through
-a follow-up body update — the same lane fitted part mass and inertia travel
-on. The narrow Engine request that closes this asymmetry landed one Engine
-revision past the adopted pair, so it arrives with the next pair adopted and
-not before. Reading a capability off an Engine checkout is not the same as
-having it on the pair the product is pinned to: the pin is what a phase may
-build against, and a fix that has not been adopted is a reason to keep the
-workaround, not a reason to drop it.
+The generic `DynamicsBodyConfig` create lane accepts the full body property
+set, including damping, friction, restitution, collision filtering and
+continuous collision. Shape-typed create requests carry the same options.
+Space still applies fitted part mass and inertia through `UpdateBody`, which
+replaces the property set and therefore carries the hull's current velocities,
+locks and collision options too. A fit update has product meaning even when
+creation already supplies the base hull's properties.
 
-Handles the product opens come back down in the reverse of the order that
-opened them, and the Engine's lease wrappers are what make that safe: a release
-issued inside a staged call is committed or rolled back with it, and once the
-runtime has completed terminally a release drops its action instead of issuing
-a native call. So a product-side retry list or private lease registry is never
-the answer to a lifetime question.
+Handles come down in the reverse of construction order. Engine disposal
+releases immediately; a failed create keeps the calls it completed, so each
+constructor explicitly releases resources it opened before failing. A throwing
+release must not skip later handles or owners. No product-side retry list,
+call-scoped rollback, or private lease registry is involved.
 
 Missing capability is a valid result. File one purpose-neutral owning
 request and stop that slice; never substitute a C# renderer, loop, timer,
@@ -259,29 +248,27 @@ phase before reading a null result as a finding.
 
 ## Phase map
 
-Scope and acceptance for each phase live in Den under campaign task
-**rusty-space #8305**. The order below is a dependency order, not a status
+Scope and acceptance for each phase live in the Space sailing campaign in Den. The order below is a dependency order, not a status
 board.
 
-- Telemetry spine and product debug surfaces (#8306). Observability before
+- Telemetry spine and product debug surfaces. Observability before
   content. Everything after this is tunable instead of guessable.
-- One named planar navigation helper (#8307). Removes the mirrored-torque and
+- One named planar navigation helper. Removes the mirrored-torque and
   mirrored-silhouette hazard before any mount offset or local geometry
   depends on attitude.
-- Per-substep force recompute (#8308). Closes the catch-up staleness,
+- Per-substep force recompute. Closes the catch-up staleness,
   measured rather than assumed.
-- Field coupling as a real ship system (#8309). Restores the design's
+- Field coupling as a real ship system. Restores the design's
   central handle and the ability to decline the environment.
-- Installed parts as logical effectors (#8310). The hinge of the whole
+- Installed parts as logical effectors. The hinge of the whole
   design: hardware that changes behavior, not numbers.
-- Navigation-view legibility (#8311). Gives the player something to read
+- Navigation-view legibility. Gives the player something to read
   before they are pushed.
-- One collision space (#8312). Impacts become impulses and faults.
-- Bridge set theater (#8313). Makes flight easier to read, strictly
+- One collision space. Impacts become impulses and faults.
+- Bridge set theater. Makes flight easier to read, strictly
   downstream.
-- Failure becomes a situation (#8314). Closes the loop: faults change the
+- Failure becomes a situation. Closes the loop: faults change the
   hands, and repairs are felt before they are read.
 
-One Engine-side dependency is filed separately: **rusty-engine #8304**,
-body-properties parity on the generic rigid-body create path. It is not
-blocking; see the Engine boundary section.
+Generic rigid-body creation has body-properties parity with the shape-typed
+lanes on the adopted SDK. No create-path workaround is needed for that surface.

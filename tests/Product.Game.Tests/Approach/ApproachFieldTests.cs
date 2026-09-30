@@ -22,7 +22,7 @@ public class ApproachFieldTests
         // keeps a grid or an overlap test of its own.
         RecordingDynamics dynamics = new();
         DynamicsWorld world = dynamics.CreateWorld(default);
-        ApproachField chart = new(dynamics, world, SpaceTuning.Defaults.Approach);
+        ApproachField chart = new(dynamics.Service, world, SpaceTuning.Defaults.Approach);
 
         IReadOnlyList<ObstacleDefinition> authored = SpaceTuning.Defaults.Approach.Obstacles;
         Assert.Equal(authored.Count, dynamics.CreatedBlocks.Count + dynamics.CreatedBoulders.Count);
@@ -51,7 +51,7 @@ public class ApproachFieldTests
         // chart is never flown at.
         RecordingDynamics dynamics = new();
         DynamicsWorld world = dynamics.CreateWorld(default);
-        ApproachField chart = new(dynamics, world, SpaceTuning.Defaults.Approach);
+        ApproachField chart = new(dynamics.Service, world, SpaceTuning.Defaults.Approach);
 
         Assert.NotEmpty(dynamics.CreatedBlocks);
         foreach (DynamicsBodyProperties held in HeldProperties(dynamics))
@@ -72,7 +72,7 @@ public class ApproachFieldTests
         // body it opened, and a body it did not open is not one of the chart's.
         RecordingDynamics dynamics = new();
         DynamicsWorld world = dynamics.CreateWorld(default);
-        ApproachField chart = new(dynamics, world, SpaceTuning.Defaults.Approach);
+        ApproachField chart = new(dynamics.Service, world, SpaceTuning.Defaults.Approach);
 
         ObstacleDefinition second = SpaceTuning.Defaults.Approach.Obstacles[1];
         ObstacleDefinition last = SpaceTuning.Defaults.Approach.Obstacles[^1];

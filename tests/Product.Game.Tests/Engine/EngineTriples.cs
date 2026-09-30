@@ -62,7 +62,7 @@ internal sealed class ServiceFaults
 /// against are recording doubles; every other service is absent, so a product
 /// change that reaches for one fails at once instead of quietly working.
 /// </summary>
-internal sealed class RecordingEngine : IEngineContext
+internal sealed class RecordingEngine
 {
     public ServiceFaults Faults { get; } = new();
 
@@ -85,39 +85,23 @@ internal sealed class RecordingEngine : IEngineContext
         Audio = new RecordingAudio(Faults);
     }
 
-    IImplicitSurfacesService IEngineContext.ImplicitSurfaces => ImplicitSurfaces;
-    public IDiagnosticsService Diagnostics => Absent<IDiagnosticsService>();
-    IDynamicsService IEngineContext.Dynamics => Dynamics;
-    public IMotionService Motion => Absent<IMotionService>();
-    IKinematicService IEngineContext.Kinematic => Kinematic;
-    public ISpatialService Spatial => Absent<ISpatialService>();
-    public IPerceptionService Perception => Absent<IPerceptionService>();
-    public IWorldOriginService WorldOrigin => Absent<IWorldOriginService>();
-    public IVoxelService Voxel => Absent<IVoxelService>();
-    public IVoxelContentService VoxelContent => Absent<IVoxelContentService>();
-    public IVoxelScenePresentationService VoxelScenePresentation => Absent<IVoxelScenePresentationService>();
-    public IContentService Content => Absent<IContentService>();
-    public IAuthoredContentService AuthoredContent => Absent<IAuthoredContentService>();
-    IGraphicsService IEngineContext.Graphics => Graphics;
-    public IPresentationService Presentation => Absent<IPresentationService>();
-    public IAnimationService Animation => Absent<IAnimationService>();
-    IAudioService IEngineContext.Audio => Audio;
-    ICameraViewService IEngineContext.CameraView => CameraView;
-    public IRandomService Random => Absent<IRandomService>();
-    public IPersistenceService Persistence => Absent<IPersistenceService>();
-    public IInputService Input => Absent<IInputService>();
-    public IRenderOutputService RenderOutput => Absent<IRenderOutputService>();
-    public IVideoService Video => Absent<IVideoService>();
-    IUiService IEngineContext.Ui => Ui;
-
-    private static T Absent<T>() => throw new NotSupportedException(
-        $"Space does not compose {typeof(T).Name}; a product that reaches for it is a design change, not a test.");
+    internal IEngineContext Context => RecordingServiceProxy.Create<IEngineContext>((method, _) => method.Name switch
+    {
+        "get_Dynamics" => Dynamics.Service,
+        "get_Kinematic" => Kinematic.Service,
+        "get_Graphics" => Graphics.Service,
+        "get_Ui" => Ui.Service,
+        "get_CameraView" => CameraView.Service,
+        "get_ImplicitSurfaces" => ImplicitSurfaces.Service,
+        "get_Audio" => Audio.Service,
+        _ => throw new NotSupportedException($"Space does not record Engine.{method.Name}."),
+    });
 }
 
 internal static class ProductContexts
 {
     internal static ProductCreateContext For(RecordingEngine engine) => new(
-        engine,
+        engine.Context,
         new ProductContent(default),
         new ProductInputConfiguration(default, default, default, default));
 }
@@ -130,8 +114,9 @@ internal static class ProductContexts
 /// never calls is refused loudly, so a change that starts reaching for another
 /// path is a test failure rather than a silent widening of the seam.
 /// </summary>
-internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
+internal sealed class RecordingDynamics(ServiceFaults faults)
 {
+    internal IDynamicsService Service => RecordingServiceProxy.For<IDynamicsService>(this);
     private const float SlipPerRead = 0.5f;
 
     internal RecordingDynamics()
@@ -230,9 +215,6 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
         ContactCount: ContactCount,
         FirstContact: HullContact);
 
-    public DynamicsBody CreateSphereBody(DynamicsCreateSphereBodyRequest arg0)
-        => throw new NotSupportedException();
-
     public DynamicsBody CreateCuboidBody(DynamicsCreateCuboidBodyRequest arg0)
     {
         faults.FailIf(nameof(CreateCuboidBody));
@@ -249,15 +231,6 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
         return OpenBody();
     }
 
-    public DynamicsBody CreateCapsuleBody(DynamicsCreateCapsuleBodyRequest arg0)
-        => throw new NotSupportedException();
-
-    public void BindWorldCollision(DynamicsWorldCollisionBindingRequest arg0)
-        => throw new NotSupportedException();
-
-    public void RebaseWorldOrigin(DynamicsRebaseWorldOriginRequest arg0)
-        => throw new NotSupportedException();
-
     public DynamicsStepAndReadResult StepAndRead(DynamicsStepAndReadRequest arg0)
     {
         DynamicsStepReceipt receipt = Step(new DynamicsStepRequest(
@@ -266,8 +239,6 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
             new DynamicsBodyReference(body.Handle.Value), Read(new DynamicsReadRequest(body)))).ToArray();
         return new DynamicsStepAndReadResult(facts, receipt.Generation, receipt.BodyCount, receipt.ContactCount);
     }
-
-    public void Reset(DynamicsResetRequest arg0) => throw new NotSupportedException();
 
     public void UpdateBody(DynamicsUpdateBodyRequest arg0)
     {
@@ -285,31 +256,12 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
             Generation: (ulong)Steps.Count);
     }
 
-    public void ConfigureRopes(DynamicsRopeSolverRequest arg0) => throw new NotSupportedException();
     public void CreateBodyChain(DynamicsBodyChainRequest arg0) => throw new NotSupportedException();
-    public void CreateFixedChain(DynamicsFixedChainRequest arg0) => throw new NotSupportedException();
     public DynamicsAnchorObservation ObserveAnchor(DynamicsObserveAnchorRequest arg0) => throw new NotSupportedException();
-    public DynamicsChainReadout ReadChain(DynamicsChainRequest arg0) => throw new NotSupportedException();
     public DynamicsChainPointReadout ReadChainPoint(DynamicsChainPointRequest arg0) => throw new NotSupportedException();
-    public DynamicsTetherReadout ReadTether(DynamicsTetherRequest arg0) => throw new NotSupportedException();
     public DynamicsChainReleaseReceipt RemoveChain(DynamicsChainRequest arg0) => throw new NotSupportedException();
-    public DynamicsTetherReleaseReceipt RemoveTether(DynamicsTetherRequest arg0) => throw new NotSupportedException();
     public void SetBodyTether(DynamicsBodyTetherRequest arg0) => throw new NotSupportedException();
-    public void SetChainLength(DynamicsChainLengthRequest arg0) => throw new NotSupportedException();
     public void SetFixedTether(DynamicsFixedTetherRequest arg0) => throw new NotSupportedException();
-    public DynamicsStepReceipt StepWithReactions(DynamicsStepWithReactionsRequest arg0) => throw new NotSupportedException();
-
-    public DynamicsBody ReplaceBody(DynamicsReplaceBodyRequest arg0)
-        => throw new NotSupportedException();
-
-    public DynamicsBody ReplaceCuboidBody(DynamicsReplaceCuboidBodyRequest arg0)
-        => throw new NotSupportedException();
-
-    public DynamicsBody ReplaceSphereBody(DynamicsReplaceSphereBodyRequest arg0)
-        => throw new NotSupportedException();
-
-    public DynamicsBody ReplaceCapsuleBody(DynamicsReplaceCapsuleBodyRequest arg0)
-        => throw new NotSupportedException();
 
     private const float BodyMass = 2.0f;
     private const float BodyInertia = 2.0f;
@@ -344,8 +296,9 @@ internal sealed class RecordingDynamics(ServiceFaults faults) : IDynamicsService
 /// walks — which is the product's side of the seam; where the line actually lands
 /// is checked against a live hull, not against a double's arithmetic.
 /// </summary>
-internal sealed class RecordingKinematic : IKinematicService
+internal sealed class RecordingKinematic
 {
+    internal IKinematicService Service => RecordingServiceProxy.For<IKinematicService>(this);
     internal List<KinematicIntegrationRequest> Integrations { get; } = [];
 
     /// <summary>
@@ -386,15 +339,14 @@ internal sealed class RecordingKinematic : IKinematicService
             BlockedZ: false);
     }
 
-    public IntegrationResult IntegrateSpatial(KinematicSpatialIntegrationRequest arg0) =>
-        throw new NotSupportedException("Space does not integrate a spatial body.");
-
-    public KinematicMotionResult RunMotion(KinematicMotionRequest arg0) =>
-        throw new NotSupportedException("Space does not run kinematic motion.");
 }
 
 internal sealed class RecordingGraphics(ServiceFaults faults) : IGraphicsService
 {
+    // DispatchProxy boxes its arguments; ReadOnlySpan<AppearanceFact> cannot
+    // cross that seam. Keep the snapshot recorder explicit.
+    internal IGraphicsService Service => this;
+
     private readonly ServiceFaults faults = faults;
     private ulong nextAppearanceHandle;
     private ulong nextLightHandle;
@@ -584,8 +536,9 @@ internal sealed class RecordingGraphics(ServiceFaults faults) : IGraphicsService
     }
 }
 
-internal sealed class RecordingUi(ServiceFaults faults) : IUiService
+internal sealed class RecordingUi(ServiceFaults faults)
 {
+    internal IUiService Service => RecordingServiceProxy.For<IUiService>(this);
     private readonly ServiceFaults faults = faults;
 
     internal int StreamReleases { get; private set; }
@@ -615,8 +568,9 @@ internal sealed class RecordingUi(ServiceFaults faults) : IUiService
     }
 }
 
-internal sealed class RecordingCameraView(ServiceFaults faults) : ICameraViewService
+internal sealed class RecordingCameraView(ServiceFaults faults)
 {
+    internal ICameraViewService Service => RecordingServiceProxy.For<ICameraViewService>(this);
     private readonly ServiceFaults faults = faults;
     private ulong nextCameraHandle = 1UL;
 
@@ -658,27 +612,6 @@ internal sealed class RecordingCameraView(ServiceFaults faults) : ICameraViewSer
         CameraPoses[arg0.Camera.Handle.Value] = arg0.Descriptor;
     }
 
-    public void UpdateCameraSample(CameraSampleRequest arg0) => throw new NotSupportedException();
-
-    public Camera ReplaceCamera(CameraReplaceRequest arg0) => throw new NotSupportedException();
-
-    public CameraTarget CreateCameraTarget(CameraTargetDescriptor arg0) => throw new NotSupportedException();
-
-    public void UpdateCameraTarget(CameraTargetUpdateRequest arg0) => throw new NotSupportedException();
-
-    public CameraTarget ReplaceCameraTarget(CameraTargetReplaceRequest arg0) => throw new NotSupportedException();
-
-    public void SetCameraComposition(CameraCompositionRequest arg0) => throw new NotSupportedException();
-
-    public void ClearActiveCamera(ClearActiveCameraRequest arg0) => throw new NotSupportedException();
-
-    public void SetSkyBackground(RenderResource arg0) => throw new NotSupportedException();
-
-    public void ClearSkyBackground(ClearSkyBackgroundRequest arg0) => throw new NotSupportedException();
-
-    public void SetBackgroundColor(SetBackgroundColorRequest arg0) => throw new NotSupportedException();
-
-    public void SetSkyBackgroundBlend(SkyBackgroundBlendRequest arg0) => throw new NotSupportedException();
 }
 
 /// <summary>
@@ -693,8 +626,9 @@ internal sealed class RecordingCameraView(ServiceFaults faults) : ICameraViewSer
 /// each extraction returns, so their releases are not recorded: only the
 /// scene-lifetime mesh resources the set retains are watched.
 /// </remarks>
-internal sealed class RecordingImplicitSurfaces(ServiceFaults faults) : IImplicitSurfacesService
+internal sealed class RecordingImplicitSurfaces(ServiceFaults faults)
 {
+    internal IImplicitSurfacesService Service => RecordingServiceProxy.For<IImplicitSurfacesService>(this);
     private readonly ServiceFaults faults = faults;
     private ulong nextNode = 1UL;
     private ulong nextMesh = 1UL;
@@ -751,37 +685,6 @@ internal sealed class RecordingImplicitSurfaces(ServiceFaults faults) : IImplici
         faults.FailIf("release-mesh");
     }
 
-    public void CaptureAuditPiece(ImplicitAuditPieceRequest arg0) => throw new NotSupportedException();
-
-    public ImplicitAudit CreateAudit() => throw new NotSupportedException();
-
-    public SampledVolume CreateSampledVolume(SampledVolumeCreateRequest arg0) => throw new NotSupportedException();
-
-    public SampledVolumeDescriptor DescribeSampledVolume(SampledVolume arg0) => throw new NotSupportedException();
-
-    public MeshResource GenerateSampledVolume(SampledVolumeGenerateRequest arg0) => throw new NotSupportedException();
-
-    public void RasterizeSampledVolume(SampledVolumeRasterizeRequest arg0) => throw new NotSupportedException();
-
-    public ImplicitAuditReportResult ReadAudit(ImplicitAuditRequest arg0) => throw new NotSupportedException();
-
-    public ImplicitAnalysisReportResult ReadEnclosure(ImplicitEnclosureRequest arg0) => throw new NotSupportedException();
-
-    public ImplicitAnalysisReportResult ReadExpectedJoin(ImplicitJoinRequest arg0) => throw new NotSupportedException();
-
-    public ImplicitGenerationReadout ReadGeneration(ImplicitField arg0) => throw new NotSupportedException();
-
-    public ImplicitAnalysisReportResult ReadMeshIntegrity(ImplicitIntegrityRequest arg0) => throw new NotSupportedException();
-
-    public DensitySnapshotResult ReadSampledVolume(SampledVolumeReadRequest arg0) => throw new NotSupportedException();
-
-    public ImplicitGenerationReadout ReadSampledVolumeGeneration(SampledVolume arg0) => throw new NotSupportedException();
-
-    public ImplicitSample Sample(ImplicitSampleRequest arg0) => throw new NotSupportedException();
-
-    public DensitySample SampleSampledVolume(SampledVolumeSampleRequest arg0) => throw new NotSupportedException();
-
-    public void WriteSampledVolume(SampledVolumeWriteRequest arg0) => throw new NotSupportedException();
 }
 
 /// <summary>
@@ -790,8 +693,9 @@ internal sealed class RecordingImplicitSurfaces(ServiceFaults faults) : IImplici
 /// calls, so a test can read the hum following spool and the thud answering
 /// an impact. Buses are untouched by the product, so they stay refused.
 /// </summary>
-internal sealed class RecordingAudio(ServiceFaults faults) : IAudioService
+internal sealed class RecordingAudio(ServiceFaults faults)
 {
+    internal IAudioService Service => RecordingServiceProxy.For<IAudioService>(this);
     private readonly ServiceFaults faults = faults;
     private ulong nextClip;
     private ulong nextVoice;
@@ -854,23 +758,4 @@ internal sealed class RecordingAudio(ServiceFaults faults) : IAudioService
         faults.FailIf("release-clip");
     }
 
-    public AudioSignalHandle Emit(AudioEmitRequest arg0) => throw new NotSupportedException();
-
-    public AudioClip OpenClipFromContent(AudioClipFromContentRequest arg0) => throw new NotSupportedException();
-
-    public AudioOptionalPreloadReceipt PreloadOptional(AudioClipRequest arg0) => throw new NotSupportedException();
-
-    public AudioResult Read() => throw new NotSupportedException();
-
-    public AudioBusReadout ReadBus(AudioBusReadRequest arg0) => throw new NotSupportedException();
-
-    public AudioRealizationResult ReadRealization() => throw new NotSupportedException();
-
-    public AudioVoiceReadout ReadVoice(AudioVoiceReadRequest arg0) => throw new NotSupportedException();
-
-    public AudioVoice ReplaceVoice(AudioVoiceReplaceRequest arg0) => throw new NotSupportedException();
-
-    public void SetBusMuted(AudioBusMutedRequest arg0) => throw new NotSupportedException();
-
-    public void SetBusVolume(AudioBusVolumeRequest arg0) => throw new NotSupportedException();
 }

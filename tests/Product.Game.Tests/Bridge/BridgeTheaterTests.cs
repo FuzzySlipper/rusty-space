@@ -68,8 +68,8 @@ public class BridgeTheaterTests
     {
         RecordingEngine engine = new();
         SpaceTuning tuning = SpaceTuning.Defaults;
-        using BridgeSet bridge = new(engine.Graphics, engine.ImplicitSurfaces, tuning.Bridge);
-        using BridgeTheater theater = new(engine.Audio, bridge, tuning.Theater);
+        using BridgeSet bridge = new(engine.Graphics.Service, engine.ImplicitSurfaces.Service, tuning.Bridge);
+        using BridgeTheater theater = new(engine.Audio.Service, bridge, tuning.Theater);
 
         for (int turn = 0; turn < 240; turn++)
         {
@@ -91,8 +91,8 @@ public class BridgeTheaterTests
     public void LateralPushSwaysThePropAndLeansTheHelmEye()
     {
         RecordingEngine engine = new();
-        using BridgeSet bridge = new(engine.Graphics, engine.ImplicitSurfaces, BridgeLayout.Defaults);
-        using BridgeTheater theater = new(engine.Audio, bridge, SpaceTuning.Defaults.Theater);
+        using BridgeSet bridge = new(engine.Graphics.Service, engine.ImplicitSurfaces.Service, BridgeLayout.Defaults);
+        using BridgeTheater theater = new(engine.Audio.Service, bridge, SpaceTuning.Defaults.Theater);
 
         for (int turn = 0; turn < 120; turn++)
         {
@@ -130,8 +130,8 @@ public class BridgeTheaterTests
     {
         RecordingEngine engine = new();
         SpaceTuning tuning = SpaceTuning.Defaults;
-        using BridgeSet bridge = new(engine.Graphics, engine.ImplicitSurfaces, tuning.Bridge);
-        using BridgeTheater theater = new(engine.Audio, bridge, tuning.Theater);
+        using BridgeSet bridge = new(engine.Graphics.Service, engine.ImplicitSurfaces.Service, tuning.Bridge);
+        using BridgeTheater theater = new(engine.Audio.Service, bridge, tuning.Theater);
 
         for (int turn = 0; turn < 240; turn++)
         {
@@ -225,8 +225,8 @@ public class BridgeTheaterTests
             AudioReactions = false,
             RepeaterReactions = false,
         };
-        using BridgeSet bridge = new(engine.Graphics, engine.ImplicitSurfaces, tuning.Bridge);
-        using BridgeTheater theater = new(engine.Audio, bridge, off);
+        using BridgeSet bridge = new(engine.Graphics.Service, engine.ImplicitSurfaces.Service, tuning.Bridge);
+        using BridgeTheater theater = new(engine.Audio.Service, bridge, off);
         InstalledShip jammed = StockShip();
         jammed.TakeImpact(new PlanarVector(0.0, -1.0), 8.0);
 
@@ -282,8 +282,8 @@ public class BridgeTheaterTests
             AudioReactions = false,
             RepeaterReactions = false,
         };
-        using BridgeSet bridge = new(engine.Graphics, engine.ImplicitSurfaces, tuning.Bridge);
-        using BridgeTheater theater = new(engine.Audio, bridge, off);
+        using BridgeSet bridge = new(engine.Graphics.Service, engine.ImplicitSurfaces.Service, tuning.Bridge);
+        using BridgeTheater theater = new(engine.Audio.Service, bridge, off);
 
         theater.Reset();
 
@@ -296,8 +296,8 @@ public class BridgeTheaterTests
     private static BridgeTheater Stage(RecordingEngine engine)
     {
         SpaceTuning tuning = SpaceTuning.Defaults;
-        BridgeSet bridge = new(engine.Graphics, engine.ImplicitSurfaces, tuning.Bridge);
-        return new BridgeTheater(engine.Audio, bridge, tuning.Theater);
+        BridgeSet bridge = new(engine.Graphics.Service, engine.ImplicitSurfaces.Service, tuning.Bridge);
+        return new BridgeTheater(engine.Audio.Service, bridge, tuning.Theater);
     }
 
     private static InstalledShip StockShip()

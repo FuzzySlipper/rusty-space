@@ -166,8 +166,8 @@ public class SpaceFlightTests
         RecordingDynamics dynamics,
         double spawnHeadingRadians = 0.0,
         ShipLoadout? loadout = null) => new(
-        dynamics,
-        new RecordingKinematic(),
+        dynamics.Service,
+        new RecordingKinematic().Service,
         SpaceTuning.Defaults.Flight,
         SpaceTuning.Defaults.Coupling,
         SpaceTuning.Defaults.FlightBody with { SpawnHeadingRadians = spawnHeadingRadians },

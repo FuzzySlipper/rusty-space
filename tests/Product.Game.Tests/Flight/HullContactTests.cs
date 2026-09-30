@@ -154,7 +154,7 @@ public class HullContactTests
     }
 
     private static HullContacts HullContacts(RecordingDynamics dynamics, ApproachField chart) =>
-        new(dynamics, chart);
+        new(dynamics.Service, chart);
 
     private static void AssertPush(PlanarVector expected, PlanarVector actual)
     {
@@ -181,7 +181,7 @@ public class HullContactTests
                     RotationY: false,
                     RotationZ: true),
                 GravityScale: 0.0f)));
-        ApproachField chart = new(dynamics, world, SpaceTuning.Defaults.Approach);
+        ApproachField chart = new(dynamics.Service, world, SpaceTuning.Defaults.Approach);
         return (dynamics, world, hull, chart);
     }
 

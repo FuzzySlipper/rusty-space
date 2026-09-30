@@ -348,16 +348,16 @@ public class SpacePresentationTests
     {
         RecordingEngine engine = new();
         SpaceTuning tuning = SpaceTuning.Defaults;
-        using BridgeSet bridge = new(engine.Graphics, engine.ImplicitSurfaces, tuning.Bridge);
-        using BridgeTheater theater = new(engine.Audio, bridge, tuning.Theater);
+        using BridgeSet bridge = new(engine.Graphics.Service, engine.ImplicitSurfaces.Service, tuning.Bridge);
+        using BridgeTheater theater = new(engine.Audio.Service, bridge, tuning.Theater);
         SpacePresentation presentation = new(
-            engine.Graphics,
-            engine.Ui,
+            engine.Graphics.Service,
+            engine.Ui.Service,
             new FlightEnvironment(
                 new StellarField(tuning.Field),
                 new DriftCurrent(tuning.GentleCurrent),
                 new DriftCurrent(tuning.SwiftCurrent)),
-            new ApproachField(engine.Dynamics, engine.Dynamics.CreateWorld(default), tuning.Approach),
+            new ApproachField(engine.Dynamics.Service, engine.Dynamics.CreateWorld(default), tuning.Approach),
             bridge,
             theater,
             tuning.Presentation,
@@ -389,16 +389,16 @@ public class SpacePresentationTests
     {
         RecordingEngine engine = new();
         SpaceTuning tuning = SpaceTuning.Defaults;
-        using BridgeSet bridge = new(engine.Graphics, engine.ImplicitSurfaces, tuning.Bridge);
-        using BridgeTheater theater = new(engine.Audio, bridge, tuning.Theater);
+        using BridgeSet bridge = new(engine.Graphics.Service, engine.ImplicitSurfaces.Service, tuning.Bridge);
+        using BridgeTheater theater = new(engine.Audio.Service, bridge, tuning.Theater);
         SpacePresentation presentation = new(
-            engine.Graphics,
-            engine.Ui,
+            engine.Graphics.Service,
+            engine.Ui.Service,
             new FlightEnvironment(
                 new StellarField(tuning.Field),
                 new DriftCurrent(tuning.GentleCurrent),
                 new DriftCurrent(tuning.SwiftCurrent)),
-            new ApproachField(engine.Dynamics, engine.Dynamics.CreateWorld(default), tuning.Approach),
+            new ApproachField(engine.Dynamics.Service, engine.Dynamics.CreateWorld(default), tuning.Approach),
             bridge,
             theater,
             tuning.Presentation,
@@ -484,16 +484,16 @@ public class SpacePresentationTests
         InstalledShip? ship = null)
     {
         SpaceTuning tuning = SpaceTuning.Defaults;
-        using BridgeSet bridge = new(engine.Graphics, engine.ImplicitSurfaces, tuning.Bridge);
-        using BridgeTheater theater = new(engine.Audio, bridge, tuning.Theater);
+        using BridgeSet bridge = new(engine.Graphics.Service, engine.ImplicitSurfaces.Service, tuning.Bridge);
+        using BridgeTheater theater = new(engine.Audio.Service, bridge, tuning.Theater);
         SpacePresentation presentation = new(
-            engine.Graphics,
-            engine.Ui,
+            engine.Graphics.Service,
+            engine.Ui.Service,
             new FlightEnvironment(
                 new StellarField(tuning.Field),
                 new DriftCurrent(tuning.GentleCurrent),
                 new DriftCurrent(tuning.SwiftCurrent)),
-            new ApproachField(engine.Dynamics, engine.Dynamics.CreateWorld(default), tuning.Approach),
+            new ApproachField(engine.Dynamics.Service, engine.Dynamics.CreateWorld(default), tuning.Approach),
             bridge,
             theater,
             tuning.Presentation,

@@ -31,7 +31,7 @@ public class BridgeSetTests
     public void ConstructionExtractsEachSurfaceExactlyOnce()
     {
         RecordingEngine engine = new();
-        using BridgeSet bridge = new(engine.Graphics, engine.ImplicitSurfaces, BridgeLayout.Defaults);
+        using BridgeSet bridge = new(engine.Graphics.Service, engine.ImplicitSurfaces.Service, BridgeLayout.Defaults);
 
         Assert.Equal(ExpectedSurfaces.Length, engine.ImplicitSurfaces.GenerationCount);
         Assert.Equal(ExpectedSurfaces.Length, bridge.ImplicitSurfaceCount);
@@ -42,7 +42,7 @@ public class BridgeSetTests
     public void FactsCarryStableIdentitiesOnTheSceneLayer()
     {
         RecordingEngine engine = new();
-        using BridgeSet bridge = new(engine.Graphics, engine.ImplicitSurfaces, BridgeLayout.Defaults);
+        using BridgeSet bridge = new(engine.Graphics.Service, engine.ImplicitSurfaces.Service, BridgeLayout.Defaults);
 
         AppearanceFact[] facts = bridge.Facts.ToArray();
         Assert.Equal(ExpectedSurfaces.Length + PresentationPartCount, facts.Length);
@@ -58,7 +58,7 @@ public class BridgeSetTests
     public void TheMainDisplaySitsInsideTheHelmRecess()
     {
         RecordingEngine engine = new();
-        using BridgeSet bridge = new(engine.Graphics, engine.ImplicitSurfaces, BridgeLayout.Defaults);
+        using BridgeSet bridge = new(engine.Graphics.Service, engine.ImplicitSurfaces.Service, BridgeLayout.Defaults);
 
         AppearanceFact display = bridge.Facts.ToArray()
             .Single(fact => fact.ObjectId == BridgeSet.FirstBridgeObjectId + (ulong)BridgePart.MainDisplay);
@@ -73,7 +73,7 @@ public class BridgeSetTests
     public void ThePropSlateSitsOnItsPivotWithItsOwnIdentity()
     {
         RecordingEngine engine = new();
-        using BridgeSet bridge = new(engine.Graphics, engine.ImplicitSurfaces, BridgeLayout.Defaults);
+        using BridgeSet bridge = new(engine.Graphics.Service, engine.ImplicitSurfaces.Service, BridgeLayout.Defaults);
 
         // The slate is a plain module, not an extraction: the parent theater
         // re-poses it by republishing this fact's transform about the pivot.
@@ -88,7 +88,7 @@ public class BridgeSetTests
     public void DisposalPutsDownEveryStagedHandle()
     {
         RecordingEngine engine = new();
-        BridgeSet bridge = new(engine.Graphics, engine.ImplicitSurfaces, BridgeLayout.Defaults);
+        BridgeSet bridge = new(engine.Graphics.Service, engine.ImplicitSurfaces.Service, BridgeLayout.Defaults);
         bridge.Dispose();
 
         Assert.Equal(
@@ -106,7 +106,7 @@ public class BridgeSetTests
         engine.Faults.FailOn = nameof(IImplicitSurfacesService.Generate);
 
         Assert.Throws<InjectedFault>(
-            () => new BridgeSet(engine.Graphics, engine.ImplicitSurfaces, BridgeLayout.Defaults));
+            () => new BridgeSet(engine.Graphics.Service, engine.ImplicitSurfaces.Service, BridgeLayout.Defaults));
 
         Assert.Equal(6, engine.Graphics.MaterialReleases);
         Assert.Equal(0, engine.ImplicitSurfaces.MeshReleases);
@@ -121,7 +121,7 @@ public class BridgeSetTests
         engine.Faults.FailOn = nameof(IGraphicsService.CreatePrimitive);
 
         Assert.Throws<InjectedFault>(
-            () => new BridgeSet(engine.Graphics, engine.ImplicitSurfaces, BridgeLayout.Defaults));
+            () => new BridgeSet(engine.Graphics.Service, engine.ImplicitSurfaces.Service, BridgeLayout.Defaults));
 
         Assert.Equal(ExpectedSurfaces.Length, engine.Graphics.AppearanceReleases);
         Assert.Equal(ExpectedSurfaces.Length, engine.ImplicitSurfaces.MeshReleases);

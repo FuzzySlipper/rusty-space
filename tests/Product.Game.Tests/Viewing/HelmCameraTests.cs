@@ -22,7 +22,7 @@ public class HelmCameraTests
     {
         RecordingEngine engine = new();
         BridgeLayout layout = BridgeLayout.Defaults.Validate();
-        using HelmCamera helm = new(engine.CameraView, layout);
+        using HelmCamera helm = new(engine.CameraView.Service, layout);
 
         Assert.Single(engine.CameraView.CreatedCameras);
         helm.Follow(HelmLean.Rest);
@@ -38,7 +38,7 @@ public class HelmCameraTests
     {
         RecordingEngine engine = new();
         BridgeLayout layout = BridgeLayout.Defaults.Validate();
-        using HelmCamera helm = new(engine.CameraView, layout);
+        using HelmCamera helm = new(engine.CameraView.Service, layout);
         var lean = new HelmLean(new Vector3(-0.05f, 0.0f, 0.02f), 1.5);
 
         helm.Follow(lean);

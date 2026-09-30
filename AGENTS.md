@@ -26,10 +26,10 @@ backend integration, spatial and physics mechanisms, content/resource
 mechanisms, persistence primitives, diagnostics, and other published Engine
 capabilities.
 
-Do not recreate Engine mechanisms in C# or TypeScript. C# publishes
+Do not recreate Engine mechanisms in C# or JavaScript. C# publishes
 renderer-neutral facts through named Engine APIs; it does not build a renderer,
 retained-frame substitute, resource loader, canvas, private loop, timer, or
-browser simulation. TypeScript may provide DOM UI and accessibility only; it
+browser simulation. JavaScript may provide DOM UI and accessibility only; it
 does not render game elements or acquire gameplay state.
 
 If the safe generated Engine API cannot express needed behavior, identify the

@@ -632,11 +632,8 @@ internal sealed class SpacePresentation : IDisposable
 
     /// <summary>
     /// Releases the render and UI handles this projection opened. Shutdown
-    /// retires the retained snapshot before this runs, so no snapshot still
-    /// points at a handle being put down. A generated lease wrapper releases
-    /// through the staged call it is issued in, and once the runtime is
-    /// terminal it drops its release instead of issuing one, so this is safe on
-    /// a live turn and at teardown alike.
+    /// retires the retained snapshot while services remain reachable; disposal
+    /// releases the resources immediately and attempts every handle.
     /// </summary>
     public void Dispose()
     {
@@ -689,9 +686,8 @@ internal sealed class SpacePresentation : IDisposable
             return;
         }
 
-        // This call has no generated lease-wrapper state to advance. Mark it
-        // complete only after the Engine accepts the staged empty snapshot so
-        // a failed Shutdown remains safely retryable.
+        // The Engine call is the retirement boundary. Record it after the
+        // call succeeds, so a rejected publication is not recorded as retired.
         appearance.PublishSnapshot(ReadOnlySpan<AppearanceFact>.Empty);
         retainedSnapshotRetired = true;
     }
