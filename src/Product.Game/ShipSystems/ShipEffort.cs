@@ -40,4 +40,5 @@ internal readonly record struct ShipEffort(
     double Coupling,
     double HeadingEffort,
     bool HeadingSaturated,
-    double HeadingAsymmetry);
+    double HeadingAsymmetry,
+    ShipSystemsReading Systems = default);

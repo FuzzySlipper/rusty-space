@@ -50,7 +50,8 @@ internal sealed class FlightTelemetry
             // took, so the reading outlives the contact that caused it.
             strike.Impact.LocalImpulse,
             strike.Impact.Magnitude,
-            strike.Damage?.Part);
+            strike.Damage?.Part,
+            ship.Systems);
     }
 
     internal void Reset() => current = FlightTelemetrySnapshot.Neutral;

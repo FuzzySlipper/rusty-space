@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using Rusty.Engine;
 using Rusty.Engine.Debugging;
 using Rusty.Space.Product.Debugging;
@@ -86,6 +87,7 @@ public class SpaceProductLifecycleTests
         product.RegisterDebugCommands(registrar);
         FlightDebugModule flight = Assert.Single(modules.OfType<FlightDebugModule>());
         BridgeDebugModule bridge = Assert.Single(modules.OfType<BridgeDebugModule>());
+        PlaytestDebugModule playtest = Assert.Single(modules.OfType<PlaytestDebugModule>());
         int publications = engine.Graphics.SnapshotPublications;
         Assert.Contains("fixed step", flight.Forces());
         Assert.Contains("heading", flight.Attitude());
@@ -94,8 +96,38 @@ public class SpaceProductLifecycleTests
         Assert.Contains("flow", flight.Field());
         Assert.Contains("nothing projected", flight.Path());
         Assert.Contains("at chart", bridge.Bridge());
+        Assert.Equal(DebugCommandStatus.Success, playtest.Observe().Status);
+        Assert.Equal(DebugCommandStatus.InvalidArguments, playtest.Look(20.0, 0.0).Status);
         Assert.Empty(engine.Dynamics.Steps);
         Assert.Equal(publications, engine.Graphics.SnapshotPublications);
+    }
+
+    [Fact]
+    public void PlaytestActionsFollowTheAdmittedBindingInsteadOfAPrivateKeyTable()
+    {
+        RecordingEngine engine = new();
+        ProductInputMapping thrust = new()
+        {
+            Intent = "space.flight.thrust"u8.ToArray(),
+            Keyboard = KeyboardControl.KeyB,
+            Edge = InputEdge.Held,
+        };
+        ProductCreateContext context = new(engine.Context, new ProductContent(default),
+            new ProductInputConfiguration(default, default, default, new[] { thrust }));
+        using SpaceProduct product = new(context);
+        List<IDebugCommandModule> modules = [];
+        product.RegisterDebugCommands(RecordingServiceProxy.Create<IDebugCommandModuleRegistrar>((_, args) =>
+        {
+            modules.Add((IDebugCommandModule)args![0]!);
+            return new DebugCommandRegistrationResult(DebugCommandRegistrationStatus.Registered, "recorded");
+        }));
+        PlaytestDebugModule playtest = Assert.Single(modules.OfType<PlaytestDebugModule>());
+        using JsonDocument plan = JsonDocument.Parse(playtest.Action("thrust").Message);
+        Assert.Equal("KeyB", plan.RootElement.GetProperty("key").GetString());
+        Assert.True(plan.RootElement.GetProperty("available").GetBoolean());
+        using JsonDocument missing = JsonDocument.Parse(playtest.Action("patch").Message);
+        Assert.False(missing.RootElement.GetProperty("available").GetBoolean());
+        Assert.Empty(engine.Dynamics.Steps);
     }
 
     [Fact]

@@ -208,6 +208,7 @@ public class SpaceFlightTests
         loadout ?? SpaceTuning.Defaults.Ship,
         SpaceTuning.Defaults.Damage,
         SpaceTuning.Defaults.Thermal,
+        SpaceTuning.Defaults.Reserve,
         SpaceTuning.Defaults.Field,
         SpaceTuning.Defaults.Orbital,
         SpaceTuning.Defaults.GentleCurrent,
@@ -251,6 +252,23 @@ public class SpaceFlightTests
         // The Engine turns the other way about +Y, so the heading-positive yaw the
         // product asked for is the negation of what was recorded.
         return -dynamics.Steps[^1].Actions.Span[0].Torque.Y;
+    }
+
+    [Fact]
+    public void ResourceEnvelopesUseEveryAdmittedSubstepAndFreezeWithNoAdmission()
+    {
+        using SpaceFlight together = Flight(new RecordingDynamics());
+        using SpaceFlight separately = Flight(new RecordingDynamics());
+        together.Admit(Turn(4, 1.0 / 60.0, [Digital("space.flight.thrust")]));
+        for (int i = 0; i < 4; i++)
+            separately.Admit(Turn(1, 1.0 / 60.0, [Digital("space.flight.thrust")]));
+
+        Assert.Equal(together.Ship.ReadSystems().ReserveFraction, separately.Ship.ReadSystems().ReserveFraction, 8);
+        Assert.Equal(together.Ship.MainDrive.Temperature, separately.Ship.MainDrive.Temperature, 8);
+        Assert.Equal(together.Ship.ReadSystems(), together.Telemetry.Systems);
+        ShipSystemsReading before = together.Ship.ReadSystems();
+        together.Admit(Turn(0, 1.0 / 60.0, [Digital("space.flight.thrust")]));
+        Assert.Equal(before, together.Ship.ReadSystems());
     }
 
     [Fact]

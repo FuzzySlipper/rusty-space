@@ -60,8 +60,9 @@ internal sealed class InstalledShip
     private readonly InstalledPart[] parts;
     private readonly PlanarVector steeringAuthorityCenterLocal;
     private readonly double driveAuthority;
+    private readonly DriveReserve reserve;
 
-    internal InstalledShip(ShipLoadout loadout, double driveAuthority, DamageTuning damage, PartThermalTuning thermal)
+    internal InstalledShip(ShipLoadout loadout, double driveAuthority, DamageTuning damage, PartThermalTuning thermal, DriveReserveTuning reserveTuning)
     {
         ArgumentNullException.ThrowIfNull(loadout);
         ArgumentNullException.ThrowIfNull(damage);
@@ -71,6 +72,7 @@ internal sealed class InstalledShip
         }
 
         this.driveAuthority = driveAuthority;
+        reserve = new DriveReserve(reserveTuning);
         LoadoutName = loadout.Name;
         emitterDefinition = loadout.Emitter;
         portDefinition = loadout.PortStabilizer;
@@ -134,6 +136,15 @@ internal sealed class InstalledShip
     internal InstalledPart PortStabilizer => portStabilizer;
 
     internal InstalledPart StarboardStabilizer => starboardStabilizer;
+
+    internal ShipSystemsReading ReadSystems() => new(
+        reserve.Fraction,
+        drive.Temperature,
+        reserve.OutputFraction * drive.ThermalAuthority * drive.DeliveryFraction,
+        reserve.Low,
+        drive.HeatWarning,
+        parts.Count(part => part.OutOfTrim),
+        parts.Max(part => part.RepairProgress));
 
     /// <summary>
     /// The fitted hardware answering to an identity, or nothing for an identity
@@ -221,9 +232,11 @@ internal sealed class InstalledShip
         // controller resolved it so a push trimmed off at maximum speed keeps
         // that direction, and it returns how much of it the hardware reached.
         double demandedDriveMagnitude = demandedDrive.Magnitude;
+        double driveDemandFraction = demandedDriveMagnitude / driveAuthority;
+        reserve.Advance(driveDemandFraction, step);
         double deliveredDriveMagnitude = drive.Advance(
-            demandedDriveMagnitude,
-            demandedDriveMagnitude / driveAuthority,
+            demandedDriveMagnitude * reserve.OutputFraction,
+            driveDemandFraction * reserve.OutputFraction,
             step);
         PlanarVector driveForce = demandedDriveMagnitude <= NoDemand
             ? PlanarVector.Zero
@@ -272,7 +285,8 @@ internal sealed class InstalledShip
             HeadingSaturated: portStabilizer.Saturated || starboardStabilizer.Saturated,
             HeadingAsymmetry: work <= NoDemand
                 ? NoTurnImbalance
-                : (portWork - starboardWork) / work);
+                : (portWork - starboardWork) / work,
+            Systems: ReadSystems());
     }
 
     /// <summary>
@@ -316,6 +330,7 @@ internal sealed class InstalledShip
         drive.Reset();
         portStabilizer.Reset();
         starboardStabilizer.Reset();
+        reserve.Reset();
     }
 
     /// <summary>

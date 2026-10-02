@@ -18,6 +18,7 @@ internal sealed record SpaceTuning(
     ShipLoadout Ship,
     DamageTuning Damage,
     PartThermalTuning Thermal,
+    DriveReserveTuning Reserve,
     ApproachFieldDefinition Approach,
     FieldTuning Field,
     OrbitalGravityTuning Orbital,
@@ -68,8 +69,20 @@ internal sealed record SpaceTuning(
             GlancingImpulse: 1.2,
             KnockoutImpulse: 5.0,
             TrimOffsetFraction: 0.22,
-            RepairTime: TimeSpan.FromSeconds(1.6)),
-        Thermal: new(HeatPerSecondAtFullDemand: 0.25, CoolingPerSecond: 0.30),
+            RepairTime: TimeSpan.FromSeconds(1.6),
+            MinimumResponseFraction: 0.45,
+            MinimumDampingFraction: 0.60),
+        // Heat is gathered and shed at rates. The drive reaches the warning
+        // before it loses output; short burns and cooling coasts stay useful.
+        Thermal: new(
+            HeatPerSecondAtFullDemand: 0.15, CoolingPerSecond: 0.18,
+            WarningTemperature: 0.65, DeratingTemperature: 0.90,
+            FullDeratingTemperature: 1.50, MinimumOutputFraction: 0.45,
+            DriveHeatMultiplier: 2.4),
+        Reserve: new(
+            Capacity: 12.0, DrawPerSecond: 1.4, RechargePerSecond: 0.8,
+            WarningFraction: 0.45, DeratingFraction: 0.30,
+            SustainableOutputFraction: 0.35),
         Approach: ApproachFields.KestrelApproach,
         Field: new(
             PlanetPosition: new PlanarVector(14.0, 0.0),
@@ -203,6 +216,7 @@ internal sealed record SpaceTuning(
         Ship = Ship.Validate(),
         Damage = Damage.Validate(),
         Thermal = Thermal.Validate(),
+        Reserve = Reserve.Validate(),
         Approach = Approach.Validate(),
         Field = Field.Validate(),
         Orbital = Orbital.Validate(),

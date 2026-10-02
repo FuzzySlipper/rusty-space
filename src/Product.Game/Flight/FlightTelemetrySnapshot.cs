@@ -33,7 +33,8 @@ internal readonly record struct FlightTelemetrySnapshot(
     double HeadingAsymmetry,
     PlanarVector CollisionImpulse,
     double CollisionMagnitude,
-    PartId? StruckPart)
+    PartId? StruckPart,
+    ShipSystemsReading Systems = default)
 {
     internal static FlightTelemetrySnapshot Neutral { get; } = new(
         0UL,
@@ -51,5 +52,6 @@ internal readonly record struct FlightTelemetrySnapshot(
         HeadingAsymmetry: 0.0,
         CollisionImpulse: PlanarVector.Zero,
         CollisionMagnitude: 0.0,
-        StruckPart: null);
+        StruckPart: null,
+        Systems: ShipSystemsReading.Ready);
 }

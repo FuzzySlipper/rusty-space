@@ -161,9 +161,13 @@ internal sealed class BridgeTheater : IDisposable
             admittedTime += admitted;
         }
 
+        ShipSystemsReading systems = telemetry.Systems;
         string? fault = FirstFault(ship);
-        FaultText = fault ?? "SYSTEMS NOMINAL";
-        bool faulted = fault is not null;
+        FaultText = fault is not null ? $"JAMMED — HOLD PATCH: {fault}"
+            : systems.HeatWarning ? "DRIVE HOT — COAST TO COOL"
+            : systems.ReserveLow ? "RESERVE LOW — EASE THRUST"
+            : "SYSTEMS NOMINAL";
+        bool faulted = fault is not null || systems.HeatWarning || systems.ReserveLow;
         Lamps = new TheaterLampState(faulted, spool > tuning.SpoolReadyThreshold);
         Lean = tuning.CameraReactions
             ? new HelmLean(

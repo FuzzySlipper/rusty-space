@@ -720,7 +720,7 @@ internal sealed class SpacePresentation : IDisposable
         double flow = LocalFlowAt(readout.Position).Magnitude;
         StructuredValueNode[] nodes =
         [
-            new(StructuredValueKind.Object, 0, 0, 0, 0, 0, 0, 0, 9),
+            new(StructuredValueKind.Object, 0, 0, 0, 0, 0, 0, 0, 16),
             new(StructuredValueKind.Number, 0, readout.HeadingRadians, 0, 7, 0, 0, 0, 0),
             new(StructuredValueKind.Number, 0, PlanarSpeed(readout.LinearVelocity), 7, 5, 0, 0, 0, 0),
             new(StructuredValueKind.Number, 0, telemetry.DriveEffort, 12, 6, 0, 0, 0, 0),
@@ -730,15 +730,22 @@ internal sealed class SpacePresentation : IDisposable
             new(StructuredValueKind.Number, 0, flow, 35, 4, 0, 0, 0, 0),
             new(StructuredValueKind.Number, 0, telemetry.HeadingAsymmetry, 39, 4, 0, 0, 0, 0),
             new(StructuredValueKind.Number, 0, telemetry.CollisionMagnitude, 43, 6, 0, 0, 0, 0),
+            new(StructuredValueKind.Number, 0, telemetry.Systems.ReserveFraction, 49, 7, 0, 0, 0, 0),
+            new(StructuredValueKind.Number, 0, telemetry.Systems.DriveTemperature, 56, 4, 0, 0, 0, 0),
+            new(StructuredValueKind.Number, 0, telemetry.Systems.DriveOutputFraction, 60, 6, 0, 0, 0, 0),
+            new(StructuredValueKind.Number, 0, telemetry.Systems.ReserveLow ? 1 : 0, 66, 3, 0, 0, 0, 0),
+            new(StructuredValueKind.Number, 0, telemetry.Systems.HeatWarning ? 1 : 0, 69, 3, 0, 0, 0, 0),
+            new(StructuredValueKind.Number, 0, telemetry.Systems.JammedParts, 72, 4, 0, 0, 0, 0),
+            new(StructuredValueKind.Number, 0, telemetry.Systems.PatchProgress, 76, 5, 0, 0, 0, 0),
         ];
         ui.PublishProjection(new UiProjection(
             hudStream,
             checked(++hudSequence),
             new UiValue(
                 nodes,
-                (uint[])[1, 2, 3, 4, 5, 6, 7, 8, 9],
+                (uint[])[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
                 0,
-                "headingspeedthrustaccelturncouplingflowasymimpact"u8.ToArray())));
+                "headingspeedthrustaccelturncouplingflowasymimpactreserveheatoutputlowhotjamspatch"u8.ToArray())));
     }
 
     private static double PlanarSpeed(PlanarVector velocity) => Math.Sqrt(

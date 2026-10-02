@@ -17,12 +17,17 @@ export function mountProductUi(root, context) {
   panel.append(title);
 
   const controls = document.createElement('p');
-  controls.textContent = 'W thrusts. A and D steer. Q and E wind coupling. X uncouples at once. T switches the attitude hold. G holds a patch on a jammed effector. Mouse wheel zooms. R resets flight. F aborts. Xbox: RT thrusts proportionally, left stick steers, LB/RB steer, Back resets.';
+  controls.textContent = 'W thrust · A/D steer · Q/E coupling · X uncouple · T attitude hold · G hold patch · C chart/helm · wheel zoom · R reset · F abort. Xbox: RT thrust, left stick steer, stick click patch, Back reset.';
   panel.append(controls);
 
   const hud = document.createElement('p');
   hud.textContent = 'heading — speed — thrust — accel — turn — coupling — flow — asym — impact —';
   panel.append(hud);
+
+  const systems = document.createElement('p');
+  systems.setAttribute('role', 'status');
+  systems.textContent = 'Short burns leave power for the approach. Coast to recharge and cool.';
+  panel.append(systems);
 
   root.append(panel);
 
@@ -33,7 +38,8 @@ export function mountProductUi(root, context) {
       if (envelope === null || typeof envelope.value !== 'object' || envelope.value === null) {
         return;
       }
-      const { heading, speed, thrust, accel, turn, coupling, flow, asym, impact } = envelope.value;
+      const { heading, speed, thrust, accel, turn, coupling, flow, asym, impact,
+        reserve, heat, output, low, hot, jams, patch } = envelope.value;
       const headingDegrees = Number.isFinite(heading)
         ? Math.round(((heading % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) * (180 / Math.PI))
         : null;
@@ -42,6 +48,12 @@ export function mountProductUi(root, context) {
         } thrust ${number(thrust, 2)} accel ${number(accel, 2)} turn ${number(turn, 2)
         } coupling ${number(coupling, 2)} flow ${number(flow, 2)} asym ${number(asym, 2)
         } impact ${number(impact, 2)}`;
+      const condition = jams > 0
+        ? `Jammed steering — hold G while flying to free the vane${patch > 0 ? ` (${Math.round(patch * 100)}%)` : ''}. The dent stays.`
+        : hot > 0 ? 'Drive warming — coast to cool; long burns lose thrust.'
+        : low > 0 ? 'Reserve low — ease thrust to recharge. Steering still answers.'
+        : 'Short burns leave power for the approach. Coast to recharge and cool.';
+      systems.textContent = `${condition} Reserve ${number(reserve * 100, 0)}% · drive heat ${number(heat, 2)} · available thrust ${number(output * 100, 0)}%`;
     });
   }
 

@@ -43,6 +43,7 @@ internal sealed class SpaceFlight : IDisposable
     private readonly double driveAuthority;
     private readonly DamageTuning damageTuning;
     private readonly PartThermalTuning thermalTuning;
+    private readonly DriveReserveTuning reserveTuning;
     private readonly FlightInputMapper inputMapper = new();
     private DynamicsBody body = null!;
     private FlightCommand command = FlightCommand.Neutral;
@@ -68,6 +69,7 @@ internal sealed class SpaceFlight : IDisposable
         ShipLoadout shipLoadout,
         DamageTuning damageTuning,
         PartThermalTuning thermalTuning,
+        DriveReserveTuning reserveTuning,
         FieldTuning fieldTuning,
         OrbitalGravityTuning orbitalTuning,
         DriftCurrentTuning gentleCurrentTuning,
@@ -80,7 +82,8 @@ internal sealed class SpaceFlight : IDisposable
         driveAuthority = flightTuning.MaximumThrust;
         this.damageTuning = damageTuning;
         this.thermalTuning = thermalTuning;
-        ship = new InstalledShip(shipLoadout, driveAuthority, damageTuning, thermalTuning);
+        this.reserveTuning = reserveTuning;
+        ship = new InstalledShip(shipLoadout, driveAuthority, damageTuning, thermalTuning, reserveTuning);
         controller = new FlightController(flightTuning);
         coupling = new CouplingTrim(couplingTuning);
         field = new StellarField(fieldTuning);
@@ -325,7 +328,7 @@ internal sealed class SpaceFlight : IDisposable
             }
 
             output = substepOutput;
-            effort = substepEffort;
+            effort = substepEffort with { Systems = ship.ReadSystems() };
             forces = substepForces;
         }
 
@@ -370,7 +373,7 @@ internal sealed class SpaceFlight : IDisposable
     }
 
     internal void Refit(ShipLoadout loadout) => ResetFlight(
-        new InstalledShip(loadout.Validate(), driveAuthority, damageTuning, thermalTuning));
+        new InstalledShip(loadout.Validate(), driveAuthority, damageTuning, thermalTuning, reserveTuning));
 
     internal void ResetFlight() => ResetFlight(ship);
 

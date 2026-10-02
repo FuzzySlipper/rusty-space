@@ -77,14 +77,27 @@ Product owners, one mutable state family each:
   where each is mounted, what the fit weighs and how hard it is to yaw, and
   what each part's actuator actually reached. It is the owner of the ship's
   several centers — center of mass, main thrust, field coupling, steering
-  authority, stabilization — and of nothing else. It never integrates the hull
-  and never issues an Engine action. What the hull has been through reaches this
+  authority, stabilization — plus the installed hardware's resource readings.
+  It never integrates the hull and never issues an Engine action. What the hull has been through reaches this
   owner as impacts, and it passes each one to the part that caught it.
 - `ShipSystems/InstalledPart` — one fitted part's live state: temperature, where
   its actuator got to, how much of its rating is left, and whether something is
   jammed off where it belongs. A latch holds until the crew has spent time on it
   and survives a reset, because a reset rebuilds what the Engine simulates and
   does not send anyone out with a patch kit.
+- `ShipSystems/DriveReserve` — the drive's rechargeable burst energy, held in
+  Engine Mechanics `Track` with a shared `Stat` maximum. Demand above the
+  sustainable supply drains it on admitted substeps; easing thrust recharges it.
+  Low reserve reduces the same drive actuator's demand progressively, without
+  spending steering authority. Empty reserve still leaves sustainable thrust.
+- `ShipSystems/PartThermalTuning` — heat injection and cooling rates and the
+  warning/derating envelope. `InstalledPart` advances heat as a rate calculation
+  and gates its own actuator demand as it heats. Structural damage also slows
+  and detunes that same response; structural health is an Engine `Track`.
+  Neither amount replaces the authored second-order actuator response.
+- `ShipSystems/ShipSystemsReading` — immutable hardware readings carried through
+  `FlightTelemetrySnapshot` to the bridge and HUD: reserve, temperature, drive
+  output ceiling, early warnings, jams and patch progress. It owns no state.
 - `ShipSystems/ActuatorResponse` — the second-order response every part's
   actuator is built from: `response'' + 2·ζ·ω·response' + ω²·response =
   ω²·command`. Frequency is how fast a part gets where it is told; damping
@@ -134,6 +147,11 @@ Product owners, one mutable state family each:
   replaces the hull at spawn with fresh hardware, clears telemetry and bridge
   reactions, publishes the fit and cuts the chart camera. It preserves pause
   and the current seat; normal restart keeps the selected hardware and its damage.
+- `Debugging/SpacePlaytest` — live product facts and actions for Engine's
+  `PlaytestDebugModule`. Action queries resolve keyboard bindings from the
+  admitted input configuration, then Crew presses those ordinary controls.
+  Engine owns held time, advancement, focus and capture. There is no flight
+  pose injection or mouse-look fallback; Space turns with its steering controls.
 - `Debugging/BridgeDebugModule` — read-only `space.bridge` report of the
   staged set: part names, addressable identities, and attachment placements.
 - `Tuning/SpaceTuning` — the single composition-root aggregate of the
@@ -378,7 +396,7 @@ product retry list, or private lease registry is involved.
 Space starts no external timelines, so it does not claim to complete them: the
 Engine's default answer — none was completed — is the truthful one.
 
-## Entities, components, and stats: planned, not present
+## Entity posture and bounded resources
 
 The adopted SDK ships managed entity machinery (`Rusty.Engine.Entities`:
 `EntityStore`, `ComponentType`, `Actor`, batches, edits) and mechanics
@@ -391,8 +409,9 @@ write costs no native crossing. `Actor` is an optional facade over an
 existing entity; constructing one attaches nothing.
 
 Space has one rigid body and typed identities for installed parts, whose
-mutable state lives in named owners. It uses no entity store, components, or
-stats today. Further adoption follows a concrete product need:
+mutable state lives in named owners. It uses no entity store or component
+registry. Structural health and burst energy use Mechanics stats/tracks;
+further adoption follows a concrete product need:
 
 - Installed systems: decide entity and component boundaries from real
   ship and part identity and lifetime. An independently addressed ship or
@@ -404,7 +423,9 @@ stats today. Further adoption follows a concrete product need:
 - Bounded resources: `Stat` and `Track` where a requirement genuinely
   is a bounded scalar with a shared maximum and modifiers. Heat flow and
   actuator second-order response stay physical rate calculations in their own
-  owners and are not flattened into generic effects.
+  owners and are not flattened into generic effects. Installed structural
+  health and the drive's stored burst energy now use these bounds directly;
+  part response and heat remain in their existing owners.
 
 Neither adoption turns every force sample into a component, and neither adds
 a save system, an inventory, a stat catalogue, or crew features in order to

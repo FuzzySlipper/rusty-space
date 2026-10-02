@@ -119,6 +119,7 @@ public sealed class FlightDebugModule : IDebugCommandModule
             centers     steering ({steering.X:F2}, {steering.Z:F2})   stabilization ({stabilization.X:F2}, {stabilization.Z:F2})
             heading     effort {telemetry.SteeringEffort:F3}   asymmetry {telemetry.HeadingAsymmetry:F3}   saturated {telemetry.SteeringSaturated}
             faults      {Faults(flight.Ship)}
+            reserve     {ship.ReadSystems().ReserveFraction:F3}   drive heat {ship.MainDrive.Temperature:F3}   output ceiling {ship.ReadSystems().DriveOutputFraction:F3}
             """);
     }
 
@@ -175,6 +176,7 @@ public sealed class FlightDebugModule : IDebugCommandModule
             accel       forward {telemetry.ForwardAcceleration:F3}  lateral {telemetry.LateralAcceleration:F3}  yaw {telemetry.YawAcceleration:F3}
             coupling    {telemetry.Coupling:F3}
             field load  {telemetry.FieldLoad:F3}
+            systems     reserve {telemetry.Systems.ReserveFraction:F3}   drive heat {telemetry.Systems.DriveTemperature:F3}   output ceiling {telemetry.Systems.DriveOutputFraction:F3}
             last hit    ({telemetry.CollisionImpulse.X:F3}, {telemetry.CollisionImpulse.Z:F3})
             """);
     }

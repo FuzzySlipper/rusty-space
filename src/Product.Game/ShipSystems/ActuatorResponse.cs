@@ -91,8 +91,13 @@ internal sealed class ActuatorResponse
     /// ring them, and this is where the owner says so.
     /// </summary>
     internal void Advance(double demand, double dampingRatio, TimeSpan step)
+        => Advance(demand, dampingRatio, 1.0, step);
+
+    internal void Advance(double demand, double dampingRatio, double frequencyFraction, TimeSpan step)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(step, TimeSpan.Zero);
+        if (!double.IsFinite(frequencyFraction) || frequencyFraction <= 0.0 || frequencyFraction > 1.0)
+            throw new ArgumentOutOfRangeException(nameof(frequencyFraction));
         if (!double.IsFinite(dampingRatio) || dampingRatio < MinimumDampingRatio)
         {
             throw new ArgumentOutOfRangeException(nameof(dampingRatio));
@@ -103,8 +108,9 @@ internal sealed class ActuatorResponse
 
         int intervals = IntervalsFor(seconds);
         double interval = seconds / intervals;
-        double restoring = tuning.Frequency * tuning.Frequency;
-        double friction = 2.0 * dampingRatio * tuning.Frequency;
+        double frequency = tuning.Frequency * frequencyFraction;
+        double restoring = frequency * frequency;
+        double friction = 2.0 * dampingRatio * frequency;
         for (int visited = 0; visited < intervals; visited++)
         {
             // Semi-implicit order: the new velocity, then the position that new

@@ -24,6 +24,7 @@ internal sealed class SpaceProductComposition : IDisposable
             Tuning.Ship,
             Tuning.Damage,
             Tuning.Thermal,
+            Tuning.Reserve,
             Tuning.Field,
             Tuning.Orbital,
             Tuning.GentleCurrent,

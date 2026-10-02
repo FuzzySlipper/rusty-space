@@ -51,7 +51,7 @@ public class FlightForcesTests
         InstalledShip worn = new(
             ShipLoadouts.DamagedStabilizer,
             DriveAuthority,
-            SpaceTuning.Defaults.Damage, SpaceTuning.Defaults.Thermal);
+            SpaceTuning.Defaults.Damage, SpaceTuning.Defaults.Thermal, SpaceTuning.Defaults.Reserve);
         ShipEffort effort = worn.Advance(
             PlanarVector.Zero,
             NoDemand,

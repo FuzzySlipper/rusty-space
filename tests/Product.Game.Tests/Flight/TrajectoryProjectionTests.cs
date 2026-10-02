@@ -232,7 +232,7 @@ public class TrajectoryProjectionTests
     private static InstalledShip StockShip() => new(
         SpaceTuning.Defaults.Ship,
         SpaceTuning.Defaults.Flight.MaximumThrust,
-        SpaceTuning.Defaults.Damage, SpaceTuning.Defaults.Thermal);
+        SpaceTuning.Defaults.Damage, SpaceTuning.Defaults.Thermal, SpaceTuning.Defaults.Reserve);
 
     private static ShipEffort Effort(double coupling, PlanarVector drive = default) => new(
         DriveForce: drive,

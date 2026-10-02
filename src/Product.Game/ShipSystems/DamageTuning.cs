@@ -38,7 +38,9 @@ internal sealed record DamageTuning(
     double GlancingImpulse,
     double KnockoutImpulse,
     double TrimOffsetFraction,
-    TimeSpan RepairTime)
+    TimeSpan RepairTime,
+    double MinimumResponseFraction,
+    double MinimumDampingFraction)
 {
     private const double MinimumHealthFloor = 0.0;
     private const double FullHealth = 1.0;
@@ -81,6 +83,10 @@ internal sealed record DamageTuning(
         {
             throw new ArgumentOutOfRangeException(nameof(RepairTime));
         }
+        if (!double.IsFinite(MinimumResponseFraction) || MinimumResponseFraction <= 0.0 || MinimumResponseFraction > 1.0)
+            throw new ArgumentOutOfRangeException(nameof(MinimumResponseFraction));
+        if (!double.IsFinite(MinimumDampingFraction) || MinimumDampingFraction <= 0.0 || MinimumDampingFraction > 1.0)
+            throw new ArgumentOutOfRangeException(nameof(MinimumDampingFraction));
 
         return this;
     }

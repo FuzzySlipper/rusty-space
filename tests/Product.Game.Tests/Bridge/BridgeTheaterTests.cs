@@ -20,6 +20,31 @@ namespace Rusty.Space.Product.Bridge.Tests;
 /// </summary>
 public class BridgeTheaterTests
 {
+    [Fact]
+    public void ThermalAndReserveWarningsStageTheBridgeBeforeOutputLoss()
+    {
+        RecordingEngine engine = new();
+        SpaceTuning tuning = SpaceTuning.Defaults;
+        using BridgeSet bridge = new(engine.Graphics.Service, engine.ImplicitSurfaces.Service, tuning.Bridge);
+        using BridgeTheater theater = new(engine.Audio.Service, bridge, tuning.Theater);
+        InstalledShip ship = new(tuning.Ship, tuning.Flight.MaximumThrust, tuning.Damage, tuning.Thermal, tuning.Reserve);
+        FlightTelemetrySnapshot warned = FlightTelemetrySnapshot.Neutral with
+        {
+            Systems = ShipSystemsReading.Ready with { HeatWarning = true },
+        };
+        theater.Advance(warned, ship, 0, TimeSpan.FromSeconds(0.2), true);
+        Assert.True(theater.Lamps.FaultLit);
+        Assert.Contains("COAST", theater.FaultText);
+        Assert.Equal(1.0, warned.Systems.DriveOutputFraction);
+        theater.Advance(warned with { Systems = ShipSystemsReading.Ready with { ReserveLow = true } }, ship, 0,
+            TimeSpan.FromSeconds(0.2), true);
+        Assert.True(theater.Lamps.FaultLit);
+        Assert.Contains("THRUST", theater.FaultText);
+        theater.Advance(FlightTelemetrySnapshot.Neutral, ship, 0, TimeSpan.FromSeconds(0.2), true);
+        Assert.False(theater.Lamps.FaultLit);
+        Assert.Equal("SYSTEMS NOMINAL", theater.FaultText);
+    }
+
     private static readonly TimeSpan Step = TimeSpan.FromSeconds(1.0 / 60.0);
     private const ulong HumVoice = 1UL;
     private const ulong ThudVoice = 2UL;
@@ -303,7 +328,7 @@ public class BridgeTheaterTests
     private static InstalledShip StockShip()
     {
         SpaceTuning tuning = SpaceTuning.Defaults;
-        return new InstalledShip(tuning.Ship, tuning.Flight.MaximumThrust, tuning.Damage, tuning.Thermal);
+        return new InstalledShip(tuning.Ship, tuning.Flight.MaximumThrust, tuning.Damage, tuning.Thermal, tuning.Reserve);
     }
 
     private static FlightTelemetrySnapshot Spooling(double effort) => new(

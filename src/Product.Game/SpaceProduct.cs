@@ -17,6 +17,7 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
 {
     private readonly SpaceProductComposition composition;
     private readonly FlightDebugModule debugCommands;
+    private readonly PlaytestDebugModule playtest;
     private SpaceLifecycleState lifecycle = SpaceLifecycleState.Created;
 
     public SpaceProduct(ProductCreateContext context)
@@ -27,6 +28,7 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
         {
             composition = composed;
             debugCommands = new FlightDebugModule(composed.Flight, SelectLoadout);
+            playtest = new SpacePlaytest(composed.Flight, context.Input, composed.Tuning.Damage).Module;
             // Create-time projection: the Engine retains this initial snapshot
             // alongside create outputs, before any update is admitted.
             PublishFlight();
@@ -47,6 +49,7 @@ public sealed class SpaceProduct : IEngineProduct, IDebugCommandModuleSource
         ArgumentNullException.ThrowIfNull(registrar);
         registrar.Register(debugCommands);
         registrar.Register(composition.BridgeDebug);
+        registrar.Register(playtest);
     }
 
     public void Start()

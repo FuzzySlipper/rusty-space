@@ -1,3 +1,5 @@
+using Rusty.Engine.Mechanics;
+
 namespace Rusty.Space.Product.ShipSystems;
 
 /// <summary>
@@ -14,7 +16,8 @@ namespace Rusty.Space.Product.ShipSystems;
 /// </para>
 /// <para>
 /// Heat accumulates while a part is worked and gives itself up when it is left
-/// alone. It is reported so a hot part is visible to the player's instruments.
+/// alone. Crossing the envelope reduces its actuator demand progressively;
+/// the instruments warn before the drive loses output.
 /// </para>
 /// <para>
 /// A part also carries what a hit left behind. Health starts where it was fitted
@@ -40,8 +43,8 @@ internal sealed class InstalledPart
     private readonly PartThermalTuning thermal;
     private readonly double trimOffsetWhenLatched;
     private readonly double fittedHealth;
+    private readonly Track health;
     private double temperature = AmbientTemperature;
-    private double health;
     private double repair;
 
     internal InstalledPart(
@@ -57,7 +60,7 @@ internal sealed class InstalledPart
         this.thermal = thermal ?? throw new ArgumentNullException(nameof(thermal));
         this.trimOffsetWhenLatched = trimOffsetWhenLatched;
         fittedHealth = definition.Health;
-        health = definition.Health;
+        health = new Track(new Stat(definition.Health), minimum: Math.Min(damage.MinimumHealth, definition.Health));
     }
 
     internal PartDefinition Definition { get; }
@@ -69,7 +72,7 @@ internal sealed class InstalledPart
     /// was fitted and a contact takes it down, never below the floor the damage
     /// tuning allows; nothing lifts it back.
     /// </summary>
-    internal double Health => health;
+    internal double Health => health.Value;
 
     /// <summary>
     /// How much of what this part was fitted with it can still put up: its health
@@ -79,7 +82,14 @@ internal sealed class InstalledPart
     /// </summary>
     internal double DeliveryFraction => fittedHealth <= NoDamage
         ? NoDamage
-        : health / fittedHealth;
+        : health.Value / fittedHealth;
+
+    /// <summary>Heat progressively takes output away, without shutting control off.</summary>
+    internal double ThermalAuthority => 1.0 - ((1.0 - thermal.MinimumOutputFraction)
+        * Math.Clamp((temperature - thermal.DeratingTemperature)
+            / (thermal.FullDeratingTemperature - thermal.DeratingTemperature), 0.0, 1.0));
+
+    internal bool HeatWarning => temperature >= thermal.WarningTemperature;
 
     /// <summary>
     /// How warm the part is against its nominal envelope: <c>0</c> at ambient,
@@ -103,9 +113,7 @@ internal sealed class InstalledPart
     /// </summary>
     internal double Advance(double demand, double demandAsFractionOfRating, TimeSpan step)
     {
-        response.Advance(demand, step);
-        Warm(demandAsFractionOfRating, step);
-        return response.Value;
+        return Advance(demand, response.DampingRatio, demandAsFractionOfRating, step);
     }
 
     /// <summary>
@@ -119,8 +127,16 @@ internal sealed class InstalledPart
         double demandAsFractionOfRating,
         TimeSpan step)
     {
-        response.Advance(demand, dampingRatio, step);
-        Warm(demandAsFractionOfRating, step);
+        ArgumentOutOfRangeException.ThrowIfLessThan(step, TimeSpan.Zero);
+        // Damage changes the same actuator's response as well as its delivery.
+        // The altered frequency and damping persist after a patch clears a jam.
+        double responseFraction = damage.MinimumResponseFraction
+            + ((1.0 - damage.MinimumResponseFraction) * DeliveryFraction);
+        double dampingFraction = damage.MinimumDampingFraction
+            + ((1.0 - damage.MinimumDampingFraction) * DeliveryFraction);
+        double available = ThermalAuthority;
+        response.Advance(demand * available, dampingRatio * dampingFraction, responseFraction, step);
+        Warm(demandAsFractionOfRating * available, step);
         return response.Value;
     }
 
@@ -159,9 +175,9 @@ internal sealed class InstalledPart
         }
 
         double cost = damage.HealthPerUnitImpulse * (impulse - damage.GlancingImpulse);
-        double room = Math.Max(NoDamage, health - damage.MinimumHealth);
+        double room = health.Value - health.Minimum;
         double lost = Math.Min(cost, room);
-        health -= lost;
+        health.Spend(lost);
         if (impulse >= damage.KnockoutImpulse && trimOffsetWhenLatched != NoTrimOffset)
         {
             OutOfTrim = true;
@@ -206,7 +222,10 @@ internal sealed class InstalledPart
     private void Warm(double demandAsFractionOfRating, TimeSpan step)
     {
         double seconds = step.TotalSeconds;
-        double gathered = Math.Abs(demandAsFractionOfRating) * thermal.HeatPerSecondAtFullDemand * seconds;
+        double work = Math.Clamp(Math.Abs(demandAsFractionOfRating), 0.0, 1.0);
+        double heatRate = thermal.HeatPerSecondAtFullDemand
+            * (Definition.Role == PartRole.MainDrive ? thermal.DriveHeatMultiplier : 1.0);
+        double gathered = work * heatRate * seconds;
         double givenUp = (temperature - AmbientTemperature) * thermal.CoolingPerSecond * seconds;
         temperature = Math.Max(AmbientTemperature, temperature + gathered - givenUp);
     }
